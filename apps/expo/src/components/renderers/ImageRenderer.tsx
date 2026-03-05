@@ -2,7 +2,7 @@ import React from "react";
 import { Image } from "react-native";
 import type { ImageComponent } from "../../types";
 
-interface ImageRendererProps {
+export interface ImageRendererProps {
   component: ImageComponent;
 }
 

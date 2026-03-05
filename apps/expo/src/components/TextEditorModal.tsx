@@ -1,14 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Modal,
   View,
   TextInput,
   Pressable,
   Text,
   ScrollView,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
+import type { TextStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -16,36 +16,119 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+export interface TextEditingState {
+  text: string;
+  fontSize: number;
+  color: string;
+  backgroundColor: string;
+  fontFamily: string;
+  textAlign: "left" | "center" | "right";
+  wrapMode: "wrap-word" | "wrap-text" | "no-wrap";
+  fontWeight: "normal" | "bold";
+  fontStyle: "normal" | "italic";
+  textDecorationLine: "none" | "underline";
+}
 
-interface TextEditorModalProps {
-  visible: boolean;
-  initialText: string;
-  initialFontSize: number;
-  initialColor: string;
-  initialBackgroundColor?: string;
-  initialFontFamily?: string;
-  initialTextAlign?: "left" | "center" | "right";
-  onClose: () => void;
-  onSave: (config: {
-    text: string;
-    fontSize: number;
-    color: string;
-    backgroundColor?: string;
-    fontFamily: string;
-    textAlign: "left" | "center" | "right";
-    fontStyle?: "normal" | "italic";
-    textDecorationLine?: "none" | "underline";
-  }) => void;
+interface TextEditorToolbarProps {
+  state: TextEditingState;
+  onStateChange: (updates: Partial<TextEditingState>) => void;
+  onDone: () => void;
 }
 
 const FONTS = [
   { name: "Modern", value: "System" },
   { name: "Classic", value: "serif" },
   { name: "Signature", value: "cursive" },
-  { name: "Bold", value: "System" },
   { name: "Typewriter", value: "monospace" },
 ];
+
+interface BubbleOption {
+  label: string;
+  value: string;
+  labelStyle?: TextStyle;
+}
+
+function BubbleRow({
+  options,
+  activeValue,
+  onSelect,
+}: {
+  options: BubbleOption[];
+  activeValue: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.bubblePanel}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bubbleRowContent}
+      >
+        {options.map((opt) => {
+          const active = opt.value === activeValue;
+          return (
+            <Pressable
+              key={opt.value}
+              style={[styles.fontButton, active && styles.fontButtonActive]}
+              onPress={() => onSelect(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.fontButtonText,
+                  opt.labelStyle,
+                  active && styles.fontButtonTextActive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ToggleBubbleRow({
+  options,
+  values,
+  onToggle,
+}: {
+  options: { label: string; value: string; labelStyle?: TextStyle }[];
+  values: Record<string, boolean>;
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <View style={styles.bubblePanel}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bubbleRowContent}
+      >
+        {options.map((opt) => {
+          const active = values[opt.value];
+          return (
+            <Pressable
+              key={opt.value}
+              style={[styles.fontButton, active && styles.fontButtonActive]}
+              onPress={() => onToggle(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.fontButtonText,
+                  opt.labelStyle,
+                  active && styles.fontButtonTextActive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
 
 const COLORS = [
   "#FFFFFF",
@@ -66,134 +149,69 @@ const COLORS = [
   "#85C1E2",
 ];
 
-export function TextEditorModal({
-  visible,
-  initialText,
-  initialFontSize,
-  initialColor,
-  initialBackgroundColor,
-  initialFontFamily = "System",
-  initialTextAlign = "center",
-  onClose,
-  onSave,
-}: TextEditorModalProps) {
-  const [text, setText] = useState(initialText);
-  const [fontSize, setFontSize] = useState(initialFontSize);
-  const [color, setColor] = useState(initialColor);
-  const [backgroundColor, setBackgroundColor] = useState(
-    initialBackgroundColor || "transparent"
-  );
-  const [fontFamily, setFontFamily] = useState(initialFontFamily);
-  const [textAlign, setTextAlign] = useState(initialTextAlign);
-  const [showFonts, setShowFonts] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const [colorIndex, setColorIndex] = useState(() => {
-    const idx = COLORS.indexOf(initialColor);
-    return idx >= 0 ? idx : 0;
-  });
-  const [showFormatBubbles, setShowFormatBubbles] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isUnderline, setIsUnderline] = useState(false);
+type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | null;
+
+export function TextEditorToolbar({
+  state,
+  onStateChange,
+  onDone,
+}: TextEditorToolbarProps) {
+  const { height: screenHeight } = useWindowDimensions();
+
+  const [activePanel, setActivePanel] = useState<PanelType>(null);
+
+  const togglePanel = useCallback((panel: PanelType) => {
+    setActivePanel((current) => (current === panel ? null : panel));
+  }, []);
 
   // Custom Vertical Slider
-  const sliderHeight = SCREEN_HEIGHT * 0.4;
+  const sliderHeight = screenHeight * 0.4;
   const minFontSize = 12;
   const maxFontSize = 120;
-  const sliderOffset = useSharedValue(
-    ((fontSize - minFontSize) / (maxFontSize - minFontSize)) * (sliderHeight - 40)
-  );
-
-  const updateFontSize = (offset: number) => {
-    const trackRange = sliderHeight - 40; // thumbSize
-    const normalized = Math.max(0, Math.min(offset / trackRange, 1));
-    const newSize = minFontSize + normalized * (maxFontSize - minFontSize);
-    setFontSize(Math.round(newSize));
-  };
-
-  const startOffset = useSharedValue(0);
   const thumbSize = 40;
   const maxOffset = sliderHeight - thumbSize;
 
-  const panGesture = Gesture.Pan()
-    .onStart(() => {
-      startOffset.value = sliderOffset.value;
-    })
-    .onUpdate((e) => {
-      const newOffset = Math.max(0, Math.min(maxOffset, startOffset.value + e.translationY));
-      sliderOffset.value = newOffset;
-      runOnJS(updateFontSize)(newOffset);
-    });
+  const sliderOffset = useSharedValue(
+    (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset
+  );
 
-  const cycleColor = () => {
-    const nextIndex = (colorIndex + 1) % COLORS.length;
-    setColorIndex(nextIndex);
-    setColor(COLORS[nextIndex]);
-  };
+  useEffect(() => {
+    sliderOffset.value =
+      (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset;
+  }, [state.fontSize, maxOffset, sliderOffset, minFontSize, maxFontSize]);
 
-  const cycleAlignment = () => {
-    const alignments: ("left" | "center" | "right")[] = ["left", "center", "right"];
-    const currentIdx = alignments.indexOf(textAlign);
-    setTextAlign(alignments[(currentIdx + 1) % alignments.length]);
-  };
+  const updateFontSize = useCallback((offset: number) => {
+    const trackRange = sliderHeight - thumbSize;
+    const normalized = 1 - Math.max(0, Math.min(offset / trackRange, 1));
+    const newSize = minFontSize + normalized * (maxFontSize - minFontSize);
+    onStateChange({ fontSize: Math.round(newSize) });
+  }, [sliderHeight, onStateChange, minFontSize, maxFontSize]);
 
-  const getAlignIcon = () => {
-    if (textAlign === "left") return { widths: [16, 12, 14], align: "flex-start" as const };
-    if (textAlign === "center") return { widths: [12, 16, 10], align: "center" as const };
-    return { widths: [16, 12, 14], align: "flex-end" as const };
-  };
+  const startOffset = useSharedValue(0);
+
+  const panGesture = useMemo(() =>
+    Gesture.Pan()
+      .onStart(() => {
+        startOffset.value = sliderOffset.value;
+      })
+      .onUpdate((e) => {
+        const newOffset = Math.max(0, Math.min(maxOffset, startOffset.value + e.translationY));
+        sliderOffset.value = newOffset;
+        runOnJS(updateFontSize)(newOffset);
+      }),
+    [maxOffset, updateFontSize, startOffset, sliderOffset]
+  );
 
   const sliderThumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sliderOffset.value }],
   }));
 
-  const handleSave = () => {
-    onSave({
-      text,
-      fontSize,
-      color,
-      backgroundColor: backgroundColor === "transparent" ? undefined : backgroundColor,
-      fontFamily,
-      textAlign,
-      fontStyle: isItalic ? "italic" : "normal",
-      textDecorationLine: isUnderline ? "underline" : "none",
-    });
-    onClose();
-  };
+  const isBold = state.fontWeight === "bold";
+  const isItalic = state.fontStyle === "italic";
+  const isUnderline = state.textDecorationLine === "underline";
 
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      statusBarTranslucent
-    >
-      <View style={styles.container}>
-        {/* Background/Canvas Area */}
-        <View style={styles.canvasArea}>
-          {/* Text Input Area */}
-          <TextInput
-            style={[
-              styles.textInput,
-              {
-                fontSize,
-                color,
-                backgroundColor,
-                fontFamily,
-                textAlign,
-                fontStyle: isItalic ? "italic" : "normal",
-                textDecorationLine: isUnderline ? "underline" : "none",
-              },
-            ]}
-            value={text}
-            onChangeText={setText}
-            multiline
-            autoFocus
-            placeholder="Start typing..."
-            placeholderTextColor="rgba(255,255,255,0.5)"
-          />
-        </View>
-
+    <View style={styles.container} pointerEvents="box-none">
         {/* Size Slider - Left Side */}
         <View style={styles.sizeSliderContainer}>
           <View style={styles.sliderTrack}>
@@ -204,74 +222,85 @@ export function TextEditorModal({
               </Animated.View>
             </GestureDetector>
           </View>
+          <TextInput
+            style={styles.fontSizeInput}
+            value={String(state.fontSize)}
+            onChangeText={(val) => {
+              const num = parseInt(val, 10);
+              if (!isNaN(num) && num >= 1 && num <= 999) {
+                onStateChange({ fontSize: num });
+              } else if (val === "") {
+                onStateChange({ fontSize: 12 });
+              }
+            }}
+            keyboardType="number-pad"
+            selectTextOnFocus
+          />
         </View>
 
         {/* Top Bar */}
         <View style={styles.topBar}>
           <View />
-          <Pressable style={styles.doneButton} onPress={handleSave}>
+          <Pressable style={styles.doneButton} onPress={onDone}>
             <Text style={styles.doneText}>Done</Text>
           </Pressable>
         </View>
 
         {/* Bottom Toolbar */}
         <View style={styles.bottomToolbar}>
-          {/* Font Styles - only when Aa is selected */}
-          {showFonts && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.fontScrollContainer}
-              contentContainerStyle={styles.fontScrollContent}
-            >
-              {FONTS.map((font) => (
-                <Pressable
-                  key={font.name}
-                  style={[
-                    styles.fontButton,
-                    fontFamily === font.value && styles.fontButtonActive,
-                  ]}
-                  onPress={() => setFontFamily(font.value)}
-                >
-                  <Text
-                    style={[
-                      styles.fontButtonText,
-                      fontFamily === font.value && styles.fontButtonTextActive,
-                      { fontFamily: font.value },
-                    ]}
-                  >
-                    {font.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+          {activePanel === "fonts" && (
+            <BubbleRow
+              options={FONTS.map((f) => ({
+                label: f.name,
+                value: f.value,
+                labelStyle: { fontFamily: f.value === "System" ? undefined : f.value },
+              }))}
+              activeValue={state.fontFamily}
+              onSelect={(v) => onStateChange({ fontFamily: v })}
+            />
           )}
 
-          {/* Format Options (Italic / Underline) */}
-          {showFormatBubbles && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.fontScrollContainer}
-              contentContainerStyle={styles.fontScrollContent}
-            >
-              <Pressable
-                style={[styles.fontButton, isItalic && styles.fontButtonActive]}
-                onPress={() => setIsItalic(!isItalic)}
-              >
-                <Text style={[styles.fontButtonText, { fontStyle: "italic" }, isItalic && styles.fontButtonTextActive]}>Italic</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.fontButton, isUnderline && styles.fontButtonActive]}
-                onPress={() => setIsUnderline(!isUnderline)}
-              >
-                <Text style={[styles.fontButtonText, { textDecorationLine: "underline" }, isUnderline && styles.fontButtonTextActive]}>Underline</Text>
-              </Pressable>
-            </ScrollView>
+          {activePanel === "format" && (
+            <ToggleBubbleRow
+              options={[
+                { label: "Bold", value: "bold", labelStyle: { fontWeight: "bold" } },
+                { label: "Italic", value: "italic", labelStyle: { fontStyle: "italic" } },
+                { label: "Underline", value: "underline", labelStyle: { textDecorationLine: "underline" } },
+              ]}
+              values={{ bold: isBold, italic: isItalic, underline: isUnderline }}
+              onToggle={(v) => {
+                if (v === "bold") onStateChange({ fontWeight: isBold ? "normal" : "bold" });
+                if (v === "italic") onStateChange({ fontStyle: isItalic ? "normal" : "italic" });
+                if (v === "underline") onStateChange({ textDecorationLine: isUnderline ? "none" : "underline" });
+              }}
+            />
+          )}
+
+          {activePanel === "alignment" && (
+            <View>
+              <BubbleRow
+                options={[
+                  { label: "Left", value: "left" },
+                  { label: "Center", value: "center" },
+                  { label: "Right", value: "right" },
+                ]}
+                activeValue={state.textAlign}
+                onSelect={(v) => onStateChange({ textAlign: v as "left" | "center" | "right" })}
+              />
+              <BubbleRow
+                options={[
+                  { label: "Wrap Word", value: "wrap-word" },
+                  { label: "Wrap Text", value: "wrap-text" },
+                  { label: "No Wrap", value: "no-wrap" },
+                ]}
+                activeValue={state.wrapMode}
+                onSelect={(v) => onStateChange({ wrapMode: v as "wrap-word" | "wrap-text" | "no-wrap" })}
+              />
+            </View>
           )}
 
           {/* Text Color Picker */}
-          {showColorPicker && (
+          {activePanel === "color" && (
             <View style={styles.colorPicker}>
               <ScrollView
                 horizontal
@@ -284,11 +313,11 @@ export function TextEditorModal({
                     style={[
                       styles.colorOption,
                       { backgroundColor: col },
-                      color === col && styles.colorOptionSelected,
+                      state.color === col && styles.colorOptionSelected,
                     ]}
-                    onPress={() => setColor(col)}
+                    onPress={() => onStateChange({ color: col })}
                   >
-                    {color === col && (
+                    {state.color === col && (
                       <View style={styles.colorCheckmark}>
                         <Text style={styles.checkmarkText}>✓</Text>
                       </View>
@@ -300,7 +329,7 @@ export function TextEditorModal({
           )}
 
           {/* Highlight Color Picker */}
-          {showHighlightPicker && (
+          {activePanel === "highlight" && (
             <View style={styles.colorPicker}>
               <ScrollView
                 horizontal
@@ -311,9 +340,9 @@ export function TextEditorModal({
                   style={[
                     styles.colorOption,
                     { backgroundColor: "transparent", borderWidth: 1, borderColor: "#FFF" },
-                    backgroundColor === "transparent" && styles.colorOptionSelected,
+                    state.backgroundColor === "transparent" && styles.colorOptionSelected,
                   ]}
-                  onPress={() => setBackgroundColor("transparent")}
+                  onPress={() => onStateChange({ backgroundColor: "transparent" })}
                 >
                   <Text style={styles.noneText}>∅</Text>
                 </Pressable>
@@ -323,11 +352,11 @@ export function TextEditorModal({
                     style={[
                       styles.colorOption,
                       { backgroundColor: col },
-                      backgroundColor === col && styles.colorOptionSelected,
+                      state.backgroundColor === col && styles.colorOptionSelected,
                     ]}
-                    onPress={() => setBackgroundColor(col)}
+                    onPress={() => onStateChange({ backgroundColor: col })}
                   >
-                    {backgroundColor === col && (
+                    {state.backgroundColor === col && (
                       <View style={styles.colorCheckmark}>
                         <Text style={styles.checkmarkText}>✓</Text>
                       </View>
@@ -340,41 +369,23 @@ export function TextEditorModal({
 
           {/* Icon Toolbar */}
           <View style={styles.iconToolbar}>
-            {/* Aa - toggles font picker */}
             <Pressable
-              style={[styles.iconButton, showFonts && styles.iconButtonActive]}
-              onPress={() => {
-                setShowFonts(!showFonts);
-                setShowColorPicker(false);
-                setShowHighlightPicker(false);
-                setShowFormatBubbles(false);
-              }}
+              style={[styles.iconButton, activePanel === "fonts" && styles.iconButtonActive]}
+              onPress={() => togglePanel("fonts")}
             >
               <Text style={styles.iconText}>Aa</Text>
             </Pressable>
 
-            {/* Color Picker Button */}
             <Pressable
-              style={[styles.iconButton, showColorPicker && styles.iconButtonActive]}
-              onPress={() => {
-                setShowColorPicker(!showColorPicker);
-                setShowHighlightPicker(false);
-                setShowFonts(false);
-                setShowFormatBubbles(false);
-              }}
+              style={[styles.iconButton, activePanel === "color" && styles.iconButtonActive]}
+              onPress={() => togglePanel("color")}
             >
-              <View style={[styles.colorIndicator, { backgroundColor: color }]} />
+              <View style={[styles.colorIndicator, { backgroundColor: state.color }]} />
             </Pressable>
 
-            {/* Text Highlight Button */}
             <Pressable
-              style={[styles.iconButton, showHighlightPicker && styles.iconButtonActive]}
-              onPress={() => {
-                setShowHighlightPicker(!showHighlightPicker);
-                setShowColorPicker(false);
-                setShowFonts(false);
-                setShowFormatBubbles(false);
-              }}
+              style={[styles.iconButton, activePanel === "highlight" && styles.iconButtonActive]}
+              onPress={() => togglePanel("highlight")}
             >
               <View style={styles.highlightIcon}>
                 <Text style={styles.iconText}>A</Text>
@@ -383,71 +394,74 @@ export function TextEditorModal({
                     styles.highlightBar,
                     {
                       backgroundColor:
-                        backgroundColor === "transparent" ? "#888" : backgroundColor,
+                        state.backgroundColor === "transparent" ? "#888" : state.backgroundColor,
                     },
                   ]}
                 />
               </View>
             </Pressable>
 
-            {/* Alignment - single cycling button */}
-            <Pressable style={styles.iconButton} onPress={cycleAlignment}>
+            <Pressable
+              style={[styles.iconButton, activePanel === "alignment" && styles.iconButtonActive]}
+              onPress={() => togglePanel("alignment")}
+            >
               <View style={styles.alignIcon}>
-                {getAlignIcon().widths.map((w, i) => (
-                  <View key={i} style={[styles.alignLine, { width: w, alignSelf: getAlignIcon().align }]} />
+                {[16, 12, 14].map((w, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.alignLine,
+                      {
+                        width: w,
+                        alignSelf:
+                          state.textAlign === "left"
+                            ? "flex-start"
+                            : state.textAlign === "center"
+                            ? "center"
+                            : "flex-end",
+                      },
+                    ]}
+                  />
                 ))}
               </View>
             </Pressable>
 
-            {/* Underline/Format - shows top bubbles */}
             <Pressable
-              style={[styles.iconButton, showFormatBubbles && styles.iconButtonActive]}
-              onPress={() => {
-                setShowFormatBubbles(!showFormatBubbles);
-                setShowColorPicker(false);
-                setShowFonts(false);
-                setShowHighlightPicker(false);
-              }}
+              style={[styles.iconButton, activePanel === "format" && styles.iconButtonActive]}
+              onPress={() => togglePanel("format")}
             >
               <Text style={[styles.iconText, { textDecorationLine: "underline" }]}>U</Text>
             </Pressable>
-
-            {/* Effects Button */}
-            <Pressable style={styles.iconButton}>
-              <Text style={styles.iconText}>✨</Text>
-            </Pressable>
           </View>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  canvasArea: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 60,
-  },
-  textInput: {
-    width: "100%",
-    minHeight: 60,
-    maxHeight: SCREEN_HEIGHT * 0.6,
-    padding: 16,
-    borderRadius: 8,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 300,
   },
   sizeSliderContainer: {
     position: "absolute",
     left: 20,
     top: "20%",
-    bottom: "20%",
+    bottom: "15%",
     justifyContent: "center",
     alignItems: "center",
+    gap: 8,
+  },
+  fontSizeInput: {
+    width: 44,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    padding: 0,
   },
   sliderTrack: {
     height: "60%",
@@ -510,12 +524,13 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingBottom: 20,
   },
-  fontScrollContainer: {
-    maxHeight: 60,
+  bubblePanel: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
   },
-  fontScrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  bubbleRowContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     gap: 8,
   },
   fontButton: {
