@@ -68,6 +68,7 @@ export function TextRenderer({
         onChangeText={(t) => onEditStateChange?.({ text: t })}
         multiline={editState.wrapMode !== "no-wrap"}
         autoFocus
+        selectTextOnFocus
       />
     );
   }

@@ -7,14 +7,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import type { Component } from "../types";
-
-function uuid(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
+import { uuid } from "../utils/uuid";
 
 const PRESETS: { label: string; create: () => Component }[] = [
   {
@@ -32,23 +25,81 @@ const PRESETS: { label: string; create: () => Component }[] = [
   {
     label: "+ Button",
     create: () => ({
-      type: "button" as const,
+      type: "container" as const,
       id: uuid(),
-      layout: { x: 0.2, y: 0.45, width: 0.6, height: 0.065 },
-      label: "Button",
+      layout: { x: 0.15, y: 0.4, width: 0.7, height: 0.07 },
       backgroundColor: "#6366f1",
-      textColor: "#ffffff",
-      interactions: [],
+      borderRadius: 12,
+      children: [
+        {
+          type: "text" as const,
+          id: uuid(),
+          layout: { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+          content: "Button",
+          fontSize: 16,
+          color: "#ffffff",
+          fontWeight: "600" as const,
+          textAlign: "center" as const,
+        },
+      ],
     }),
   },
   {
     label: "+ Image",
     create: () => ({
-      type: "image" as const,
+      type: "container" as const,
       id: uuid(),
       layout: { x: 0.2, y: 0.35, width: 0.6, height: 0.25 },
-      src: "https://placekitten.com/400/300",
-      resizeMode: "cover" as const,
+      backgroundColor: "transparent",
+      borderRadius: 12,
+      children: [
+        {
+          type: "image" as const,
+          id: uuid(),
+          layout: { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+          src: "https://placekitten.com/400/300",
+          resizeMode: "cover" as const,
+        },
+      ],
+    }),
+  },
+  {
+    label: "+ Card",
+    create: () => ({
+      type: "container" as const,
+      id: uuid(),
+      layout: { x: 0.075, y: 0.3, width: 0.85, height: 0.35 },
+      backgroundColor: "#ffffff",
+      borderRadius: 16,
+      shadowEnabled: true,
+      children: [
+        {
+          type: "image" as const,
+          id: uuid(),
+          layout: { x: 0.0, y: 0.0, width: 1.0, height: 0.55 },
+          src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=400&fit=crop",
+          resizeMode: "cover" as const,
+          borderRadius: 0,
+        },
+        {
+          type: "text" as const,
+          id: uuid(),
+          layout: { x: 0.05, y: 0.6, width: 0.9, height: 0.15 },
+          content: "Card Title",
+          fontSize: 18,
+          color: "#1a1a1a",
+          fontWeight: "bold" as const,
+        },
+        {
+          type: "text" as const,
+          id: uuid(),
+          layout: { x: 0.05, y: 0.78, width: 0.9, height: 0.15 },
+          content: "Card subtitle goes here",
+          fontSize: 13,
+          color: "#94a3b8",
+          fontWeight: "normal" as const,
+        },
+      ],
     }),
   },
 ];

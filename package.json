@@ -1,8 +1,11 @@
 {
-  "name": "untitled-ide",
+  "name": "blueprints",
   "private": true,
   "workspaces": [
     "packages/*",
     "apps/*"
-  ]
+  ],
+  "dependencies": {
+    "expo-image-picker": "^55.0.11"
+  }
 }

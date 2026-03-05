@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   TextInput,
@@ -15,6 +15,8 @@ import Animated, {
   useAnimatedStyle,
   runOnJS,
 } from "react-native-reanimated";
+import { Feather } from "@expo/vector-icons";
+import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 
 export interface TextEditingState {
   text: string;
@@ -32,7 +34,8 @@ export interface TextEditingState {
 interface TextEditorToolbarProps {
   state: TextEditingState;
   onStateChange: (updates: Partial<TextEditingState>) => void;
-  onDone: () => void;
+  onUndo: () => void;
+  onInspect?: () => void;
 }
 
 const FONTS = [
@@ -57,20 +60,69 @@ function BubbleRow({
   activeValue: string;
   onSelect: (value: string) => void;
 }) {
+  const { width: sw } = useWindowDimensions();
+  const inset = sw / 2 - BUBBLE_WIDTH / 2;
+  const scrollRef = useRef<ScrollView>(null);
+  const lastIdx = useRef(-1);
+  const cbRef = useRef({ options, onSelect });
+  cbRef.current = { options, onSelect };
+
+  const snapOffsets = useMemo(
+    () => options.map((_, i) => i * BUBBLE_STEP),
+    [options.length],
+  );
+
+  useEffect(() => {
+    const idx = options.findIndex((o) => o.value === activeValue);
+    if (idx >= 0) {
+      lastIdx.current = idx;
+      setTimeout(() => scrollRef.current?.scrollTo({ x: idx * BUBBLE_STEP, animated: false }), 0);
+    }
+  }, []);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const index = Math.round(x / BUBBLE_STEP);
+      const clamped = Math.max(0, Math.min(index, cbRef.current.options.length - 1));
+      if (clamped !== lastIdx.current) {
+        lastIdx.current = clamped;
+        cbRef.current.onSelect(cbRef.current.options[clamped].value);
+      }
+    },
+    [],
+  );
+
+  const scrollToIdx = useCallback((index: number) => {
+    scrollRef.current?.scrollTo({ x: index * BUBBLE_STEP, animated: true });
+  }, []);
+
   return (
     <View style={styles.bubblePanel}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.bubbleRowContent}
+        snapToOffsets={snapOffsets}
+        decelerationRate="fast"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={[
+          styles.bubbleScrollContent,
+          { paddingLeft: inset, paddingRight: inset },
+        ]}
       >
-        {options.map((opt) => {
+        {options.map((opt, index) => {
           const active = opt.value === activeValue;
           return (
             <Pressable
               key={opt.value}
-              style={[styles.fontButton, active && styles.fontButtonActive]}
-              onPress={() => onSelect(opt.value)}
+              style={[
+                styles.fontButton,
+                active && styles.fontButtonActive,
+                !active && styles.bubbleDimmed,
+              ]}
+              onPress={() => scrollToIdx(index)}
             >
               <Text
                 style={[
@@ -78,6 +130,7 @@ function BubbleRow({
                   opt.labelStyle,
                   active && styles.fontButtonTextActive,
                 ]}
+                numberOfLines={1}
               >
                 {opt.label}
               </Text>
@@ -98,20 +151,44 @@ function ToggleBubbleRow({
   values: Record<string, boolean>;
   onToggle: (value: string) => void;
 }) {
+  const { width: sw } = useWindowDimensions();
+  const inset = sw / 2 - BUBBLE_WIDTH / 2;
+  const scrollRef = useRef<ScrollView>(null);
+  const snapOffsets = useMemo(
+    () => options.map((_, i) => i * BUBBLE_STEP),
+    [options.length],
+  );
+
+  const scrollToIdx = useCallback((index: number) => {
+    scrollRef.current?.scrollTo({ x: index * BUBBLE_STEP, animated: true });
+  }, []);
+
   return (
     <View style={styles.bubblePanel}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.bubbleRowContent}
+        snapToOffsets={snapOffsets}
+        decelerationRate="fast"
+        contentContainerStyle={[
+          styles.bubbleScrollContent,
+          { paddingLeft: inset, paddingRight: inset },
+        ]}
       >
-        {options.map((opt) => {
+        {options.map((opt, index) => {
           const active = values[opt.value];
           return (
             <Pressable
               key={opt.value}
-              style={[styles.fontButton, active && styles.fontButtonActive]}
-              onPress={() => onToggle(opt.value)}
+              style={[
+                styles.fontButton,
+                active && styles.fontButtonActive,
+              ]}
+              onPress={() => {
+                scrollToIdx(index);
+                onToggle(opt.value);
+              }}
             >
               <Text
                 style={[
@@ -119,9 +196,108 @@ function ToggleBubbleRow({
                   opt.labelStyle,
                   active && styles.fontButtonTextActive,
                 ]}
+                numberOfLines={1}
               >
                 {opt.label}
               </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ScrollColorRow({
+  colors,
+  activeColor,
+  onSelect,
+  showNone,
+}: {
+  colors: string[];
+  activeColor: string;
+  onSelect: (color: string) => void;
+  showNone?: boolean;
+}) {
+  const { width: sw } = useWindowDimensions();
+  const inset = sw / 2 - COLOR_SIZE / 2;
+  const scrollRef = useRef<ScrollView>(null);
+  const lastIdx = useRef(-1);
+  const allItems = useMemo(
+    () => (showNone ? ["transparent", ...colors] : colors),
+    [colors, showNone],
+  );
+  const cbRef = useRef({ allItems, onSelect });
+  cbRef.current = { allItems, onSelect };
+
+  const snapOffsets = useMemo(
+    () => allItems.map((_, i) => i * COLOR_STEP),
+    [allItems.length],
+  );
+
+  useEffect(() => {
+    const idx = allItems.indexOf(activeColor);
+    if (idx >= 0) {
+      lastIdx.current = idx;
+      setTimeout(() => scrollRef.current?.scrollTo({ x: idx * COLOR_STEP, animated: false }), 0);
+    }
+  }, []);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const index = Math.round(x / COLOR_STEP);
+      const { allItems: items, onSelect: sel } = cbRef.current;
+      const clamped = Math.max(0, Math.min(index, items.length - 1));
+      if (clamped !== lastIdx.current) {
+        lastIdx.current = clamped;
+        sel(items[clamped]);
+      }
+    },
+    [],
+  );
+
+  const scrollToIdx = useCallback((index: number) => {
+    scrollRef.current?.scrollTo({ x: index * COLOR_STEP, animated: true });
+  }, []);
+
+  return (
+    <View style={styles.colorPicker}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToOffsets={snapOffsets}
+        decelerationRate="fast"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={[
+          styles.colorScrollContent,
+          { paddingLeft: inset, paddingRight: inset },
+        ]}
+      >
+        {allItems.map((col, index) => {
+          const isNone = col === "transparent";
+          const active = col === activeColor;
+          return (
+            <Pressable
+              key={col}
+              style={[
+                styles.colorOption,
+                isNone
+                  ? { backgroundColor: "transparent", borderWidth: 1, borderColor: "#FFF" }
+                  : { backgroundColor: col },
+                active && styles.colorOptionSelected,
+                !active && styles.bubbleDimmed,
+              ]}
+              onPress={() => scrollToIdx(index)}
+            >
+              {isNone && <Text style={styles.noneText}>∅</Text>}
+              {!isNone && active && (
+                <View style={styles.colorCheckmark}>
+                  <Text style={styles.checkmarkText}>✓</Text>
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -151,12 +327,22 @@ const COLORS = [
 
 type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | null;
 
+const BUBBLE_WIDTH = 100;
+const BUBBLE_GAP = 12;
+const BUBBLE_STEP = BUBBLE_WIDTH + BUBBLE_GAP;
+
+const COLOR_SIZE = 44;
+const COLOR_GAP = 12;
+const COLOR_STEP = COLOR_SIZE + COLOR_GAP;
+
 export function TextEditorToolbar({
   state,
   onStateChange,
-  onDone,
+  onUndo,
+  onInspect,
 }: TextEditorToolbarProps) {
   const { height: screenHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
 
   const [activePanel, setActivePanel] = useState<PanelType>(null);
 
@@ -165,41 +351,53 @@ export function TextEditorToolbar({
   }, []);
 
   // Custom Vertical Slider
-  const sliderHeight = screenHeight * 0.4;
   const minFontSize = 12;
   const maxFontSize = 120;
   const thumbSize = 40;
-  const maxOffset = sliderHeight - thumbSize;
+  const [trackHeight, setTrackHeight] = useState(screenHeight * 0.25);
+  const maxOffset = Math.max(0, trackHeight - thumbSize);
 
   const sliderOffset = useSharedValue(
     (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset
   );
+  const isDraggingSlider = useRef(false);
 
   useEffect(() => {
+    if (isDraggingSlider.current) return;
     sliderOffset.value =
       (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset;
   }, [state.fontSize, maxOffset, sliderOffset, minFontSize, maxFontSize]);
 
+  const onTrackLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+    setTrackHeight(e.nativeEvent.layout.height);
+  }, []);
+
   const updateFontSize = useCallback((offset: number) => {
-    const trackRange = sliderHeight - thumbSize;
+    const trackRange = Math.max(1, trackHeight - thumbSize);
     const normalized = 1 - Math.max(0, Math.min(offset / trackRange, 1));
     const newSize = minFontSize + normalized * (maxFontSize - minFontSize);
     onStateChange({ fontSize: Math.round(newSize) });
-  }, [sliderHeight, onStateChange, minFontSize, maxFontSize]);
+  }, [trackHeight, onStateChange, minFontSize, maxFontSize]);
+
+  const setDragging = useCallback((v: boolean) => { isDraggingSlider.current = v; }, []);
 
   const startOffset = useSharedValue(0);
 
   const panGesture = useMemo(() =>
     Gesture.Pan()
       .onStart(() => {
+        runOnJS(setDragging)(true);
         startOffset.value = sliderOffset.value;
       })
       .onUpdate((e) => {
         const newOffset = Math.max(0, Math.min(maxOffset, startOffset.value + e.translationY));
         sliderOffset.value = newOffset;
         runOnJS(updateFontSize)(newOffset);
+      })
+      .onFinalize(() => {
+        runOnJS(setDragging)(false);
       }),
-    [maxOffset, updateFontSize, startOffset, sliderOffset]
+    [maxOffset, updateFontSize, setDragging, startOffset, sliderOffset]
   );
 
   const sliderThumbStyle = useAnimatedStyle(() => ({
@@ -213,8 +411,8 @@ export function TextEditorToolbar({
   return (
     <View style={styles.container} pointerEvents="box-none">
         {/* Size Slider - Left Side */}
-        <View style={styles.sizeSliderContainer}>
-          <View style={styles.sliderTrack}>
+        <View style={[styles.sizeSliderContainer, keyboardHeight > 0 && { bottom: keyboardHeight + 80 }]}>
+          <View style={styles.sliderTrack} onLayout={onTrackLayout}>
             <View style={styles.sliderTrackLine} />
             <GestureDetector gesture={panGesture}>
               <Animated.View style={[styles.sliderThumb, sliderThumbStyle]}>
@@ -241,13 +439,13 @@ export function TextEditorToolbar({
         {/* Top Bar */}
         <View style={styles.topBar}>
           <View />
-          <Pressable style={styles.doneButton} onPress={onDone}>
-            <Text style={styles.doneText}>Done</Text>
+          <Pressable style={styles.undoButton} onPress={onUndo}>
+            <Text style={styles.undoText}>Undo</Text>
           </Pressable>
         </View>
 
         {/* Bottom Toolbar */}
-        <View style={styles.bottomToolbar}>
+        <View style={[styles.bottomToolbar, keyboardHeight > 0 && { bottom: keyboardHeight }]}>
           {activePanel === "fonts" && (
             <BubbleRow
               options={FONTS.map((f) => ({
@@ -301,70 +499,21 @@ export function TextEditorToolbar({
 
           {/* Text Color Picker */}
           {activePanel === "color" && (
-            <View style={styles.colorPicker}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.colorPickerContent}
-              >
-                {COLORS.map((col) => (
-                  <Pressable
-                    key={col}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: col },
-                      state.color === col && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => onStateChange({ color: col })}
-                  >
-                    {state.color === col && (
-                      <View style={styles.colorCheckmark}>
-                        <Text style={styles.checkmarkText}>✓</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
+            <ScrollColorRow
+              colors={COLORS}
+              activeColor={state.color}
+              onSelect={(col) => onStateChange({ color: col })}
+            />
           )}
 
           {/* Highlight Color Picker */}
           {activePanel === "highlight" && (
-            <View style={styles.colorPicker}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.colorPickerContent}
-              >
-                <Pressable
-                  style={[
-                    styles.colorOption,
-                    { backgroundColor: "transparent", borderWidth: 1, borderColor: "#FFF" },
-                    state.backgroundColor === "transparent" && styles.colorOptionSelected,
-                  ]}
-                  onPress={() => onStateChange({ backgroundColor: "transparent" })}
-                >
-                  <Text style={styles.noneText}>∅</Text>
-                </Pressable>
-                {COLORS.map((col) => (
-                  <Pressable
-                    key={col}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: col },
-                      state.backgroundColor === col && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => onStateChange({ backgroundColor: col })}
-                  >
-                    {state.backgroundColor === col && (
-                      <View style={styles.colorCheckmark}>
-                        <Text style={styles.checkmarkText}>✓</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
+            <ScrollColorRow
+              colors={COLORS}
+              activeColor={state.backgroundColor}
+              onSelect={(col) => onStateChange({ backgroundColor: col })}
+              showNone
+            />
           )}
 
           {/* Icon Toolbar */}
@@ -432,6 +581,15 @@ export function TextEditorToolbar({
             >
               <Text style={[styles.iconText, { textDecorationLine: "underline" }]}>U</Text>
             </Pressable>
+
+            {onInspect && (
+              <Pressable
+                style={[styles.iconButton]}
+                onPress={onInspect}
+              >
+                <Feather name="code" size={18} color="#FFFFFF" />
+              </Pressable>
+            )}
           </View>
         </View>
     </View>
@@ -464,7 +622,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   sliderTrack: {
-    height: "60%",
+    flex: 1,
     width: 40,
     justifyContent: "flex-start",
     alignItems: "center",
@@ -505,13 +663,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  doneButton: {
+  undoButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.2)",
   },
-  doneText: {
+  undoText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
@@ -528,19 +686,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
-  bubbleRowContent: {
-    paddingHorizontal: 20,
+  bubbleScrollContent: {
     paddingVertical: 10,
-    gap: 8,
+    gap: BUBBLE_GAP,
+    alignItems: "center",
   },
   fontButton: {
-    paddingHorizontal: 20,
+    width: BUBBLE_WIDTH,
     paddingVertical: 10,
-    marginRight: 8,
     borderRadius: 20,
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.4)",
+    alignItems: "center",
+  },
+  bubbleDimmed: {
+    opacity: 0.4,
   },
   fontButtonActive: {
     backgroundColor: "#FFFFFF",
@@ -611,9 +772,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
-  colorPickerContent: {
-    gap: 12,
-    paddingHorizontal: 8,
+  colorScrollContent: {
+    gap: COLOR_GAP,
+    alignItems: "center",
   },
   colorOption: {
     width: 44,

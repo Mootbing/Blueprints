@@ -1,22 +1,12 @@
 import React, { useCallback } from "react";
-import { View, Text, ScrollView, Image, Pressable, Linking, Alert } from "react-native";
+import { View, Text, ScrollView, Image, Pressable } from "react-native";
 import type { ListComponent, ListItem } from "../../types";
+import { safeOpenUrl } from "../../utils/safeUrl";
 
 export interface ListRendererProps {
   component: ListComponent;
   isEditMode?: boolean;
   onNavigate?: (screenId: string) => void;
-}
-
-const ALLOWED_URL_SCHEMES = ["http:", "https:", "mailto:"];
-
-function isSafeUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
 }
 
 export function ListRenderer({ component, isEditMode, onNavigate }: ListRendererProps) {
@@ -44,11 +34,7 @@ export function ListRenderer({ component, isEditMode, onNavigate }: ListRenderer
           if (interaction.action === "navigate" && onNavigate) {
             onNavigate(interaction.target);
           } else if (interaction.action === "openUrl") {
-            if (isSafeUrl(interaction.target)) {
-              Linking.openURL(interaction.target);
-            } else {
-              Alert.alert("Invalid URL", "This link cannot be opened.");
-            }
+            safeOpenUrl(interaction.target);
           }
         }
       }

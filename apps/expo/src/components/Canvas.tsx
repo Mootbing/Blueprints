@@ -1,42 +1,29 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Pressable,
   Text,
-  ScrollView,
+  TextInput,
   Platform,
-  Alert,
   StyleSheet,
   Animated,
-  SafeAreaView,
   Keyboard,
   type GestureResponderEvent,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Feather } from "@expo/vector-icons";
 import { useSharedValue } from "react-native-reanimated";
-import type { AppBlueprint, Layout, Component, ComponentStyleUpdates } from "../types";
+import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen } from "../types";
+import { ComponentSchema } from "../types";
 import { SDUIComponent } from "./SDUIComponent";
 import { SnapGuides } from "./SnapGuides";
 import { TextEditorToolbar, type TextEditingState } from "./TextEditorModal";
-
-function uuid(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-const BG_COLORS = [
-  "#ffffff", "#f5f5f5", "#e0e0e0", "#1a1a1a", "#000000",
-  "#fef3c7", "#fde68a", "#fca5a5", "#fecaca", "#fed7aa",
-  "#bbf7d0", "#a7f3d0", "#a5f3fc", "#bae6fd", "#c7d2fe",
-  "#ddd6fe", "#f5d0fe", "#fbcfe8",
-];
+import { StyleEditorToolbar, type StyleEditingState } from "./ComponentToolbar";
+import * as ImagePicker from "expo-image-picker";
+import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { GroupBreadcrumb } from "./GroupBreadcrumb";
+import { CanvasMenu } from "./menu/CanvasMenu";
+import { PRESETS } from "./menu/ComponentsPage";
 
 interface CanvasProps {
   blueprint: AppBlueprint;
@@ -51,139 +38,11 @@ interface CanvasProps {
   onResetProject?: () => void;
   onResetAndBuild?: () => void;
   onNavigate?: (screenId: string) => void;
+  onScreenUpdate?: (screen: Screen) => void;
+  onDeleteComponent?: (id: string) => void;
+  onComponentReplace?: (id: string, replacement: Component) => void;
+  onAddChildComponent?: (parentId: string, child: Component) => void;
 }
-
-const PRESETS: { label: string; icon: string; create: (x: number, y: number) => Component }[] = [
-  {
-    label: "Text",
-    icon: "Aa",
-    create: (x, y) => ({
-      type: "text" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.5, height: 0.06 },
-      content: "Tap to edit",
-      fontSize: 20,
-      color: "#1a1a1a",
-      fontWeight: "600" as const,
-    }),
-  },
-  {
-    label: "Button",
-    icon: "[ ]",
-    create: (x, y) => ({
-      type: "button" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.4, height: 0.065 },
-      label: "Button",
-      backgroundColor: "#6366f1",
-      textColor: "#ffffff",
-      interactions: [],
-    }),
-  },
-  {
-    label: "Image",
-    icon: "IMG",
-    create: (x, y) => ({
-      type: "image" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.4, height: 0.25 },
-      src: "https://placekitten.com/400/300",
-      resizeMode: "cover" as const,
-    }),
-  },
-  {
-    label: "Input",
-    icon: "___",
-    create: (x, y) => ({
-      type: "textInput" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.7, height: 0.06 },
-      placeholder: "Enter text...",
-      borderColor: "#cccccc",
-      borderWidth: 1,
-      borderRadius: 8,
-    }),
-  },
-  {
-    label: "Toggle",
-    icon: "ON",
-    create: (x, y) => ({
-      type: "toggle" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.5, height: 0.05 },
-      label: "Toggle",
-      defaultValue: false,
-      activeColor: "#6366f1",
-    }),
-  },
-  {
-    label: "Divider",
-    icon: "---",
-    create: (x, y) => ({
-      type: "divider" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.8, height: 0.01 },
-      direction: "horizontal" as const,
-      thickness: 1,
-      color: "#e0e0e0",
-      lineStyle: "solid" as const,
-    }),
-  },
-  {
-    label: "Shape",
-    icon: "SHP",
-    create: (x, y) => ({
-      type: "shape" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.4, height: 0.15 },
-      shapeType: "rounded-rectangle" as const,
-      backgroundColor: "#6366f1",
-      borderRadius: 12,
-      opacity: 1,
-    }),
-  },
-  {
-    label: "Icon",
-    icon: "ICO",
-    create: (x, y) => ({
-      type: "icon" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.12, height: 0.06 },
-      name: "star",
-      library: "material" as const,
-      size: 32,
-      color: "#1a1a1a",
-    }),
-  },
-  {
-    label: "List",
-    icon: "LST",
-    create: (x, y) => ({
-      type: "list" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.9, height: 0.3 },
-      items: [
-        { id: "1", title: "Item 1", subtitle: "Description" },
-        { id: "2", title: "Item 2", subtitle: "Description" },
-        { id: "3", title: "Item 3", subtitle: "Description" },
-      ],
-      borderRadius: 12,
-    }),
-  },
-  {
-    label: "Container",
-    icon: "BOX",
-    create: (x, y) => ({
-      type: "container" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.85, height: 0.25 },
-      backgroundColor: "#ffffff",
-      borderRadius: 12,
-      shadowEnabled: true,
-      padding: 0.02,
-    }),
-  },
-];
 
 export function Canvas({
   blueprint,
@@ -198,28 +57,112 @@ export function Canvas({
   onResetProject,
   onResetAndBuild,
   onNavigate,
+  onScreenUpdate,
+  onDeleteComponent,
+  onComponentReplace,
+  onAddChildComponent,
 }: CanvasProps) {
+  const keyboardHeight = useKeyboardHeight();
   const [canvasDimensions, setCanvasDimensions] = useState({
     width: 0,
     height: 0,
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropPoint, setDropPoint] = useState<{ normX: number; normY: number }>({ normX: 0.1, normY: 0.3 });
-  const [showBgPicker, setShowBgPicker] = useState(false);
   const [activeGuides, setActiveGuides] = useState<number[]>([]);
   const [snappingEnabled, setSnappingEnabled] = useState(true);
+  const snappingLoaded = useRef(false);
+
+  // Load snapping setting
+  useEffect(() => {
+    AsyncStorage.getItem("settings_snapping").then((val) => {
+      if (val !== null) setSnappingEnabled(val === "true");
+      snappingLoaded.current = true;
+    });
+  }, []);
+
+  // Persist snapping setting
+  useEffect(() => {
+    if (!snappingLoaded.current) return;
+    AsyncStorage.setItem("settings_snapping", String(snappingEnabled));
+  }, [snappingEnabled]);
+
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
-  const [editingInfo, setEditingInfo] = useState<{
-    componentId: string;
-    state: TextEditingState;
-  } | null>(null);
+  const [editingInfo, setEditingInfo] = useState<
+    | { mode: "text"; componentId: string; state: TextEditingState }
+    | { mode: "style"; componentId: string; state: StyleEditingState; initialState: StyleEditingState }
+    | null
+  >(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverTrash, setDragOverTrash] = useState(false);
+
+  // Component Inspector
+  const [inspectorEnabled, setInspectorEnabled] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorJson, setInspectorJson] = useState("");
+  const [inspectorError, setInspectorError] = useState<string | null>(null);
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  const inspectorLoaded = useRef(false);
+
+  // Load inspector setting
+  useEffect(() => {
+    AsyncStorage.getItem("settings_inspector").then((val) => {
+      if (val !== null) setInspectorEnabled(val === "true");
+      inspectorLoaded.current = true;
+    });
+  }, []);
+
+  // Persist inspector setting
+  useEffect(() => {
+    if (!inspectorLoaded.current) return;
+    AsyncStorage.setItem("settings_inspector", String(inspectorEnabled));
+  }, [inspectorEnabled]);
+
+  // --- Drill-in navigation ---
+  const [drillPath, setDrillPath] = useState<string[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+
+  const currentContainerId = drillPath.length > 0 ? drillPath[drillPath.length - 1] : null;
+  const isDrilledIn = drillPath.length > 0;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const screen = blueprint.screens[screenId];
 
+  function findComponent(components: Component[], id: string): Component | undefined {
+    for (const c of components) {
+      if (c.id === id) return c;
+      if (c.type === "container" && c.children) {
+        const found = findComponent(c.children, id);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+
+  const drillInto = useCallback((containerId: string) => {
+    setDrillPath(prev => [...prev, containerId]);
+    setSelectedChildId(null);
+    setSelectedComponentId(null);
+    setEditingInfo(null);
+  }, []);
+
+  const drillOut = useCallback(() => {
+    setDrillPath(prev => prev.slice(0, -1));
+    setSelectedChildId(null);
+    setSelectedComponentId(null);
+    setEditingInfo(null);
+  }, []);
+
+  const drillToLevel = useCallback((level: number) => {
+    setDrillPath(prev => prev.slice(0, level));
+    setSelectedChildId(null);
+    setSelectedComponentId(null);
+    setEditingInfo(null);
+  }, []);
+
   const siblingRects = useSharedValue<number[]>([]);
-  useMemo(() => {
+  useEffect(() => {
     if (!screen || canvasDimensions.width === 0) return;
     const rects: number[] = [];
     for (const comp of screen.components) {
@@ -232,7 +175,6 @@ export function Canvas({
     }
     siblingRects.value = rects;
   }, [screen?.components, canvasDimensions.width, canvasDimensions.height]);
-  if (!screen) return null;
 
   const openMenu = useCallback(
     (e: GestureResponderEvent) => {
@@ -260,32 +202,151 @@ export function Canvas({
       useNativeDriver: true,
     }).start(() => {
       setMenuOpen(false);
-      setShowBgPicker(false);
     });
   }, [fadeAnim]);
 
   const handleAdd = (preset: (typeof PRESETS)[number]) => {
-    const comp = preset.create(dropPoint.normX, dropPoint.normY);
-    onAddComponent(comp);
-    setAutoEditId(comp.id);
-    closeMenu();
+    if (isDrilledIn && currentContainerId) {
+      const comp = preset.create(0.1, 0.1);
+      onAddChildComponent?.(currentContainerId, comp);
+      closeMenu();
+    } else {
+      const comp = preset.create(dropPoint.normX, dropPoint.normY);
+      onAddComponent(comp);
+      setAutoEditId(comp.id);
+      closeMenu();
+    }
   };
 
   const clearGuides = useCallback(() => setActiveGuides([]), []);
 
+  const openStyleEditor = useCallback((componentId: string) => {
+    const comp = findComponent(screen.components, componentId);
+    if (!comp) return;
+    const hasBorderRadius = ["shape", "textInput", "list", "container", "image"].includes(comp.type);
+    const hasBorder = ["shape", "textInput", "container"].includes(comp.type);
+    if (!hasBorderRadius && !hasBorder) return;
+    const initialState: StyleEditingState = {
+      borderRadius: ("borderRadius" in comp && typeof comp.borderRadius === "number") ? comp.borderRadius : 0,
+      borderWidth: ("borderWidth" in comp && typeof comp.borderWidth === "number") ? comp.borderWidth : 0,
+      borderColor: ("borderColor" in comp && typeof comp.borderColor === "string") ? comp.borderColor : "#000000",
+      hasBorderRadius,
+      hasBorder,
+    };
+    setEditingInfo({
+      mode: "style",
+      componentId,
+      state: { ...initialState },
+      initialState,
+    });
+  }, [screen?.components]);
+
+  const handleTreeSelect = useCallback((componentId: string) => {
+    closeMenu();
+    if (!isEditMode) onToggleEditMode();
+    const comp = findComponent(screen.components, componentId);
+    if (!comp) return;
+    if (comp.type === "text" || comp.type === "button") {
+      const isButton = comp.type === "button";
+      const fw = comp.fontWeight;
+      const textState: TextEditingState = {
+        text: isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
+        fontSize: comp.fontSize ?? 16,
+        color: isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#1a1a1a"),
+        backgroundColor: isButton ? (comp.backgroundColor ?? "#6366f1") : (comp.backgroundColor ?? "transparent"),
+        fontFamily: comp.fontFamily ?? "System",
+        fontWeight: (fw === "normal" || fw === "bold") ? fw : "normal",
+        textAlign: comp.textAlign ?? "left",
+        wrapMode: (!isButton && "wrapMode" in comp && comp.wrapMode) ? comp.wrapMode : "wrap-word",
+        fontStyle: "normal",
+        textDecorationLine: "none",
+      };
+      setSelectedComponentId(componentId);
+      setEditingInfo({ mode: "text", componentId, state: textState });
+    } else if (["shape", "textInput", "list", "container", "image"].includes(comp.type)) {
+      setSelectedComponentId(componentId);
+      setTimeout(() => openStyleEditor(componentId), 0);
+    } else {
+      setSelectedComponentId(componentId);
+    }
+  }, [closeMenu, isEditMode, onToggleEditMode, screen?.components, openStyleEditor]);
+
+  const handleSelect = useCallback((componentId: string) => {
+    if (editingInfo) return;
+
+    // If tapping an already-selected container, drill into it
+    const comp = findComponent(screen.components, componentId);
+    if (comp?.type === "container" && selectedComponentId === componentId) {
+      drillInto(componentId);
+      return;
+    }
+
+    setSelectedComponentId(componentId);
+    if (!comp) return;
+    if (comp.type === "text" || comp.type === "button") return;
+    openStyleEditor(componentId);
+  }, [editingInfo, screen?.components, selectedComponentId, drillInto, openStyleEditor]);
+
+  // Child select/edit handlers for drill-in mode
+  const handleChildSelect = useCallback((childId: string) => {
+    setSelectedChildId(childId);
+    setSelectedComponentId(childId);
+  }, []);
+
+  const handleChildStyleSelect = useCallback((componentId: string) => {
+    setSelectedChildId(componentId);
+    setSelectedComponentId(componentId);
+    openStyleEditor(componentId);
+  }, [openStyleEditor]);
+
+  // --- Drag-to-trash handlers ---
+  const handleDragStart = useCallback((componentId: string) => {
+    setDraggingId(componentId);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverTrash(false);
+  }, []);
+
+  const handleDragOverTrashChange = useCallback((isOver: boolean) => {
+    setDragOverTrash(isOver);
+  }, []);
+
   // --- Inline editing handlers ---
   const handleEditStart = useCallback((componentId: string, initialState: TextEditingState) => {
-    setEditingInfo({ componentId, state: initialState });
+    setSelectedComponentId(componentId);
+    setEditingInfo({ mode: "text", componentId, state: initialState });
   }, []);
 
   const handleEditStateChange = useCallback((updates: Partial<TextEditingState>) => {
-    setEditingInfo(prev => prev ? { ...prev, state: { ...prev.state, ...updates } } : null);
+    setEditingInfo(prev => prev && prev.mode === "text" ? { ...prev, state: { ...prev.state, ...updates } } : prev);
   }, []);
 
+  const handleStyleStateChange = useCallback((updates: Partial<StyleEditingState>) => {
+    setEditingInfo(prev => {
+      if (!prev || prev.mode !== "style") return prev;
+      return { ...prev, state: { ...prev.state, ...updates } };
+    });
+    if (editingInfo && editingInfo.mode === "style") {
+      const styleUpdates: Record<string, unknown> = {};
+      if (updates.borderRadius !== undefined) styleUpdates.borderRadius = updates.borderRadius;
+      if (updates.borderWidth !== undefined) styleUpdates.borderWidth = updates.borderWidth;
+      if (updates.borderColor !== undefined) styleUpdates.borderColor = updates.borderColor;
+      if (Object.keys(styleUpdates).length > 0) {
+        onStyleChange?.(editingInfo.componentId, styleUpdates);
+      }
+    }
+  }, [editingInfo, onStyleChange]);
+
   const handleEditDone = useCallback(() => {
-    if (!editingInfo) return;
+    if (!editingInfo || !screen) return;
+    if (editingInfo.mode === "style") {
+      setEditingInfo(null);
+      return;
+    }
     const { componentId, state } = editingInfo;
-    const comp = screen.components.find(c => c.id === componentId);
+    const comp = findComponent(screen.components, componentId);
     if (comp?.type === "text") {
       onContentChange?.(componentId, state.text);
       onStyleChange?.(componentId, {
@@ -310,12 +371,69 @@ export function Canvas({
     }
     Keyboard.dismiss();
     setEditingInfo(null);
+    setSelectedComponentId(null);
+    setInspectorOpen(false);
   }, [editingInfo, screen.components, onContentChange, onStyleChange]);
 
   const handleEditCancel = useCallback(() => {
+    // Revert live style changes to their original values
+    if (editingInfo?.mode === "style") {
+      const { componentId, initialState } = editingInfo;
+      const revert: Record<string, unknown> = {};
+      if (initialState.hasBorderRadius) revert.borderRadius = initialState.borderRadius;
+      if (initialState.hasBorder) {
+        revert.borderWidth = initialState.borderWidth;
+        revert.borderColor = initialState.borderColor;
+      }
+      if (Object.keys(revert).length > 0) {
+        onStyleChange?.(componentId, revert);
+      }
+    }
     Keyboard.dismiss();
     setEditingInfo(null);
-  }, []);
+    setSelectedComponentId(null);
+    setInspectorOpen(false);
+  }, [editingInfo, onStyleChange]);
+
+  const handlePickImage = useCallback(async (componentId: string) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      onStyleChange?.(componentId, { src: result.assets[0].uri });
+    }
+  }, [onStyleChange]);
+
+  const openInspector = useCallback(() => {
+    const compId = selectedComponentId ?? editingInfo?.componentId;
+    if (!compId) return;
+    const comp = findComponent(screen.components, compId);
+    if (!comp) return;
+    setInspectorJson(JSON.stringify(comp, null, 2));
+    setInspectorError(null);
+    setInspectorOpen(true);
+  }, [selectedComponentId, editingInfo, screen?.components]);
+
+  const applyInspectorChanges = useCallback(() => {
+    const compId = selectedComponentId ?? editingInfo?.componentId;
+    if (!compId) return;
+    try {
+      const parsed = ComponentSchema.parse(JSON.parse(inspectorJson));
+      // Preserve the original ID so we don't break selection
+      const updated = { ...parsed, id: compId };
+      onComponentReplace?.(compId, updated);
+      setInspectorError(null);
+      setInspectorOpen(false);
+      setEditingInfo(null);
+      setSelectedComponentId(null);
+    } catch (e) {
+      setInspectorError(e instanceof Error ? e.message : "Invalid JSON");
+    }
+  }, [inspectorJson, selectedComponentId, editingInfo, onComponentReplace]);
+
+  if (!screen) return null;
 
   return (
     <View
@@ -335,34 +453,56 @@ export function Canvas({
         delayLongPress={500}
         onPress={() => {
           if (menuOpen) closeMenu();
+          else if (isDrilledIn && !editingInfo) drillOut();
+          else if (editingInfo) handleEditCancel();
         }}
       />
       {canvasDimensions.width > 0 &&
-        screen.components.map((component, index) => (
-          <SDUIComponent
-            key={component.id}
-            component={component}
-            canvasWidth={canvasDimensions.width}
-            canvasHeight={canvasDimensions.height}
-            isEditMode={isEditMode}
-            autoEdit={autoEditId === component.id}
-            onAutoEditConsumed={() => setAutoEditId(null)}
-            onUpdate={onComponentUpdate}
-            onContentChange={onContentChange}
-            onStyleChange={onStyleChange}
-            onNavigate={onNavigate}
-            onResetAndBuild={onResetAndBuild}
-            onInteract={closeMenu}
-            componentIndex={index}
-            siblingRects={snappingEnabled ? siblingRects : undefined}
-            onGuidesChange={snappingEnabled ? setActiveGuides : undefined}
-            onGuidesEnd={snappingEnabled ? clearGuides : undefined}
-            editingComponentId={editingInfo?.componentId ?? null}
-            editState={editingInfo != null && editingInfo.componentId === component.id ? editingInfo.state : null}
-            onEditStart={handleEditStart}
-            onEditStateChange={handleEditStateChange}
-          />
-        ))}
+        screen.components.map((component, index) => {
+          const isCurrentDrillTarget = isDrilledIn && currentContainerId === component.id;
+          const isDimmed = isDrilledIn && !isCurrentDrillTarget;
+          return (
+            <SDUIComponent
+              key={component.id}
+              component={component}
+              canvasWidth={canvasDimensions.width}
+              canvasHeight={canvasDimensions.height}
+              isEditMode={isEditMode}
+              autoEdit={autoEditId === component.id}
+              onAutoEditConsumed={() => setAutoEditId(null)}
+              onUpdate={onComponentUpdate}
+              onContentChange={onContentChange}
+              onStyleChange={onStyleChange}
+              onNavigate={onNavigate}
+              onResetAndBuild={onResetAndBuild}
+              onInteract={closeMenu}
+              componentIndex={index}
+              siblingRects={snappingEnabled ? siblingRects : undefined}
+              onGuidesChange={snappingEnabled ? setActiveGuides : undefined}
+              onGuidesEnd={snappingEnabled ? clearGuides : undefined}
+              editingComponentId={editingInfo?.componentId ?? null}
+              editState={editingInfo != null && editingInfo.mode === "text" && editingInfo.componentId === component.id ? editingInfo.state : null}
+              onEditStart={handleEditStart}
+              onEditStateChange={handleEditStateChange}
+              onSelect={handleSelect}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragOverTrashChange={handleDragOverTrashChange}
+              onDeleteComponent={onDeleteComponent}
+              onPickImage={handlePickImage}
+              isDrilledInto={isCurrentDrillTarget}
+              isDimmed={isDimmed}
+              selectedChildId={isCurrentDrillTarget ? selectedChildId : null}
+              onChildSelect={handleChildSelect}
+              onChildUpdate={onComponentUpdate}
+              onChildEditStart={handleEditStart}
+              onChildEditStateChange={handleEditStateChange}
+              onDrillInto={drillInto}
+              onChildStyleSelect={handleChildStyleSelect}
+              onChildPickImage={handlePickImage}
+            />
+          );
+        })}
       {isEditMode && snappingEnabled && (
         <SnapGuides
           guides={activeGuides}
@@ -371,155 +511,108 @@ export function Canvas({
         />
       )}
 
-      {/* Editing backdrop + toolbar */}
-      {editingInfo && (
-        <Pressable
-          style={[StyleSheet.absoluteFill, styles.editBackdrop]}
-          onPress={handleEditCancel}
+      {/* Breadcrumb bar when drilled in */}
+      {isDrilledIn && isEditMode && (
+        <GroupBreadcrumb
+          drillPath={drillPath}
+          components={screen.components}
+          onDrillToLevel={drillToLevel}
         />
       )}
-      {editingInfo && (
+
+      {/* Trash pill - appears at bottom when dragging */}
+      {isEditMode && draggingId && (
+        <View style={styles.trashPillContainer} pointerEvents="none">
+          <View style={[styles.trashPill, dragOverTrash && styles.trashPillActive]}>
+            <Feather name="trash-2" size={20} color={dragOverTrash ? "#ffffff" : "rgba(255,255,255,0.8)"} />
+          </View>
+        </View>
+      )}
+
+      {/* Component Inspector panel */}
+      {inspectorOpen && (
+        <>
+          <Pressable
+            style={[StyleSheet.absoluteFill, styles.editBackdrop]}
+            onPress={() => { setInspectorOpen(false); }}
+          />
+          <View style={[styles.inspectorPanel, keyboardHeight > 0 && { bottom: keyboardHeight }]}>
+            <View style={styles.inspectorHeader}>
+              <Text style={styles.inspectorTitle}>Component Code</Text>
+              <Pressable onPress={() => setInspectorOpen(false)}>
+                <Feather name="x" size={20} color="rgba(255,255,255,0.6)" />
+              </Pressable>
+            </View>
+            <TextInput
+              style={styles.inspectorInput}
+              value={inspectorJson}
+              onChangeText={(text) => {
+                setInspectorJson(text);
+                setInspectorError(null);
+              }}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              textAlignVertical="top"
+              placeholderTextColor="rgba(255,255,255,0.2)"
+            />
+            {inspectorError && (
+              <Text style={styles.inspectorError}>{inspectorError}</Text>
+            )}
+            <Pressable
+              style={({ pressed }) => [styles.jsonApplyBtn, pressed && styles.jsonApplyBtnPressed]}
+              onPress={applyInspectorChanges}
+            >
+              <Text style={styles.jsonApplyLabel}>Apply Changes</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      {/* Editing backdrop + toolbar */}
+      {editingInfo && !inspectorOpen && (
+        <Pressable
+          style={[StyleSheet.absoluteFill, styles.editBackdrop]}
+          onPress={handleEditDone}
+        />
+      )}
+      {editingInfo?.mode === "text" && !inspectorOpen && (
         <TextEditorToolbar
           state={editingInfo.state}
           onStateChange={handleEditStateChange}
-          onDone={handleEditDone}
+          onUndo={handleEditCancel}
+          onInspect={inspectorEnabled ? openInspector : undefined}
+        />
+      )}
+      {editingInfo?.mode === "style" && !inspectorOpen && (
+        <StyleEditorToolbar
+          state={editingInfo.state}
+          onStateChange={handleStyleStateChange}
+          onUndo={handleEditCancel}
+          onInspect={inspectorEnabled ? openInspector : undefined}
         />
       )}
 
-      {/* Fullscreen Blur Overlay */}
-      {menuOpen && (
-        <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, { opacity: fadeAnim }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu}>
-            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-
-          <SafeAreaView style={styles.sheet} pointerEvents="box-none">
-            <Pressable style={styles.closeBar} onPress={closeMenu}>
-              <Text style={styles.closeLabel}>Done</Text>
-            </Pressable>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              contentContainerStyle={styles.sheetContent}
-            >
-              {/* --- Mode --- */}
-              <Text style={styles.categoryHeader}>MODE</Text>
-              <Pressable style={styles.row} onPress={() => { onToggleEditMode(); closeMenu(); }}>
-                <Text style={styles.rowLabel}>Edit Mode</Text>
-                <View style={[styles.toggleTrack, isEditMode && styles.toggleTrackOn]}>
-                  <View style={[styles.toggleThumb, isEditMode && styles.toggleThumbOn]} />
-                </View>
-              </Pressable>
-              {isEditMode && (
-                <Pressable style={styles.row} onPress={() => setSnappingEnabled(v => !v)}>
-                  <Text style={styles.rowLabel}>Snap to Guides</Text>
-                  <View style={[styles.toggleTrack, snappingEnabled && styles.toggleTrackOn]}>
-                    <View style={[styles.toggleThumb, snappingEnabled && styles.toggleThumbOn]} />
-                  </View>
-                </Pressable>
-              )}
-
-              {isEditMode && (
-                <>
-                  <View style={styles.divider} />
-
-                  {/* --- Components --- */}
-                  <Text style={styles.categoryHeader}>COMPONENTS</Text>
-                  {PRESETS.map((preset, i) => (
-                    <React.Fragment key={preset.label}>
-                      <Pressable
-                        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                        onPress={() => handleAdd(preset)}
-                      >
-                        <Text style={styles.presetIcon}>{preset.icon}</Text>
-                        <Text style={styles.rowLabel}>{preset.label}</Text>
-                      </Pressable>
-                      {i < PRESETS.length - 1 && <View style={styles.rowDivider} />}
-                    </React.Fragment>
-                  ))}
-
-                  <View style={styles.divider} />
-
-                  {/* --- Appearance --- */}
-                  <Text style={styles.categoryHeader}>APPEARANCE</Text>
-                  <Pressable
-                    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                    onPress={() => setShowBgPicker((v) => !v)}
-                  >
-                    <View
-                      style={[
-                        styles.bgIndicator,
-                        { backgroundColor: screen.backgroundColor ?? "#ffffff" },
-                      ]}
-                    />
-                    <Text style={styles.rowLabel}>Background Color</Text>
-                    <Text style={styles.chevron}>{showBgPicker ? "−" : "+"}</Text>
-                  </Pressable>
-                  {showBgPicker && (
-                    <View style={styles.bgPickerWrap}>
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.bgPickerContent}
-                      >
-                        {BG_COLORS.map((col) => {
-                          const active = (screen.backgroundColor ?? "#ffffff") === col;
-                          return (
-                            <Pressable
-                              key={col}
-                              style={[
-                                styles.bgColorDot,
-                                { backgroundColor: col },
-                                active && styles.bgColorDotActive,
-                              ]}
-                              onPress={() => onBackgroundColorChange?.(col)}
-                            />
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
-
-                  <View style={styles.divider} />
-
-                  {/* --- Danger Zone --- */}
-                  <Text style={[styles.categoryHeader, styles.dangerHeader]}>DANGER ZONE</Text>
-                  <Pressable
-                    style={({ pressed }) => [styles.row, styles.dangerRow, pressed && styles.dangerRowPressed]}
-                    onPress={() => {
-                      closeMenu();
-                      if (Platform.OS === "web") {
-                        if (
-                          window.confirm(
-                            "Reset Project?\n\nThis will reset to the default landing page. This cannot be undone."
-                          )
-                        ) {
-                          onResetProject?.();
-                        }
-                      } else {
-                        Alert.alert(
-                          "Reset Project",
-                          "This will reset to the default landing page. This cannot be undone.",
-                          [
-                            { text: "Cancel", style: "cancel" },
-                            {
-                              text: "Reset",
-                              style: "destructive",
-                              onPress: () => onResetProject?.(),
-                            },
-                          ]
-                        );
-                      }
-                    }}
-                  >
-                    <Text style={styles.dangerLabel}>Reset Project</Text>
-                  </Pressable>
-                </>
-              )}
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
-      )}
+      {/* Swipeable 3-page menu */}
+      <CanvasMenu
+        visible={menuOpen}
+        fadeAnim={fadeAnim}
+        screen={screen}
+        isEditMode={isEditMode}
+        snappingEnabled={snappingEnabled}
+        inspectorEnabled={inspectorEnabled}
+        onClose={closeMenu}
+        onAddComponent={handleAdd}
+        onToggleEditMode={onToggleEditMode}
+        onToggleSnapping={() => setSnappingEnabled(v => !v)}
+        onToggleInspector={() => setInspectorEnabled(v => !v)}
+        onBackgroundColorChange={(c) => onBackgroundColorChange?.(c)}
+        onResetProject={() => onResetProject?.()}
+        onScreenUpdate={(s) => onScreenUpdate?.(s)}
+        onDeleteComponent={(id) => onDeleteComponent?.(id)}
+        onTreeSelect={handleTreeSelect}
+      />
     </View>
   );
 }
@@ -529,138 +622,82 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     zIndex: 100,
   },
-  overlay: {
-    zIndex: 999,
-    justifyContent: "center",
+  trashPillContainer: {
+    position: "absolute",
+    bottom: 30,
+    left: 0,
+    right: 0,
     alignItems: "center",
+    zIndex: 50,
   },
-  sheet: {
-    flex: 1,
-    width: "100%",
-    backgroundColor: "transparent",
+  trashPill: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  sheetContent: {
-    paddingVertical: 0,
+  trashPillActive: {
+    backgroundColor: "#ef4444",
+    borderColor: "#ef4444",
   },
-  closeBar: {
-    alignSelf: "flex-end",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
+  inspectorPanel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 200,
+    backgroundColor: "rgba(15,23,42,0.95)",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    maxHeight: "60%",
   },
-  closeLabel: {
-    color: "#818cf8",
+  inspectorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  inspectorTitle: {
+    color: "#e2e8f0",
     fontSize: 16,
     fontWeight: "600",
   },
-  categoryHeader: {
-    color: "rgba(255,255,255,0.45)",
+  inspectorInput: {
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    borderRadius: 8,
+    color: "#e2e8f0",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontSize: 11,
+    padding: 12,
+    minHeight: 150,
+    maxHeight: 300,
+  },
+  inspectorError: {
+    color: "#fca5a5",
     fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    marginVertical: 8,
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginLeft: 56,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-    gap: 12,
-  },
-  rowPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  rowLabel: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "500",
-    flex: 1,
-  },
-  presetIcon: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 13,
-    fontWeight: "700",
-    width: 28,
-    textAlign: "center",
+    marginTop: 6,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  toggleTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  toggleTrackOn: {
+  jsonApplyBtn: {
     backgroundColor: "#6366f1",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center" as const,
+    marginTop: 8,
   },
-  toggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#ffffff",
+  jsonApplyBtnPressed: {
+    backgroundColor: "#4f46e5",
   },
-  toggleThumbOn: {
-    alignSelf: "flex-end",
-  },
-  bgIndicator: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.4)",
-  },
-  chevron: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  bgPickerWrap: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  bgPickerContent: {
-    gap: 8,
-    paddingVertical: 6,
-  },
-  bgColorDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  bgColorDotActive: {
-    borderWidth: 3,
-    borderColor: "#ffffff",
-  },
-  dangerHeader: {
-    color: "rgba(239,68,68,0.6)",
-  },
-  dangerRow: {
-    backgroundColor: "rgba(239,68,68,0.08)",
-  },
-  dangerRowPressed: {
-    backgroundColor: "rgba(239,68,68,0.2)",
-  },
-  dangerLabel: {
-    color: "#fca5a5",
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-    flex: 1,
+  jsonApplyLabel: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600" as const,
   },
 });

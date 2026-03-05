@@ -30,6 +30,7 @@ export function TextInputRenderer({ component, isEditMode }: TextInputRendererPr
 
   return (
     <View
+      pointerEvents={isEditMode ? "none" : "auto"}
       style={{
         flex: 1,
         justifyContent: "center",

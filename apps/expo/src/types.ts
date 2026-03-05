@@ -44,4 +44,10 @@ import type { TextComponent, ButtonComponent } from "@shared/schema";
 
 export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode">>;
 export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign">>;
-export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates;
+export type BorderStyleUpdates = {
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  src?: string;
+};
+export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates | BorderStyleUpdates;

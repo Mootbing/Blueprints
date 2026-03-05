@@ -1,10 +1,28 @@
 {
   "expo": {
-    "name": "Untitled IDE",
-    "slug": "untitled-ide",
+    "name": "Blueprints",
+    "slug": "blueprints",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "platforms": ["ios", "android", "web"],
-    "entryPoint": "./index.js"
+    "entryPoint": "./index.js",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#1e3c78"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1e3c78"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }

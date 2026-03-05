@@ -1,12 +1,54 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { SafeAreaView, StatusBar, ActivityIndicator, View } from "react-native";
+import { StatusBar, ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Canvas } from "./src/components/Canvas";
 import { AsyncStorageProvider } from "./src/storage";
 import type { StorageProvider } from "./src/storage";
-import type { AppBlueprint, Layout, Component, ComponentStyleUpdates } from "./src/types";
+import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen } from "./src/types";
 
 const SCREEN_ID = "00000000-0000-0000-0000-000000000001";
+
+function deepUpdateComponent(
+  components: Component[],
+  targetId: string,
+  updater: (comp: Component) => Component
+): Component[] {
+  return components.map((c) => {
+    if (c.id === targetId) return updater(c);
+    if (c.type === "container" && c.children) {
+      const updated = deepUpdateComponent(c.children, targetId, updater);
+      if (updated !== c.children) return { ...c, children: updated };
+    }
+    return c;
+  });
+}
+
+function deepDeleteComponent(
+  components: Component[],
+  targetId: string
+): Component[] {
+  const filtered = components.filter((c) => c.id !== targetId);
+  if (filtered.length < components.length) return filtered;
+  return components.map((c) => {
+    if (c.type === "container" && c.children) {
+      const updated = deepDeleteComponent(c.children, targetId);
+      if (updated !== c.children) return { ...c, children: updated };
+    }
+    return c;
+  });
+}
+
+function deepFindComponent(components: Component[], id: string): Component | undefined {
+  for (const c of components) {
+    if (c.id === id) return c;
+    if (c.type === "container" && c.children) {
+      const found = deepFindComponent(c.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 const defaultBlueprint: AppBlueprint = {
   version: 1,
@@ -136,12 +178,20 @@ export default function App() {
   const [blueprint, setBlueprint] = useState(defaultBlueprint);
   const [isEditMode, setIsEditMode] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const isEditModeLoaded = useRef(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load saved blueprint on startup
+  // Load saved blueprint and settings on startup
   useEffect(() => {
-    storage.loadBlueprint().then((saved) => {
+    Promise.all([
+      storage.loadBlueprint(),
+      AsyncStorage.getItem("settings_editMode"),
+    ]).then(([saved, editMode]) => {
       if (saved) setBlueprint(saved);
+      if (editMode !== null) setIsEditMode(editMode === "true");
+      isEditModeLoaded.current = true;
+      setLoaded(true);
+    }).catch(() => {
       setLoaded(true);
     });
   }, []);
@@ -157,6 +207,12 @@ export default function App() {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
     };
   }, [blueprint, loaded]);
+
+  // Persist edit mode
+  useEffect(() => {
+    if (!isEditModeLoaded.current) return;
+    AsyncStorage.setItem("settings_editMode", String(isEditMode));
+  }, [isEditMode]);
 
   const updateScreenComponents = useCallback(
     (fn: (components: Component[]) => Component[]) => {
@@ -182,11 +238,18 @@ export default function App() {
     [updateScreenComponents]
   );
 
+  const handleDeleteComponent = useCallback(
+    (id: string) => {
+      updateScreenComponents((components) => deepDeleteComponent(components, id));
+    },
+    [updateScreenComponents]
+  );
+
   const handleContentChange = useCallback(
     (id: string, content: string) => {
       updateScreenComponents((components) =>
-        components.map((c) =>
-          c.id === id && c.type === "text" ? { ...c, content } : c
+        deepUpdateComponent(components, id, (c) =>
+          c.type === "text" ? { ...c, content } : c
         )
       );
     },
@@ -196,7 +259,7 @@ export default function App() {
   const handleStyleChange = useCallback(
     (id: string, updates: ComponentStyleUpdates) => {
       updateScreenComponents((components) =>
-        components.map((c) => (c.id === id ? { ...c, ...updates } : c))
+        deepUpdateComponent(components, id, (c) => ({ ...c, ...updates }))
       );
     },
     [updateScreenComponents]
@@ -205,7 +268,28 @@ export default function App() {
   const handleComponentUpdate = useCallback(
     (id: string, layout: Layout) => {
       updateScreenComponents((components) =>
-        components.map((c) => (c.id === id ? { ...c, layout } : c))
+        deepUpdateComponent(components, id, (c) => ({ ...c, layout }))
+      );
+    },
+    [updateScreenComponents]
+  );
+
+  const handleComponentReplace = useCallback(
+    (id: string, replacement: Component) => {
+      updateScreenComponents((components) =>
+        deepUpdateComponent(components, id, () => replacement)
+      );
+    },
+    [updateScreenComponents]
+  );
+
+  const handleAddChildComponent = useCallback(
+    (parentId: string, child: Component) => {
+      updateScreenComponents((components) =>
+        deepUpdateComponent(components, parentId, (c) => {
+          if (c.type !== "container") return c;
+          return { ...c, children: [...(c.children ?? []), child] };
+        })
       );
     },
     [updateScreenComponents]
@@ -232,6 +316,22 @@ export default function App() {
     setBlueprint(defaultBlueprint);
   }, []);
 
+  const handleScreenUpdate = useCallback(
+    (updatedScreen: Screen) => {
+      setBlueprint((prev) => {
+        const screenId = prev.initial_screen_id;
+        return {
+          ...prev,
+          screens: {
+            ...prev.screens,
+            [screenId]: updatedScreen,
+          },
+        };
+      });
+    },
+    []
+  );
+
   const handleResetAndBuild = useCallback(() => {
     setBlueprint((prev) => {
       const screenId = prev.initial_screen_id;
@@ -239,7 +339,7 @@ export default function App() {
         ...prev,
         screens: {
           ...prev.screens,
-          [screenId]: { ...prev.screens[screenId], components: [] },
+          [screenId]: { ...prev.screens[screenId], components: [], backgroundColor: "#ffffff" },
         },
       };
     });
@@ -256,22 +356,24 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={{ flex: 1 }}>
-        <StatusBar barStyle="dark-content" />
-        <Canvas
-          blueprint={blueprint}
-          screenId={blueprint.initial_screen_id}
-          isEditMode={isEditMode}
-          onToggleEditMode={() => setIsEditMode((v) => !v)}
-          onComponentUpdate={handleComponentUpdate}
-          onContentChange={handleContentChange}
-          onStyleChange={handleStyleChange}
-          onAddComponent={handleAddComponent}
-          onBackgroundColorChange={handleBackgroundColorChange}
-          onResetProject={handleResetProject}
-          onResetAndBuild={handleResetAndBuild}
-        />
-      </SafeAreaView>
+      <StatusBar barStyle="dark-content" />
+      <Canvas
+        blueprint={blueprint}
+        screenId={blueprint.initial_screen_id}
+        isEditMode={isEditMode}
+        onToggleEditMode={() => setIsEditMode((v) => !v)}
+        onComponentUpdate={handleComponentUpdate}
+        onContentChange={handleContentChange}
+        onStyleChange={handleStyleChange}
+        onAddComponent={handleAddComponent}
+        onBackgroundColorChange={handleBackgroundColorChange}
+        onResetProject={handleResetProject}
+        onResetAndBuild={handleResetAndBuild}
+        onScreenUpdate={handleScreenUpdate}
+        onDeleteComponent={handleDeleteComponent}
+        onComponentReplace={handleComponentReplace}
+        onAddChildComponent={handleAddChildComponent}
+      />
     </GestureHandlerRootView>
   );
 }

@@ -1,23 +1,13 @@
 import React, { useCallback } from "react";
-import { View, Pressable, Linking, Alert } from "react-native";
+import { View, Pressable } from "react-native";
 import { MaterialIcons, Feather, Ionicons } from "@expo/vector-icons";
 import type { IconComponent } from "../../types";
+import { safeOpenUrl } from "../../utils/safeUrl";
 
 export interface IconRendererProps {
   component: IconComponent;
   isEditMode?: boolean;
   onNavigate?: (screenId: string) => void;
-}
-
-const ALLOWED_URL_SCHEMES = ["http:", "https:", "mailto:"];
-
-function isSafeUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
 }
 
 export function IconRenderer({ component, isEditMode, onNavigate }: IconRendererProps) {
@@ -32,11 +22,7 @@ export function IconRenderer({ component, isEditMode, onNavigate }: IconRenderer
         if (interaction.action === "navigate" && onNavigate) {
           onNavigate(interaction.target);
         } else if (interaction.action === "openUrl") {
-          if (isSafeUrl(interaction.target)) {
-            Linking.openURL(interaction.target);
-          } else {
-            Alert.alert("Invalid URL", "This link cannot be opened.");
-          }
+          safeOpenUrl(interaction.target);
         }
       }
     }
@@ -57,6 +43,7 @@ export function IconRenderer({ component, isEditMode, onNavigate }: IconRenderer
 
   const iconElement = (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      {/* Icon libraries have incompatible name type unions; `as any` is unavoidable here */}
       <IconComp name={component.name as any} size={size} color={color} />
     </View>
   );

@@ -1,7 +1,8 @@
 import React, { useEffect, useCallback } from "react";
-import { Pressable, Text, TextInput, View, Linking, Alert } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import type { ButtonComponent } from "../../types";
 import type { TextEditingState } from "../TextEditorModal";
+import { safeOpenUrl } from "../../utils/safeUrl";
 
 export interface ButtonRendererProps {
   component: ButtonComponent;
@@ -13,17 +14,6 @@ export interface ButtonRendererProps {
   onEditStateChange?: (updates: Partial<TextEditingState>) => void;
   onNavigate?: (screenId: string) => void;
   onResetAndBuild?: () => void;
-}
-
-const ALLOWED_URL_SCHEMES = ["http:", "https:", "mailto:"];
-
-function isSafeUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
 }
 
 export function ButtonRenderer({
@@ -46,11 +36,7 @@ export function ButtonRenderer({
         } else if (interaction.action === "resetAndBuild" && onResetAndBuild) {
           onResetAndBuild();
         } else if (interaction.action === "openUrl") {
-          if (isSafeUrl(interaction.target)) {
-            Linking.openURL(interaction.target);
-          } else {
-            Alert.alert("Invalid URL", "This link cannot be opened.");
-          }
+          safeOpenUrl(interaction.target);
         }
       }
     }
@@ -81,7 +67,7 @@ export function ButtonRenderer({
         backgroundColor: editState.backgroundColor,
         alignItems: "center" as const,
         justifyContent: "center" as const,
-        borderRadius: 8,
+        borderRadius: component.borderRadius ?? 8,
       }}>
         <TextInput
           style={{
@@ -107,7 +93,7 @@ export function ButtonRenderer({
     backgroundColor: component.backgroundColor,
     alignItems: "center" as const,
     justifyContent: "center" as const,
-    borderRadius: 8,
+    borderRadius: component.borderRadius ?? 8,
   };
 
   const textStyle = {
