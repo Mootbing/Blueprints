@@ -1,0 +1,8 @@
+{
+  "name": "untitled-ide",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
+}

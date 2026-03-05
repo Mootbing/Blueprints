@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Untitled IDE",
+    "slug": "untitled-ide",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "entryPoint": "./index.js"
+  }
+}

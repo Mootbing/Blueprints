@@ -1,0 +1,29 @@
+{
+  "name": "@apps/expo",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
+    "@shared/schema": "file:../../packages/shared",
+    "@supabase/supabase-js": "^2.45.0",
+    "expo": "~55.0.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-gesture-handler": "~2.23.0",
+    "react-native-reanimated": "~3.18.0",
+    "react-native-web": "~0.19.13",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/react": "~18.3.0"
+  }
+}
