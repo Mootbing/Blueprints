@@ -1,7 +1,15 @@
 export type {
   NormalizedFloat,
   Layout,
-  Interaction,
+  Variable,
+  Action,
+  SetVariableAction,
+  ToggleVariableAction,
+  NavigateAction,
+  OpenUrlAction,
+  ConditionalAction,
+  Bindings,
+  EventHandlers,
   TextComponent,
   ButtonComponent,
   ImageComponent,
@@ -22,7 +30,10 @@ export type {
 export {
   NormalizedFloat as NormalizedFloatSchema,
   LayoutSchema,
-  InteractionSchema,
+  VariableSchema,
+  ActionSchema,
+  BindingsSchema,
+  EventHandlersSchema,
   TextComponentSchema,
   ButtonComponentSchema,
   ImageComponentSchema,
@@ -42,12 +53,24 @@ export {
 
 import type { TextComponent, ButtonComponent } from "@shared/schema";
 
+export interface BlueprintMeta {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode">>;
 export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign">>;
 export type BorderStyleUpdates = {
   borderRadius?: number;
   borderWidth?: number;
   borderColor?: string;
+  backgroundColor?: string;
   src?: string;
+  layoutMode?: "absolute" | "flex";
+  flexDirection?: "row" | "column";
+  gap?: number;
+  justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
+  alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
 };
 export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates | BorderStyleUpdates;

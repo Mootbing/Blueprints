@@ -15,6 +15,7 @@ import { rendererRegistry } from "./renderers";
 import { computeSnap } from "../utils/snapWorklet";
 import type { TextEditingState } from "./TextEditorModal";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { SmartComponentWrapper } from "../runtime/SmartComponentWrapper";
 
 const TRASH_ZONE_HEIGHT = 80;
 
@@ -398,15 +399,13 @@ export function SDUIComponent({
       editState: isComponentEditing ? editState : null,
       onEditStart: handleEditStart,
       onEditStateChange,
-      onNavigate,
-      onResetAndBuild,
     };
   } else if (component.type === "icon") {
-    rendererProps = { component, isEditMode, onNavigate };
+    rendererProps = { component, isEditMode };
   } else if (component.type === "toggle" || component.type === "textInput") {
     rendererProps = { component, isEditMode };
   } else if (component.type === "list") {
-    rendererProps = { component, isEditMode, onNavigate };
+    rendererProps = { component, isEditMode };
   } else if (component.type === "container") {
     rendererProps = {
       component,
@@ -440,7 +439,19 @@ export function SDUIComponent({
   if (!isEditMode) {
     return (
       <Animated.View style={animatedStyle}>
-        <Renderer {...rendererProps} />
+        <SmartComponentWrapper
+          component={component}
+          isEditMode={false}
+          onNavigate={onNavigate}
+          onResetAndBuild={onResetAndBuild}
+        >
+          {(resolvedComponent) => {
+            const resolvedProps = { ...rendererProps, component: resolvedComponent };
+            const ResolvedRenderer = rendererRegistry[resolvedComponent.type];
+            if (!ResolvedRenderer) return null;
+            return <ResolvedRenderer {...resolvedProps} />;
+          }}
+        </SmartComponentWrapper>
       </Animated.View>
     );
   }

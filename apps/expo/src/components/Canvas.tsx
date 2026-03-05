@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Animated,
   Keyboard,
+  PanResponder,
   type GestureResponderEvent,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -22,8 +23,59 @@ import { StyleEditorToolbar, type StyleEditingState } from "./ComponentToolbar";
 import * as ImagePicker from "expo-image-picker";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { GroupBreadcrumb } from "./GroupBreadcrumb";
+import { GroupChildCarousel } from "./GroupChildCarousel";
 import { CanvasMenu } from "./menu/CanvasMenu";
 import { PRESETS } from "./menu/ComponentsPage";
+
+/* Small draggable sphere to toggle between edit / preview */
+function ModeSphere({ mode, onPress }: { mode: "edit" | "preview"; onPress: () => void }) {
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const moved = useRef(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+      onPanResponderGrant: () => {
+        moved.current = false;
+        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: (_, g) => {
+        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) moved.current = true;
+        Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        })(_, g);
+      },
+      onPanResponderRelease: () => {
+        pan.flattenOffset();
+        if (!moved.current) {
+          onPress();
+        }
+      },
+    })
+  ).current;
+
+  const isPreview = mode === "preview";
+
+  return (
+    <Animated.View
+      style={[
+        styles.devSphere,
+        isPreview ? styles.devSpherePreview : styles.devSphereEdit,
+        { transform: pan.getTranslateTransform() },
+      ]}
+      {...panResponder.panHandlers}
+    >
+      {isPreview ? (
+        <Text style={styles.devSphereText}>&lt;/&gt;</Text>
+      ) : (
+        <Feather name="eye" size={20} color="#a5b4fc" />
+      )}
+    </Animated.View>
+  );
+}
 
 interface CanvasProps {
   blueprint: AppBlueprint;
@@ -35,13 +87,15 @@ interface CanvasProps {
   onStyleChange?: (id: string, updates: ComponentStyleUpdates) => void;
   onAddComponent: (component: Component) => void;
   onBackgroundColorChange?: (color: string) => void;
-  onResetProject?: () => void;
+  onCloseBlueprint?: () => void;
+  onDeleteBlueprint?: () => void;
   onResetAndBuild?: () => void;
   onNavigate?: (screenId: string) => void;
   onScreenUpdate?: (screen: Screen) => void;
   onDeleteComponent?: (id: string) => void;
   onComponentReplace?: (id: string, replacement: Component) => void;
   onAddChildComponent?: (parentId: string, child: Component) => void;
+  onBlueprintChange?: (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => void;
 }
 
 export function Canvas({
@@ -54,13 +108,15 @@ export function Canvas({
   onStyleChange,
   onAddComponent,
   onBackgroundColorChange,
-  onResetProject,
+  onCloseBlueprint,
+  onDeleteBlueprint,
   onResetAndBuild,
   onNavigate,
   onScreenUpdate,
   onDeleteComponent,
   onComponentReplace,
   onAddChildComponent,
+  onBlueprintChange,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const [canvasDimensions, setCanvasDimensions] = useState({
@@ -86,6 +142,22 @@ export function Canvas({
     if (!snappingLoaded.current) return;
     AsyncStorage.setItem("settings_snapping", String(snappingEnabled));
   }, [snappingEnabled]);
+
+  // Quick toggle sphere
+  const [quickToggleEnabled, setQuickToggleEnabled] = useState(true);
+  const quickToggleLoaded = useRef(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem("settings_quickToggle").then((val) => {
+      if (val !== null) setQuickToggleEnabled(val === "true");
+      quickToggleLoaded.current = true;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!quickToggleLoaded.current) return;
+    AsyncStorage.setItem("settings_quickToggle", String(quickToggleEnabled));
+  }, [quickToggleEnabled]);
 
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
   const [editingInfo, setEditingInfo] = useState<
@@ -139,6 +211,10 @@ export function Canvas({
     }
     return undefined;
   }
+
+  const currentContainerComp = isDrilledIn && currentContainerId && screen
+    ? findComponent(screen.components, currentContainerId)
+    : undefined;
 
   const drillInto = useCallback((containerId: string) => {
     setDrillPath(prev => [...prev, containerId]);
@@ -225,13 +301,23 @@ export function Canvas({
     if (!comp) return;
     const hasBorderRadius = ["shape", "textInput", "list", "container", "image"].includes(comp.type);
     const hasBorder = ["shape", "textInput", "container"].includes(comp.type);
-    if (!hasBorderRadius && !hasBorder) return;
+    const hasBackgroundColor = ["shape", "textInput", "list", "container"].includes(comp.type);
+    const hasLayoutMode = comp.type === "container";
+    if (!hasBorderRadius && !hasBorder && !hasBackgroundColor && !hasLayoutMode) return;
     const initialState: StyleEditingState = {
       borderRadius: ("borderRadius" in comp && typeof comp.borderRadius === "number") ? comp.borderRadius : 0,
       borderWidth: ("borderWidth" in comp && typeof comp.borderWidth === "number") ? comp.borderWidth : 0,
       borderColor: ("borderColor" in comp && typeof comp.borderColor === "string") ? comp.borderColor : "#000000",
+      backgroundColor: ("backgroundColor" in comp && typeof comp.backgroundColor === "string") ? comp.backgroundColor : "transparent",
       hasBorderRadius,
       hasBorder,
+      hasBackgroundColor,
+      hasLayoutMode,
+      layoutMode: (comp.type === "container" && comp.layoutMode) || "absolute",
+      flexDirection: (comp.type === "container" && comp.flexDirection) || "column",
+      gap: (comp.type === "container" && typeof comp.gap === "number") ? comp.gap : 0,
+      justifyContent: (comp.type === "container" && comp.justifyContent) || "flex-start",
+      alignItems: (comp.type === "container" && comp.alignItems) || "stretch",
     };
     setEditingInfo({
       mode: "style",
@@ -284,6 +370,7 @@ export function Canvas({
     setSelectedComponentId(componentId);
     if (!comp) return;
     if (comp.type === "text" || comp.type === "button") return;
+    if (comp.type === "container") return; // First tap selects, second tap drills in
     openStyleEditor(componentId);
   }, [editingInfo, screen?.components, selectedComponentId, drillInto, openStyleEditor]);
 
@@ -333,6 +420,12 @@ export function Canvas({
       if (updates.borderRadius !== undefined) styleUpdates.borderRadius = updates.borderRadius;
       if (updates.borderWidth !== undefined) styleUpdates.borderWidth = updates.borderWidth;
       if (updates.borderColor !== undefined) styleUpdates.borderColor = updates.borderColor;
+      if (updates.backgroundColor !== undefined) styleUpdates.backgroundColor = updates.backgroundColor;
+      if (updates.layoutMode !== undefined) styleUpdates.layoutMode = updates.layoutMode;
+      if (updates.flexDirection !== undefined) styleUpdates.flexDirection = updates.flexDirection;
+      if (updates.gap !== undefined) styleUpdates.gap = updates.gap;
+      if (updates.justifyContent !== undefined) styleUpdates.justifyContent = updates.justifyContent;
+      if (updates.alignItems !== undefined) styleUpdates.alignItems = updates.alignItems;
       if (Object.keys(styleUpdates).length > 0) {
         onStyleChange?.(editingInfo.componentId, styleUpdates);
       }
@@ -384,6 +477,13 @@ export function Canvas({
       if (initialState.hasBorder) {
         revert.borderWidth = initialState.borderWidth;
         revert.borderColor = initialState.borderColor;
+      }
+      if (initialState.hasLayoutMode) {
+        revert.layoutMode = initialState.layoutMode;
+        revert.flexDirection = initialState.flexDirection;
+        revert.gap = initialState.gap;
+        revert.justifyContent = initialState.justifyContent;
+        revert.alignItems = initialState.alignItems;
       }
       if (Object.keys(revert).length > 0) {
         onStyleChange?.(componentId, revert);
@@ -449,9 +549,10 @@ export function Canvas({
     >
       <Pressable
         style={StyleSheet.absoluteFill}
-        onLongPress={openMenu}
+        onLongPress={isEditMode ? openMenu : undefined}
         delayLongPress={500}
         onPress={() => {
+          if (!isEditMode) return;
           if (menuOpen) closeMenu();
           else if (isDrilledIn && !editingInfo) drillOut();
           else if (editingInfo) handleEditCancel();
@@ -459,8 +560,7 @@ export function Canvas({
       />
       {canvasDimensions.width > 0 &&
         screen.components.map((component, index) => {
-          const isCurrentDrillTarget = isDrilledIn && currentContainerId === component.id;
-          const isDimmed = isDrilledIn && !isCurrentDrillTarget;
+          const isDimmed = isDrilledIn;
           return (
             <SDUIComponent
               key={component.id}
@@ -490,16 +590,7 @@ export function Canvas({
               onDragOverTrashChange={handleDragOverTrashChange}
               onDeleteComponent={onDeleteComponent}
               onPickImage={handlePickImage}
-              isDrilledInto={isCurrentDrillTarget}
               isDimmed={isDimmed}
-              selectedChildId={isCurrentDrillTarget ? selectedChildId : null}
-              onChildSelect={handleChildSelect}
-              onChildUpdate={onComponentUpdate}
-              onChildEditStart={handleEditStart}
-              onChildEditStateChange={handleEditStateChange}
-              onDrillInto={drillInto}
-              onChildStyleSelect={handleChildStyleSelect}
-              onChildPickImage={handlePickImage}
             />
           );
         })}
@@ -508,6 +599,30 @@ export function Canvas({
           guides={activeGuides}
           canvasWidth={canvasDimensions.width}
           canvasHeight={canvasDimensions.height}
+        />
+      )}
+
+      {/* Group child carousel when drilled in */}
+      {isDrilledIn && currentContainerComp?.type === 'container' && (
+        <GroupChildCarousel
+          key={currentContainerId!}
+          childComponents={currentContainerComp.children ?? []}
+          canvasWidth={canvasDimensions.width}
+          canvasHeight={canvasDimensions.height}
+          editingComponentId={editingInfo?.componentId ?? null}
+          editState={editingInfo?.mode === 'text' ? editingInfo.state : null}
+          onChildSelect={handleChildSelect}
+          onChildEditStart={handleEditStart}
+          onChildEditStateChange={handleEditStateChange}
+          onDrillInto={drillInto}
+          onChildStyleSelect={handleChildStyleSelect}
+          onChildPickImage={handlePickImage}
+          onEditDone={handleEditDone}
+          onLongPress={() => {
+            setMenuOpen(true);
+            fadeAnim.setValue(0);
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+          }}
         />
       )}
 
@@ -571,7 +686,7 @@ export function Canvas({
       )}
 
       {/* Editing backdrop + toolbar */}
-      {editingInfo && !inspectorOpen && (
+      {editingInfo && !inspectorOpen && !isDrilledIn && (
         <Pressable
           style={[StyleSheet.absoluteFill, styles.editBackdrop]}
           onPress={handleEditDone}
@@ -594,24 +709,37 @@ export function Canvas({
         />
       )}
 
+      {/* Mode toggle sphere */}
+      {quickToggleEnabled && !editingInfo && (
+        <ModeSphere
+          mode={isEditMode ? "edit" : "preview"}
+          onPress={onToggleEditMode}
+        />
+      )}
+
       {/* Swipeable 3-page menu */}
       <CanvasMenu
         visible={menuOpen}
         fadeAnim={fadeAnim}
         screen={screen}
+        blueprint={blueprint}
         isEditMode={isEditMode}
         snappingEnabled={snappingEnabled}
         inspectorEnabled={inspectorEnabled}
+        quickToggleEnabled={quickToggleEnabled}
         onClose={closeMenu}
         onAddComponent={handleAdd}
         onToggleEditMode={onToggleEditMode}
         onToggleSnapping={() => setSnappingEnabled(v => !v)}
         onToggleInspector={() => setInspectorEnabled(v => !v)}
+        onToggleQuickToggle={() => setQuickToggleEnabled(v => !v)}
         onBackgroundColorChange={(c) => onBackgroundColorChange?.(c)}
-        onResetProject={() => onResetProject?.()}
+        onCloseBlueprint={() => onCloseBlueprint?.()}
+        onDeleteBlueprint={() => onDeleteBlueprint?.()}
         onScreenUpdate={(s) => onScreenUpdate?.(s)}
         onDeleteComponent={(id) => onDeleteComponent?.(id)}
         onTreeSelect={handleTreeSelect}
+        onBlueprintChange={onBlueprintChange}
       />
     </View>
   );
@@ -699,5 +827,41 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 14,
     fontWeight: "600" as const,
+  },
+  devSphere: {
+    position: "absolute",
+    bottom: 32,
+    right: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+    borderWidth: 1.5,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
+  },
+  devSpherePreview: {
+    backgroundColor: "rgba(15,23,42,0.85)",
+    borderColor: "rgba(99,102,241,0.6)",
+  },
+  devSphereEdit: {
+    backgroundColor: "rgba(99,102,241,0.85)",
+    borderColor: "rgba(165,180,252,0.6)",
+  },
+  devSphereText: {
+    color: "#a5b4fc",
+    fontSize: 14,
+    fontWeight: "700" as const,
+    letterSpacing: -0.5,
   },
 });

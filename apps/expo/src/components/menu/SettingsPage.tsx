@@ -6,10 +6,13 @@ interface SettingsPageProps {
   isEditMode: boolean;
   snappingEnabled: boolean;
   inspectorEnabled: boolean;
+  quickToggleEnabled: boolean;
   onToggleEditMode: () => void;
   onToggleSnapping: () => void;
   onToggleInspector: () => void;
-  onResetProject: () => void;
+  onToggleQuickToggle: () => void;
+  onCloseBlueprint: () => void;
+  onDeleteBlueprint: () => void;
   onClose: () => void;
 }
 
@@ -18,30 +21,38 @@ export function SettingsPage({
   isEditMode,
   snappingEnabled,
   inspectorEnabled,
+  quickToggleEnabled,
   onToggleEditMode,
   onToggleSnapping,
   onToggleInspector,
-  onResetProject,
+  onToggleQuickToggle,
+  onCloseBlueprint,
+  onDeleteBlueprint,
   onClose,
 }: SettingsPageProps) {
 
-  const handleReset = () => {
+  const handleClose = () => {
+    onClose();
+    onCloseBlueprint();
+  };
+
+  const handleDelete = () => {
     onClose();
     if (Platform.OS === "web") {
       if (
         window.confirm(
-          "Reset Project?\n\nThis will reset to the default landing page. This cannot be undone."
+          "Delete Blueprint?\n\nThis will permanently delete this blueprint. This cannot be undone."
         )
       ) {
-        onResetProject();
+        onDeleteBlueprint();
       }
     } else {
       Alert.alert(
-        "Reset Project",
-        "This will reset to the default landing page. This cannot be undone.",
+        "Delete Blueprint",
+        "This will permanently delete this blueprint. This cannot be undone.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Reset", style: "destructive", onPress: onResetProject },
+          { text: "Delete", style: "destructive", onPress: onDeleteBlueprint },
         ]
       );
     }
@@ -49,12 +60,12 @@ export function SettingsPage({
 
   return (
     <View style={[styles.page, { width }]}>
-      {/* Edit Mode */}
+      {/* Preview Mode */}
       <Text style={styles.categoryHeader}>MODE</Text>
       <Pressable style={styles.row} onPress={onToggleEditMode}>
-        <Text style={styles.rowLabel}>Edit Mode</Text>
-        <View style={[styles.toggleTrack, isEditMode && styles.toggleTrackOn]}>
-          <View style={[styles.toggleThumb, isEditMode && styles.toggleThumbOn]} />
+        <Text style={styles.rowLabel}>Preview Mode</Text>
+        <View style={[styles.toggleTrack, !isEditMode && styles.toggleTrackOn]}>
+          <View style={[styles.toggleThumb, !isEditMode && styles.toggleThumbOn]} />
         </View>
       </Pressable>
 
@@ -74,15 +85,33 @@ export function SettingsPage({
         </View>
       </Pressable>
 
+      <Pressable style={styles.row} onPress={onToggleQuickToggle}>
+        <Text style={styles.rowLabel}>Quick Preview / Edit</Text>
+        <View style={[styles.toggleTrack, quickToggleEnabled && styles.toggleTrackOn]}>
+          <View style={[styles.toggleThumb, quickToggleEnabled && styles.toggleThumbOn]} />
+        </View>
+      </Pressable>
+
+      <View style={styles.divider} />
+
+      {/* Blueprint */}
+      <Text style={styles.categoryHeader}>BLUEPRINT</Text>
+      <Pressable
+        style={({ pressed }) => [styles.row, styles.projectRow, pressed && styles.projectRowPressed]}
+        onPress={handleClose}
+      >
+        <Text style={styles.projectLabel}>Close Blueprint</Text>
+      </Pressable>
+
       <View style={styles.divider} />
 
       {/* Danger Zone */}
       <Text style={[styles.categoryHeader, styles.dangerHeader]}>DANGER ZONE</Text>
       <Pressable
         style={({ pressed }) => [styles.row, styles.dangerRow, pressed && styles.dangerRowPressed]}
-        onPress={handleReset}
+        onPress={handleDelete}
       >
-        <Text style={styles.dangerLabel}>Reset Project</Text>
+        <Text style={styles.dangerLabel}>Delete Blueprint</Text>
       </Pressable>
     </View>
   );
@@ -113,9 +142,6 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     gap: 12,
   },
-  rowPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
   rowLabel: {
     color: "#ffffff",
     fontSize: 16,
@@ -141,6 +167,19 @@ const styles = StyleSheet.create({
   },
   toggleThumbOn: {
     alignSelf: "flex-end",
+  },
+  projectRow: {
+    backgroundColor: "rgba(99,102,241,0.08)",
+  },
+  projectRowPressed: {
+    backgroundColor: "rgba(99,102,241,0.2)",
+  },
+  projectLabel: {
+    color: "#a5b4fc",
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+    flex: 1,
   },
   dangerHeader: {
     color: "rgba(239,68,68,0.6)",

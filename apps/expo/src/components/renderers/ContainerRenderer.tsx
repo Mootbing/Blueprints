@@ -46,6 +46,7 @@ export function ContainerRenderer({
   const borderRadius = component.borderRadius ?? 12;
   const padding = (component.padding ?? 0) * 100;
   const shadowEnabled = component.shadowEnabled ?? false;
+  const isFlexLayout = component.layoutMode === "flex";
 
   return (
     <View
@@ -61,6 +62,14 @@ export function ContainerRenderer({
         borderColor: borderColor ?? "transparent",
         padding,
         overflow: "hidden",
+        ...(isFlexLayout
+          ? {
+              flexDirection: component.flexDirection ?? "column",
+              gap: component.gap ?? 0,
+              justifyContent: component.justifyContent ?? "flex-start",
+              alignItems: component.alignItems ?? "stretch",
+            }
+          : {}),
         ...(shadowEnabled
           ? {
               shadowColor: component.shadowColor ?? "#000000",
@@ -98,10 +107,29 @@ export function ContainerRenderer({
           );
         }
 
-        // Default rendering: render children statically using rendererRegistry
+        // Default rendering
         if (containerSize.width > 0) {
           const ChildRenderer = rendererRegistry[child.type];
           if (!ChildRenderer) return null;
+
+          if (isFlexLayout) {
+            // Flex layout: children sized by width/height ratios but positioned by flexbox
+            const width = child.layout.width * containerSize.width;
+            const height = child.layout.height * containerSize.height;
+            return (
+              <View
+                key={child.id}
+                style={{
+                  width,
+                  height,
+                }}
+              >
+                <ChildRenderer component={child} isEditMode={false} />
+              </View>
+            );
+          }
+
+          // Absolute layout
           const left = child.layout.x * containerSize.width;
           const top = child.layout.y * containerSize.height;
           const width = child.layout.width * containerSize.width;

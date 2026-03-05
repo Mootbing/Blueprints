@@ -1,8 +1,7 @@
-import React, { useEffect, useCallback } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import React, { useEffect } from "react";
+import { Text, TextInput, View } from "react-native";
 import type { ButtonComponent } from "../../types";
 import type { TextEditingState } from "../TextEditorModal";
-import { safeOpenUrl } from "../../utils/safeUrl";
 
 export interface ButtonRendererProps {
   component: ButtonComponent;
@@ -12,8 +11,6 @@ export interface ButtonRendererProps {
   editState?: TextEditingState | null;
   onEditStart?: (initialState: TextEditingState) => void;
   onEditStateChange?: (updates: Partial<TextEditingState>) => void;
-  onNavigate?: (screenId: string) => void;
-  onResetAndBuild?: () => void;
 }
 
 export function ButtonRenderer({
@@ -24,24 +21,7 @@ export function ButtonRenderer({
   editState,
   onEditStart,
   onEditStateChange,
-  onNavigate,
-  onResetAndBuild,
 }: ButtonRendererProps) {
-  const handlePress = useCallback(() => {
-    if (!component.interactions) return;
-    for (const interaction of component.interactions) {
-      if (interaction.trigger === "onTap") {
-        if (interaction.action === "navigate" && onNavigate) {
-          onNavigate(interaction.target);
-        } else if (interaction.action === "resetAndBuild" && onResetAndBuild) {
-          onResetAndBuild();
-        } else if (interaction.action === "openUrl") {
-          safeOpenUrl(interaction.target);
-        }
-      }
-    }
-  }, [component.interactions, onNavigate, onResetAndBuild]);
-
   useEffect(() => {
     if (editTapFired && isEditMode && !editState) {
       consumeEditTap?.();
@@ -104,17 +84,9 @@ export function ButtonRenderer({
     textAlign: component.textAlign || ("center" as const),
   };
 
-  if (isEditMode) {
-    return (
-      <View style={buttonStyle}>
-        <Text style={textStyle}>{component.label}</Text>
-      </View>
-    );
-  }
-
   return (
-    <Pressable onPress={handlePress} style={buttonStyle}>
+    <View style={buttonStyle}>
       <Text style={textStyle}>{component.label}</Text>
-    </Pressable>
+    </View>
   );
 }

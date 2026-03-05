@@ -1,15 +1,13 @@
-import React, { useCallback } from "react";
-import { View, Text, ScrollView, Image, Pressable } from "react-native";
-import type { ListComponent, ListItem } from "../../types";
-import { safeOpenUrl } from "../../utils/safeUrl";
+import React from "react";
+import { View, Text, ScrollView, Image } from "react-native";
+import type { ListComponent } from "../../types";
 
 export interface ListRendererProps {
   component: ListComponent;
   isEditMode?: boolean;
-  onNavigate?: (screenId: string) => void;
 }
 
-export function ListRenderer({ component, isEditMode, onNavigate }: ListRendererProps) {
+export function ListRenderer({ component }: ListRendererProps) {
   const itemHeight = component.itemHeight ?? 56;
   const showDividers = component.showDividers ?? true;
   const dividerColor = component.dividerColor ?? "#e0e0e0";
@@ -26,29 +24,12 @@ export function ListRenderer({ component, isEditMode, onNavigate }: ListRenderer
   const imageBorderRadius =
     imageShape === "circle" ? imageSize / 2 : imageShape === "rounded" ? 6 : 0;
 
-  const handleItemPress = useCallback(
-    (item: ListItem) => {
-      if (isEditMode || !item.interactions) return;
-      for (const interaction of item.interactions) {
-        if (interaction.trigger === "onTap") {
-          if (interaction.action === "navigate" && onNavigate) {
-            onNavigate(interaction.target);
-          } else if (interaction.action === "openUrl") {
-            safeOpenUrl(interaction.target);
-          }
-        }
-      }
-    },
-    [isEditMode, onNavigate]
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor, borderRadius, overflow: "hidden" }}>
       <ScrollView nestedScrollEnabled>
         {component.items.map((item, index) => (
-          <Pressable
+          <View
             key={item.id}
-            onPress={() => handleItemPress(item)}
             style={{
               height: itemHeight,
               flexDirection: "row",
@@ -86,7 +67,7 @@ export function ListRenderer({ component, isEditMode, onNavigate }: ListRenderer
                 </Text>
               ) : null}
             </View>
-          </Pressable>
+          </View>
         ))}
       </ScrollView>
     </View>

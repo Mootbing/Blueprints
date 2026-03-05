@@ -14,32 +14,90 @@ export const LayoutSchema = z.object({
 });
 export type Layout = z.infer<typeof LayoutSchema>;
 
-// --- Interactions ---
+// --- Variables ---
 
-const NavigateInteraction = z.object({
-  trigger: z.literal("onTap"),
-  action: z.literal("navigate"),
+export const VariableSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  type: z.enum(["string", "number", "boolean", "array", "object"]),
+  defaultValue: z.unknown(),
+  persist: z.boolean().optional(),
+});
+export type Variable = z.infer<typeof VariableSchema>;
+
+// --- Actions ---
+
+const SetVariableActionSchema = z.object({
+  type: z.literal("SET_VARIABLE"),
+  key: z.string(),
+  value: z.string(),
+});
+
+const ToggleVariableActionSchema = z.object({
+  type: z.literal("TOGGLE_VARIABLE"),
+  key: z.string(),
+});
+
+const NavigateActionSchema = z.object({
+  type: z.literal("NAVIGATE"),
   target: z.string().uuid(),
 });
 
-const OpenUrlInteraction = z.object({
-  trigger: z.literal("onTap"),
-  action: z.literal("openUrl"),
-  target: z.string().url(),
+const OpenUrlActionSchema = z.object({
+  type: z.literal("OPEN_URL"),
+  url: z.string(),
 });
 
-const ResetAndBuildInteraction = z.object({
-  trigger: z.literal("onTap"),
-  action: z.literal("resetAndBuild"),
-  target: z.string(),
+export const ActionSchema: z.ZodType<Action> = z.lazy(() =>
+  z.union([
+    SetVariableActionSchema,
+    ToggleVariableActionSchema,
+    NavigateActionSchema,
+    OpenUrlActionSchema,
+    ConditionalActionSchema,
+  ])
+);
+
+const ConditionalActionSchema = z.object({
+  type: z.literal("CONDITIONAL"),
+  condition: z.string(),
+  then: z.array(z.lazy(() => ActionSchema)),
+  else: z.array(z.lazy(() => ActionSchema)).optional(),
 });
 
-export const InteractionSchema = z.discriminatedUnion("action", [
-  NavigateInteraction,
-  OpenUrlInteraction,
-  ResetAndBuildInteraction,
-]);
-export type Interaction = z.infer<typeof InteractionSchema>;
+export type SetVariableAction = z.infer<typeof SetVariableActionSchema>;
+export type ToggleVariableAction = z.infer<typeof ToggleVariableActionSchema>;
+export type NavigateAction = z.infer<typeof NavigateActionSchema>;
+export type OpenUrlAction = z.infer<typeof OpenUrlActionSchema>;
+export type ConditionalAction = {
+  type: "CONDITIONAL";
+  condition: string;
+  then: Action[];
+  else?: Action[];
+};
+export type Action =
+  | SetVariableAction
+  | ToggleVariableAction
+  | NavigateAction
+  | OpenUrlAction
+  | ConditionalAction;
+
+// --- Bindings & Event Handlers ---
+
+export const BindingsSchema = z.record(z.string(), z.string()).optional();
+export type Bindings = z.infer<typeof BindingsSchema>;
+
+const EventNameEnum = z.enum(["onTap", "onLongPress", "onChange", "onSubmit"]);
+export const EventHandlersSchema = z.record(EventNameEnum, z.array(ActionSchema)).optional();
+export type EventHandlers = z.infer<typeof EventHandlersSchema>;
+
+// --- Shared runtime fields (added as optional to every component) ---
+
+const runtimeFields = {
+  bindings: BindingsSchema,
+  actions: EventHandlersSchema,
+  visibleWhen: z.string().optional(),
+};
 
 // --- Components (discriminated union on `type`) ---
 
@@ -57,6 +115,7 @@ export const TextComponentSchema = z.object({
   fontFamily: z.string().optional(),
   textAlign: z.enum(["left", "center", "right"]).optional(),
   wrapMode: z.enum(["wrap-word", "wrap-text", "no-wrap"]).optional(),
+  ...runtimeFields,
 });
 export type TextComponent = z.infer<typeof TextComponentSchema>;
 
@@ -75,7 +134,7 @@ export const ButtonComponentSchema = z.object({
   fontWeight: FontWeightEnum.optional(),
   textAlign: z.enum(["left", "center", "right"]).optional(),
   borderRadius: z.number().min(0).optional(),
-  interactions: z.array(InteractionSchema).optional(),
+  ...runtimeFields,
 });
 export type ButtonComponent = z.infer<typeof ButtonComponentSchema>;
 
@@ -86,6 +145,7 @@ export const ImageComponentSchema = z.object({
   src: z.string(),
   resizeMode: z.enum(["cover", "contain", "stretch", "center"]).optional(),
   borderRadius: z.number().min(0).optional(),
+  ...runtimeFields,
 });
 export type ImageComponent = z.infer<typeof ImageComponentSchema>;
 
@@ -97,6 +157,7 @@ export const DividerComponentSchema = z.object({
   thickness: z.number().positive().optional(),
   color: z.string().min(1).optional(),
   lineStyle: z.enum(["solid", "dashed", "dotted"]).optional(),
+  ...runtimeFields,
 });
 export type DividerComponent = z.infer<typeof DividerComponentSchema>;
 
@@ -110,6 +171,7 @@ export const ShapeComponentSchema = z.object({
   borderWidth: z.number().min(0).optional(),
   borderRadius: z.number().min(0).optional(),
   opacity: z.number().min(0).max(1).optional(),
+  ...runtimeFields,
 });
 export type ShapeComponent = z.infer<typeof ShapeComponentSchema>;
 
@@ -125,6 +187,7 @@ export const ToggleComponentSchema = z.object({
   labelColor: z.string().min(1).optional(),
   labelFontSize: z.number().positive().optional(),
   labelPosition: z.enum(["left", "right"]).optional(),
+  ...runtimeFields,
 });
 export type ToggleComponent = z.infer<typeof ToggleComponentSchema>;
 
@@ -136,7 +199,7 @@ export const IconComponentSchema = z.object({
   library: z.enum(["material", "feather", "ionicons"]).optional(),
   size: z.number().positive().optional(),
   color: z.string().min(1).optional(),
-  interactions: z.array(InteractionSchema).optional(),
+  ...runtimeFields,
 });
 export type IconComponent = z.infer<typeof IconComponentSchema>;
 
@@ -156,6 +219,8 @@ export const TextInputComponentSchema = z.object({
   keyboardType: z.enum(["default", "email", "numeric", "phone", "url"]).optional(),
   secure: z.boolean().optional(),
   fontFamily: z.string().optional(),
+  boundVariable: z.string().optional(),
+  ...runtimeFields,
 });
 export type TextInputComponent = z.infer<typeof TextInputComponentSchema>;
 
@@ -164,7 +229,6 @@ export const ListItemSchema = z.object({
   title: z.string(),
   subtitle: z.string().optional(),
   imageUrl: z.string().optional(),
-  interactions: z.array(InteractionSchema).optional(),
 });
 export type ListItem = z.infer<typeof ListItemSchema>;
 
@@ -184,6 +248,7 @@ export const ListComponentSchema = z.object({
   showImages: z.boolean().optional(),
   imageShape: z.enum(["circle", "square", "rounded"]).optional(),
   borderRadius: z.number().min(0).optional(),
+  ...runtimeFields,
 });
 export type ListComponent = z.infer<typeof ListComponentSchema>;
 
@@ -215,7 +280,15 @@ export interface ContainerComponent {
   shadowColor?: string;
   shadowOpacity?: number;
   shadowRadius?: number;
+  layoutMode?: "absolute" | "flex";
+  flexDirection?: "row" | "column";
+  gap?: number;
+  justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
+  alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
   children?: Component[];
+  bindings?: Record<string, string>;
+  actions?: Record<string, Action[]>;
+  visibleWhen?: string;
 }
 
 export type Component = BaseComponent | ContainerComponent;
@@ -233,7 +306,13 @@ export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object(
   shadowColor: z.string().min(1).optional(),
   shadowOpacity: z.number().min(0).max(1).optional(),
   shadowRadius: z.number().min(0).optional(),
+  layoutMode: z.enum(["absolute", "flex"]).optional(),
+  flexDirection: z.enum(["row", "column"]).optional(),
+  gap: z.number().min(0).optional(),
+  justifyContent: z.enum(["flex-start", "center", "flex-end", "space-between", "space-around", "space-evenly"]).optional(),
+  alignItems: z.enum(["flex-start", "center", "flex-end", "stretch"]).optional(),
   children: z.lazy(() => z.array(ComponentSchema)).optional(),
+  ...runtimeFields,
 });
 
 export const ComponentSchema: z.ZodType<Component> = z.union([BaseComponentSchema, ContainerComponentSchema]);
@@ -245,6 +324,7 @@ export const ScreenSchema = z.object({
   name: z.string(),
   backgroundColor: z.string().min(1).optional(),
   components: z.array(ComponentSchema),
+  variables: z.array(VariableSchema).optional(),
 });
 export type Screen = z.infer<typeof ScreenSchema>;
 
@@ -260,5 +340,6 @@ export const AppBlueprintSchema = z.object({
   initial_screen_id: z.string().uuid(),
   theme: ThemeSchema.optional(),
   screens: z.record(z.string().uuid(), ScreenSchema),
+  variables: z.array(VariableSchema).optional(),
 });
 export type AppBlueprint = z.infer<typeof AppBlueprintSchema>;

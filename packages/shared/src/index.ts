@@ -1,7 +1,10 @@
 export {
   NormalizedFloat,
   LayoutSchema,
-  InteractionSchema,
+  VariableSchema,
+  ActionSchema,
+  BindingsSchema,
+  EventHandlersSchema,
   TextComponentSchema,
   ButtonComponentSchema,
   ImageComponentSchema,
@@ -21,7 +24,15 @@ export {
 
 export type {
   Layout,
-  Interaction,
+  Variable,
+  Action,
+  SetVariableAction,
+  ToggleVariableAction,
+  NavigateAction,
+  OpenUrlAction,
+  ConditionalAction,
+  Bindings,
+  EventHandlers,
   TextComponent,
   ButtonComponent,
   ImageComponent,

@@ -16,13 +16,23 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { ColorPickerModal } from "./ColorPickerModal";
 
 export interface StyleEditingState {
   borderRadius: number;
   borderWidth: number;
   borderColor: string;
+  backgroundColor: string;
   hasBorderRadius: boolean;
   hasBorder: boolean;
+  hasBackgroundColor: boolean;
+  // Flex layout (containers only)
+  hasLayoutMode: boolean;
+  layoutMode: "absolute" | "flex";
+  flexDirection: "row" | "column";
+  gap: number;
+  justifyContent: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
+  alignItems: "flex-start" | "center" | "flex-end" | "stretch";
 }
 
 interface StyleEditorToolbarProps {
@@ -40,13 +50,30 @@ const BORDER_COLORS = [
   "#ec4899", "#f43f5e",
 ];
 
-type SliderTarget = "borderRadius" | "borderWidth";
-type PanelType = "borderColor" | null;
+type SliderTarget = "borderRadius" | "borderWidth" | "gap";
+type PanelType = "borderColor" | "backgroundColor" | null;
 
-const SLIDER_CONFIG = {
+const SLIDER_CONFIG: Record<SliderTarget, { min: number; max: number }> = {
   borderRadius: { min: 0, max: 50 },
   borderWidth: { min: 0, max: 20 },
+  gap: { min: 0, max: 40 },
 };
+
+const JUSTIFY_OPTIONS = [
+  { value: "flex-start", label: "Start" },
+  { value: "center", label: "Center" },
+  { value: "flex-end", label: "End" },
+  { value: "space-between", label: "Between" },
+  { value: "space-around", label: "Around" },
+  { value: "space-evenly", label: "Even" },
+] as const;
+
+const ALIGN_OPTIONS = [
+  { value: "flex-start", label: "Start" },
+  { value: "center", label: "Center" },
+  { value: "flex-end", label: "End" },
+  { value: "stretch", label: "Stretch" },
+] as const;
 
 export function StyleEditorToolbar({
   state,
@@ -59,6 +86,8 @@ export function StyleEditorToolbar({
 
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [sliderTarget, setSliderTarget] = useState<SliderTarget>("borderRadius");
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<"borderColor" | "backgroundColor">("borderColor");
 
   const togglePanel = useCallback((panel: PanelType) => {
     setActivePanel((current) => (current === panel ? null : panel));
@@ -66,7 +95,7 @@ export function StyleEditorToolbar({
 
   // Dynamic slider config based on target
   const { min: sliderMin, max: sliderMax } = SLIDER_CONFIG[sliderTarget];
-  const currentValue = sliderTarget === "borderRadius" ? state.borderRadius : state.borderWidth;
+  const currentValue = sliderTarget === "borderRadius" ? state.borderRadius : sliderTarget === "borderWidth" ? state.borderWidth : state.gap;
 
   const thumbSize = 40;
   const [trackHeight, setTrackHeight] = useState(screenHeight * 0.25);
@@ -123,7 +152,8 @@ export function StyleEditorToolbar({
     <View style={styles.container} pointerEvents="box-none">
       {/* Dynamic Slider - Left Side */}
       {((sliderTarget === "borderRadius" && state.hasBorderRadius) ||
-        (sliderTarget === "borderWidth" && state.hasBorder)) && (
+        (sliderTarget === "borderWidth" && state.hasBorder) ||
+        (sliderTarget === "gap" && state.hasLayoutMode && state.layoutMode === "flex")) && (
         <View style={[styles.sizeSliderContainer, keyboardHeight > 0 && { bottom: keyboardHeight + 80 }]}>
           <View style={styles.sliderTrack} onLayout={onTrackLayout}>
             <View style={styles.sliderTrackLine} />
@@ -185,7 +215,82 @@ export function StyleEditorToolbar({
                   )}
                 </Pressable>
               ))}
+              <Pressable
+                style={[styles.colorOption, styles.addCustomButton]}
+                onPress={() => { setPickerTarget("borderColor"); setPickerVisible(true); }}
+              >
+                <Feather name="plus" size={22} color="#FFF" />
+              </Pressable>
             </ScrollView>
+          </View>
+        )}
+
+        {/* Background Color Panel */}
+        {activePanel === "backgroundColor" && state.hasBackgroundColor && (
+          <View style={styles.colorPicker}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.colorPickerContent}
+            >
+              {BORDER_COLORS.map((col) => (
+                <Pressable
+                  key={col}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: col },
+                    state.backgroundColor === col && styles.colorOptionSelected,
+                  ]}
+                  onPress={() => onStateChange({ backgroundColor: col })}
+                >
+                  {state.backgroundColor === col && (
+                    <View style={styles.colorCheckmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.colorOption, styles.addCustomButton]}
+                onPress={() => { setPickerTarget("backgroundColor"); setPickerVisible(true); }}
+              >
+                <Feather name="plus" size={22} color="#FFF" />
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Flex Layout Options Panel */}
+        {state.hasLayoutMode && state.layoutMode === "flex" && activePanel === null && (
+          <View style={styles.flexPanel}>
+            <View style={styles.flexRow}>
+              <Text style={styles.flexLabel}>Justify</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.flexOptionsRow}>
+                {JUSTIFY_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={[styles.flexOption, state.justifyContent === opt.value && styles.flexOptionActive]}
+                    onPress={() => onStateChange({ justifyContent: opt.value })}
+                  >
+                    <Text style={[styles.flexOptionText, state.justifyContent === opt.value && styles.flexOptionTextActive]}>{opt.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+            <View style={styles.flexRow}>
+              <Text style={styles.flexLabel}>Align</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.flexOptionsRow}>
+                {ALIGN_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={[styles.flexOption, state.alignItems === opt.value && styles.flexOptionActive]}
+                    onPress={() => onStateChange({ alignItems: opt.value })}
+                  >
+                    <Text style={[styles.flexOptionText, state.alignItems === opt.value && styles.flexOptionTextActive]}>{opt.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
           </View>
         )}
 
@@ -224,6 +329,60 @@ export function StyleEditorToolbar({
             </Pressable>
           )}
 
+          {state.hasBackgroundColor && (
+            <Pressable
+              style={[styles.iconButton, activePanel === "backgroundColor" && styles.iconButtonActive]}
+              onPress={() => togglePanel("backgroundColor")}
+            >
+              <View style={styles.bgColorIcon}>
+                <Feather name="droplet" size={14} color="#FFF" />
+                <View
+                  style={[
+                    styles.bgColorBar,
+                    { backgroundColor: state.backgroundColor || "#888" },
+                  ]}
+                />
+              </View>
+            </Pressable>
+          )}
+
+          {/* Layout mode toggle */}
+          {state.hasLayoutMode && (
+            <Pressable
+              style={[styles.iconButton, state.layoutMode === "flex" && styles.iconButtonActive]}
+              onPress={() => onStateChange({
+                layoutMode: state.layoutMode === "flex" ? "absolute" : "flex",
+              })}
+            >
+              <Feather name={state.layoutMode === "flex" ? "columns" : "move"} size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.layoutMode === "flex" ? "Flex" : "Abs"}</Text>
+            </Pressable>
+          )}
+
+          {/* Flex direction toggle */}
+          {state.hasLayoutMode && state.layoutMode === "flex" && (
+            <Pressable
+              style={[styles.iconButton]}
+              onPress={() => onStateChange({
+                flexDirection: state.flexDirection === "row" ? "column" : "row",
+              })}
+            >
+              <Feather name={state.flexDirection === "row" ? "arrow-right" : "arrow-down"} size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.flexDirection === "row" ? "Row" : "Col"}</Text>
+            </Pressable>
+          )}
+
+          {/* Gap slider toggle */}
+          {state.hasLayoutMode && state.layoutMode === "flex" && (
+            <Pressable
+              style={[styles.iconButton, sliderTarget === "gap" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("gap")}
+            >
+              <Feather name="maximize-2" size={14} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.gap}</Text>
+            </Pressable>
+          )}
+
           {onInspect && (
             <Pressable
               style={[styles.iconButton]}
@@ -234,6 +393,13 @@ export function StyleEditorToolbar({
           )}
         </View>
       </View>
+
+      <ColorPickerModal
+        visible={pickerVisible}
+        initialColor={pickerTarget === "borderColor" ? state.borderColor : state.backgroundColor}
+        onSelect={(color) => onStateChange({ [pickerTarget]: color })}
+        onClose={() => setPickerVisible(false)}
+      />
     </View>
   );
 }
@@ -416,5 +582,60 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: "#FFFFFF",
+  },
+  addCustomButton: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.4)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  bgColorIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bgColorBar: {
+    width: 20,
+    height: 6,
+    marginTop: 2,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
+  },
+  flexPanel: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  flexRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  flexLabel: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    fontWeight: "700",
+    width: 42,
+  },
+  flexOptionsRow: {
+    gap: 6,
+  },
+  flexOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  flexOptionActive: {
+    backgroundColor: "#6366f1",
+  },
+  flexOptionText: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  flexOptionTextActive: {
+    color: "#FFFFFF",
   },
 });

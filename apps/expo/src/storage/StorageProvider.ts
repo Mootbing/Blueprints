@@ -1,6 +1,9 @@
-import type { AppBlueprint } from "../types";
+import type { AppBlueprint, BlueprintMeta } from "../types";
 
 export interface StorageProvider {
-  loadBlueprint(): Promise<AppBlueprint | null>;
-  saveBlueprint(blueprint: AppBlueprint): Promise<void>;
+  listBlueprints(): Promise<BlueprintMeta[]>;
+  saveBlueprintList(blueprints: BlueprintMeta[]): Promise<void>;
+  loadBlueprint(blueprintId: string): Promise<AppBlueprint | null>;
+  saveBlueprint(blueprintId: string, blueprint: AppBlueprint): Promise<void>;
+  deleteBlueprint(blueprintId: string): Promise<void>;
 }

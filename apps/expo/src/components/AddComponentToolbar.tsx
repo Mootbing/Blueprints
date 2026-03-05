@@ -31,7 +31,6 @@ const COMPONENT_PRESETS: {
       label: "Button",
       backgroundColor: "#6366f1",
       textColor: "#ffffff",
-      interactions: [],
     }),
   },
   {

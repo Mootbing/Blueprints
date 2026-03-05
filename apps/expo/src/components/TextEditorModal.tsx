@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { ColorPickerModal } from "./ColorPickerModal";
 
 export interface TextEditingState {
   text: string;
@@ -213,11 +214,13 @@ function ScrollColorRow({
   activeColor,
   onSelect,
   showNone,
+  onAddCustom,
 }: {
   colors: string[];
   activeColor: string;
   onSelect: (color: string) => void;
   showNone?: boolean;
+  onAddCustom?: () => void;
 }) {
   const { width: sw } = useWindowDimensions();
   const inset = sw / 2 - COLOR_SIZE / 2;
@@ -301,6 +304,14 @@ function ScrollColorRow({
             </Pressable>
           );
         })}
+        {onAddCustom && (
+          <Pressable
+            style={[styles.colorOption, styles.addCustomButton]}
+            onPress={onAddCustom}
+          >
+            <Feather name="plus" size={22} color="#FFF" />
+          </Pressable>
+        )}
       </ScrollView>
     </View>
   );
@@ -345,6 +356,8 @@ export function TextEditorToolbar({
   const keyboardHeight = useKeyboardHeight();
 
   const [activePanel, setActivePanel] = useState<PanelType>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<"color" | "highlight">("color");
 
   const togglePanel = useCallback((panel: PanelType) => {
     setActivePanel((current) => (current === panel ? null : panel));
@@ -503,6 +516,10 @@ export function TextEditorToolbar({
               colors={COLORS}
               activeColor={state.color}
               onSelect={(col) => onStateChange({ color: col })}
+              onAddCustom={() => {
+                setPickerTarget("color");
+                setPickerVisible(true);
+              }}
             />
           )}
 
@@ -513,6 +530,10 @@ export function TextEditorToolbar({
               activeColor={state.backgroundColor}
               onSelect={(col) => onStateChange({ backgroundColor: col })}
               showNone
+              onAddCustom={() => {
+                setPickerTarget("highlight");
+                setPickerVisible(true);
+              }}
             />
           )}
 
@@ -592,6 +613,17 @@ export function TextEditorToolbar({
             )}
           </View>
         </View>
+
+        <ColorPickerModal
+          visible={pickerVisible}
+          initialColor={pickerTarget === "color" ? state.color : state.backgroundColor}
+          onSelect={(color) =>
+            onStateChange(
+              pickerTarget === "color" ? { color } : { backgroundColor: color }
+            )
+          }
+          onClose={() => setPickerVisible(false)}
+        />
     </View>
   );
 }
@@ -805,6 +837,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 24,
     fontWeight: "300",
+  },
+  addCustomButton: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.4)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   iconButtonActive: {
     backgroundColor: "rgba(255,255,255,0.3)",
