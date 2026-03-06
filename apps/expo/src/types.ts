@@ -78,7 +78,7 @@ export interface ShareInfo {
 
 export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode" | "letterSpacing" | "lineHeight" | "textTransform" | "opacity">>;
 export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign" | "borderColor" | "borderWidth" | "paddingHorizontal" | "paddingVertical" | "opacity">>;
-export type IconStyleUpdates = Partial<Pick<IconComponent, "name" | "size" | "color">>;
+export type IconStyleUpdates = Partial<Pick<IconComponent, "name" | "library" | "size" | "color">>;
 export type BorderStyleUpdates = {
   borderRadius?: number;
   borderWidth?: number;

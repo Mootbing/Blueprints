@@ -26,6 +26,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { GroupBreadcrumb } from "./GroupBreadcrumb";
 import { CanvasMenu } from "./menu/CanvasMenu";
+import { IconPickerModal } from "./IconPickerModal";
 import { PRESETS } from "./menu/ComponentsPage";
 import { BACKGROUND_ID } from "./SlateEditor";
 import { findComponent, deepCloneComponent } from "../utils/componentTree";
@@ -662,19 +663,27 @@ function CanvasInner({
     if (!isEditMode) onToggleEditMode();
     const comp = findComponent(screen.components, componentId);
     if (!comp) return;
-    if (comp.type === "text" || comp.type === "button" || comp.type === "icon") {
+    if (comp.type === "icon") {
+      setSelectedComponentId(componentId);
+      setIconPickerTarget({
+        componentId,
+        name: comp.name ?? "star",
+        library: comp.library ?? "material",
+        size: comp.size ?? 24,
+        color: comp.color ?? "#ccc",
+      });
+    } else if (comp.type === "text" || comp.type === "button") {
       const isButton = comp.type === "button";
-      const isIcon = comp.type === "icon";
-      const fw = isIcon ? "normal" : comp.fontWeight;
+      const fw = comp.fontWeight;
       const textState: TextEditingState = {
-        text: isIcon ? (comp.name ?? "star") : isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
-        fontSize: isIcon ? (comp.size ?? 24) : (comp.fontSize ?? 16),
-        color: isIcon ? (comp.color ?? "#ccc") : isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#ccc"),
+        text: isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
+        fontSize: comp.fontSize ?? 16,
+        color: isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#ccc"),
         backgroundColor: isButton ? (comp.backgroundColor ?? "#1a1a1a") : "transparent",
         fontFamily: "System",
         fontWeight: (fw === "normal" || fw === "bold") ? fw : "normal",
         textAlign: "left",
-        wrapMode: (!isButton && !isIcon && "wrapMode" in comp && comp.wrapMode) ? comp.wrapMode : "wrap-word",
+        wrapMode: (!isButton && "wrapMode" in comp && comp.wrapMode) ? comp.wrapMode : "wrap-word",
         fontStyle: "normal",
         textDecorationLine: "none",
       };
@@ -1037,9 +1046,22 @@ function CanvasInner({
   // --- Inline editing handlers ---
   const handleEditStart = useCallback((componentId: string, initialState: TextEditingState) => {
     if (lockedIds.has(componentId)) return;
+    // Intercept icon components — open icon picker instead of text toolbar
+    const comp = findComponent(screen?.components ?? [], componentId);
+    if (comp?.type === "icon") {
+      setSelectedComponentId(componentId);
+      setIconPickerTarget({
+        componentId,
+        name: comp.name ?? "star",
+        library: comp.library ?? "material",
+        size: comp.size ?? 24,
+        color: comp.color ?? "#ccc",
+      });
+      return;
+    }
     setSelectedComponentId(componentId);
     setEditingInfo({ mode: "text", componentId, state: initialState });
-  }, [lockedIds, setSelectedComponentId, setEditingInfo]);
+  }, [lockedIds, screen?.components, setSelectedComponentId, setEditingInfo]);
 
   const handleEditStateChange = useCallback((updates: Partial<TextEditingState>) => {
     setEditingInfo((prev) => prev && prev.mode === "text" ? { ...prev, state: { ...prev.state, ...updates } } : prev);
@@ -1105,12 +1127,6 @@ function CanvasInner({
         fontFamily: state.fontFamily,
         fontWeight: state.fontWeight,
         textAlign: state.textAlign,
-      });
-    } else if (comp?.type === "icon") {
-      onStyleChange?.(componentId, {
-        name: state.text,
-        size: state.fontSize,
-        color: state.color,
       });
     }
     Keyboard.dismiss();
@@ -1312,6 +1328,9 @@ function CanvasInner({
     multiDragRef.current.clear();
     handleDragEnd();
   }, [handleDragEnd, multiDragOffsetX, multiDragOffsetY]);
+
+  // --- Icon picker ---
+  const [iconPickerTarget, setIconPickerTarget] = useState<{ componentId: string; name: string; library: "material" | "feather" | "ionicons"; size: number; color: string } | null>(null);
 
   // --- Lasso selection ---
   const [lassoRect, setLassoRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -1601,6 +1620,24 @@ function CanvasInner({
           theme={slate.theme}
         />
       )}
+
+      {/* Icon picker modal */}
+      <IconPickerModal
+        visible={iconPickerTarget !== null}
+        currentName={iconPickerTarget?.name ?? "star"}
+        currentLibrary={iconPickerTarget?.library ?? "material"}
+        currentSize={iconPickerTarget?.size ?? 24}
+        currentColor={iconPickerTarget?.color ?? "#ccc"}
+        onSelect={(updates) => {
+          if (iconPickerTarget) {
+            onStyleChange?.(iconPickerTarget.componentId, updates);
+          }
+        }}
+        onClose={() => {
+          setIconPickerTarget(null);
+          setSelectedComponentId(null);
+        }}
+      />
 
       {/* Floating sphere – tap to open menu (edit mode only), long-press to toggle */}
       {!menuOpen && !isPreviewOnly && (

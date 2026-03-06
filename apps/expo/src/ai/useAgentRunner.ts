@@ -388,13 +388,18 @@ export function useAgentRunner({
         cleanupFnsRef.current.set(sessionId, cleanup);
 
         // Fallback: poll in case Realtime fails
+        const pollStartTime = Date.now();
         const pollInterval = setInterval(async () => {
+          // If Realtime already handled it, stop polling
+          if (!loadingSessionsRef.current.has(sessionId)) {
+            clearInterval(pollInterval);
+            return;
+          }
+
           const result = await getJobResult(jobId);
           if (!result) return;
           if (result.status === "completed" || result.status === "conflict") {
             clearInterval(pollInterval);
-            // If Realtime already handled it, skip
-            if (!loadingSessionsRef.current.has(sessionId)) return;
 
             if (mountedRef.current) {
               setSessionThinking(sessionId, null);
@@ -409,7 +414,6 @@ export function useAgentRunner({
             if (mountedRef.current) removeLoadingSession(sessionId);
           } else if (result.status === "failed") {
             clearInterval(pollInterval);
-            if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
               setSessionThinking(sessionId, null);
               setSessionError(sessionId, result.error_message ?? "Job failed");
@@ -418,11 +422,19 @@ export function useAgentRunner({
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
             if (mountedRef.current) removeLoadingSession(sessionId);
+          } else if (Date.now() - pollStartTime > 240000) {
+            // Job stuck in pending/running for over 4 minutes — treat as timed out
+            clearInterval(pollInterval);
+            if (mountedRef.current) {
+              setSessionThinking(sessionId, null);
+              setSessionError(sessionId, "Request timed out. Please try again.");
+              updateSession(sessionId, { status: "idle" });
+            }
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           }
         }, 5000);
-
-        // Stop polling after 5 minutes
-        setTimeout(() => clearInterval(pollInterval), 300000);
 
       } catch (err) {
         if (mountedRef.current) {
@@ -507,12 +519,17 @@ export function useAgentRunner({
         cleanupFnsRef.current.set(sessionId, cleanup);
 
         // Also poll as fallback
+        const reconPollStart = Date.now();
         const pollInterval = setInterval(async () => {
+          if (!loadingSessionsRef.current.has(sessionId)) {
+            clearInterval(pollInterval);
+            return;
+          }
+
           const result = await getJobResult(job.id);
           if (!result) return;
           if (result.status === "completed" || result.status === "conflict") {
             clearInterval(pollInterval);
-            if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
               setSessionThinking(sessionId, null);
               const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
@@ -532,7 +549,6 @@ export function useAgentRunner({
             if (mountedRef.current) removeLoadingSession(sessionId);
           } else if (result.status === "failed") {
             clearInterval(pollInterval);
-            if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
               setSessionThinking(sessionId, null);
               setSessionError(sessionId, result.error_message ?? "Job failed");
@@ -541,9 +557,18 @@ export function useAgentRunner({
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
             if (mountedRef.current) removeLoadingSession(sessionId);
+          } else if (Date.now() - reconPollStart > 240000) {
+            clearInterval(pollInterval);
+            if (mountedRef.current) {
+              setSessionThinking(sessionId, null);
+              setSessionError(sessionId, "Request timed out. Please try again.");
+              updateSession(sessionId, { status: "idle" });
+            }
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           }
         }, 3000);
-        setTimeout(() => clearInterval(pollInterval), 300000);
       }
 
       // 2. Check for recently completed jobs whose results may not be in sessions yet
