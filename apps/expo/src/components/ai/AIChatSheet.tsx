@@ -35,7 +35,7 @@ interface ComponentRect {
 interface AIChatSheetProps {
   visible: boolean;
   component: Component;
-  apiKey: string;
+  slateId: string;
   theme?: Theme;
   componentRect?: ComponentRect;
   onApply: (component: Component) => void;
@@ -47,7 +47,7 @@ interface AIChatSheetProps {
 export function AIChatSheet({
   visible,
   component,
-  apiKey,
+  slateId,
   theme,
   componentRect,
   onApply,
@@ -64,9 +64,9 @@ export function AIChatSheet({
 
   const sendFn = useCallback(
     async (messages: AnthropicMessage[]) => {
-      return modifyComponentChat(apiKey, component, messages, theme);
+      return modifyComponentChat(slateId, component, messages, theme);
     },
-    [apiKey, component, theme],
+    [slateId, component, theme],
   );
 
   const { messages, isLoading, error, sendMessage } = useAIChat({

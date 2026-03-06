@@ -254,13 +254,22 @@ export class SupabaseStorageProvider implements SyncableStorageProvider {
 
     const { data: linkData, error: linkError } = await supabase
       .from("share_links")
-      .select("slate_id, role, is_active, expires_at")
+      .select("id, slate_id, role, is_active, expires_at")
       .eq("share_code", shareCode)
       .single();
 
     if (linkError || !linkData) return null;
     if (!linkData.is_active) return null;
     if (linkData.expires_at && new Date(linkData.expires_at) < new Date()) return null;
+
+    // Record a claim so RLS policies can verify this user's access
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from("share_link_claims").upsert(
+        { share_link_id: linkData.id, user_id: user.id },
+        { onConflict: "share_link_id,user_id" }
+      );
+    }
 
     const { data: slateData, error: slateError } = await supabase
       .from("user_slates")

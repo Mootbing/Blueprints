@@ -566,8 +566,7 @@ export function TextEditorToolbar({
               />
               <BubbleRow
                 options={[
-                  { label: "Wrap Word", value: "wrap-word" },
-                  { label: "Wrap Text", value: "wrap-text" },
+                  { label: "Wrap", value: "wrap-word" },
                   { label: "No Wrap", value: "no-wrap" },
                 ]}
                 activeValue={state.wrapMode}

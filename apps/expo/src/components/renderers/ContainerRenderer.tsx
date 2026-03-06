@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { View } from "react-native";
+import { View, ScrollView } from "react-native";
 import type { ContainerComponent, Layout } from "../../types";
 import type { TextEditingState } from "../EditorToolbar";
 import { rendererRegistry } from "./index";
 import { GroupChildComponent } from "../GroupChildComponent";
+import { GradientOverlay } from "../GradientOverlay";
 
 export interface ContainerRendererProps {
   component: ContainerComponent;
@@ -23,7 +24,7 @@ export interface ContainerRendererProps {
   onChildPickImage?: (componentId: string) => void;
 }
 
-export function ContainerRenderer({
+export const ContainerRenderer = React.memo(function ContainerRenderer({
   component,
   isEditMode,
   renderChild,
@@ -47,6 +48,85 @@ export function ContainerRenderer({
   const padding = (component.padding ?? 0) * 100;
   const shadowEnabled = component.shadowEnabled ?? false;
   const isFlexLayout = component.layoutMode === "flex";
+  const scrollable = component.scrollable ?? false;
+  const scrollDirection = component.scrollDirection ?? "vertical";
+  const gradientEnabled = component.gradientEnabled ?? false;
+  const gradientColors = component.gradientColors;
+
+  const renderChildren = () =>
+    component.children?.map((child) => {
+      if (renderChild) return renderChild(child);
+
+      // Drill-in mode: wrap children in GroupChildComponent for interactive editing
+      if (isDrilledInto && containerSize.width > 0 && onChildSelect && onChildUpdate && onChildEditStart && onDrillInto && onChildStyleSelect) {
+        return (
+          <GroupChildComponent
+            key={child.id}
+            component={child}
+            containerWidth={containerSize.width}
+            containerHeight={containerSize.height}
+            isSelected={selectedChildId === child.id}
+            isEditMode={isEditMode ?? false}
+            editingComponentId={editingComponentId ?? null}
+            editState={editingComponentId === child.id ? (editState ?? null) : null}
+            onSelect={onChildSelect}
+            onUpdate={onChildUpdate}
+            onEditStart={onChildEditStart}
+            onEditStateChange={onChildEditStateChange}
+            onDrillInto={onDrillInto}
+            onStyleSelect={onChildStyleSelect}
+            onPickImage={onChildPickImage}
+          />
+        );
+      }
+
+      // Default rendering
+      if (containerSize.width > 0) {
+        const ChildRenderer = rendererRegistry[child.type];
+        if (!ChildRenderer) return null;
+
+        if (isFlexLayout) {
+          const width = child.layout.width * containerSize.width;
+          const height = child.layout.height * containerSize.height;
+          return (
+            <View key={child.id} style={{ width, height }}>
+              <ChildRenderer component={child} isEditMode={false} />
+            </View>
+          );
+        }
+
+        // Absolute layout
+        const left = child.layout.x * containerSize.width;
+        const top = child.layout.y * containerSize.height;
+        const width = child.layout.width * containerSize.width;
+        const height = child.layout.height * containerSize.height;
+        return (
+          <View
+            key={child.id}
+            style={{ position: "absolute", left, top, width, height }}
+          >
+            <ChildRenderer component={child} isEditMode={false} />
+          </View>
+        );
+      }
+
+      return null;
+    });
+
+  const useScroll = scrollable && !isEditMode;
+
+  const content = useScroll ? (
+    <ScrollView
+      nestedScrollEnabled
+      horizontal={scrollDirection === "horizontal"}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+    >
+      {renderChildren()}
+    </ScrollView>
+  ) : (
+    renderChildren()
+  );
 
   return (
     <View
@@ -81,77 +161,14 @@ export function ContainerRenderer({
           : {}),
       }}
     >
-      {component.children?.map((child) => {
-        if (renderChild) return renderChild(child);
-
-        // Drill-in mode: wrap children in GroupChildComponent for interactive editing
-        if (isDrilledInto && containerSize.width > 0 && onChildSelect && onChildUpdate && onChildEditStart && onDrillInto && onChildStyleSelect) {
-          return (
-            <GroupChildComponent
-              key={child.id}
-              component={child}
-              containerWidth={containerSize.width}
-              containerHeight={containerSize.height}
-              isSelected={selectedChildId === child.id}
-              isEditMode={isEditMode ?? false}
-              editingComponentId={editingComponentId ?? null}
-              editState={editingComponentId === child.id ? (editState ?? null) : null}
-              onSelect={onChildSelect}
-              onUpdate={onChildUpdate}
-              onEditStart={onChildEditStart}
-              onEditStateChange={onChildEditStateChange}
-              onDrillInto={onDrillInto}
-              onStyleSelect={onChildStyleSelect}
-              onPickImage={onChildPickImage}
-            />
-          );
-        }
-
-        // Default rendering
-        if (containerSize.width > 0) {
-          const ChildRenderer = rendererRegistry[child.type];
-          if (!ChildRenderer) return null;
-
-          if (isFlexLayout) {
-            // Flex layout: children sized by width/height ratios but positioned by flexbox
-            const width = child.layout.width * containerSize.width;
-            const height = child.layout.height * containerSize.height;
-            return (
-              <View
-                key={child.id}
-                style={{
-                  width,
-                  height,
-                }}
-              >
-                <ChildRenderer component={child} isEditMode={false} />
-              </View>
-            );
-          }
-
-          // Absolute layout
-          const left = child.layout.x * containerSize.width;
-          const top = child.layout.y * containerSize.height;
-          const width = child.layout.width * containerSize.width;
-          const height = child.layout.height * containerSize.height;
-          return (
-            <View
-              key={child.id}
-              style={{
-                position: "absolute",
-                left,
-                top,
-                width,
-                height,
-              }}
-            >
-              <ChildRenderer component={child} isEditMode={false} />
-            </View>
-          );
-        }
-
-        return null;
-      })}
+      {gradientEnabled && gradientColors && gradientColors.length >= 2 && (
+        <GradientOverlay
+          colors={gradientColors}
+          direction={component.gradientDirection}
+          borderRadius={borderRadius}
+        />
+      )}
+      {content}
     </View>
   );
-}
+});

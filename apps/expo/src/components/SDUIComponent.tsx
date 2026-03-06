@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -6,6 +6,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   withTiming,
+  cancelAnimation,
   runOnJS,
   interpolate,
   type SharedValue,
@@ -51,6 +52,11 @@ interface SDUIComponentProps {
   isDimmed?: boolean;
   locked?: boolean;
   isDropTarget?: boolean;
+  isMultiSelected?: boolean;
+  isSelected?: boolean;
+  onHugContent?: (id: string, axis: "width" | "height" | "both") => void;
+  onResizeStart?: () => void;
+  onResizeEnd?: () => void;
   // Drill-in props (for container components)
   isDrilledInto?: boolean;
   selectedChildId?: string | null;
@@ -100,6 +106,11 @@ export function SDUIComponent({
   isDimmed,
   locked,
   isDropTarget,
+  isMultiSelected,
+  isSelected,
+  onHugContent,
+  onResizeStart,
+  onResizeEnd,
   isDrilledInto,
   selectedChildId,
   onChildSelect,
@@ -190,7 +201,16 @@ export function SDUIComponent({
       editOffsetX.value = withTiming(0, { duration: 300 });
       editOffsetY.value = withTiming(0, { duration: 300 });
     }
-  }, [shouldCenter, canvasWidth, canvasHeight, keyboardHeight, component.layout, editOffsetX, editOffsetY]);
+    return () => {
+      cancelAnimation(editOffsetX);
+      cancelAnimation(editOffsetY);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- editOffsetX/editOffsetY are stable shared values
+  }, [shouldCenter, canvasWidth, canvasHeight, keyboardHeight, component.layout]);
+
+  // --- Resize handles (declared before animatedStyle which references them) ---
+  const resizeDeltaW = useSharedValue(0);
+  const resizeDeltaH = useSharedValue(0);
 
   const animatedStyle = useAnimatedStyle(() => {
     const tScale = interpolate(trashProgress.value, [0, 1], [1, 0.1]);
@@ -200,10 +220,10 @@ export function SDUIComponent({
         position: "absolute" as const,
         left: baseX.value + translateX.value + editOffsetX.value,
         top: baseY.value + translateY.value + editOffsetY.value,
-        width: baseW.value,
+        width: Math.max(20, baseW.value + resizeDeltaW.value),
         // When text editing, don't fix height so the TextInput can grow with content
-        height: isTextEditing.value ? undefined : baseH.value,
-        minHeight: isTextEditing.value ? Math.max(baseH.value, 44) : 44,
+        height: isTextEditing.value ? undefined : Math.max(20, baseH.value + resizeDeltaH.value),
+        minHeight: isTextEditing.value ? Math.max(baseH.value + resizeDeltaH.value, 44) : 44,
         opacity: tOpacity,
         transform: [
           { rotate: `${baseRotation.value + rotation.value}rad` },
@@ -277,6 +297,110 @@ export function SDUIComponent({
     onDeleteComponent?.(component.id);
   }, [onDeleteComponent, component.id]);
 
+  const layoutRef = useRef(component.layout);
+  layoutRef.current = component.layout;
+
+  const commitResize = useCallback((deltaW: number, deltaH: number) => {
+    const current = layoutRef.current;
+    const newW = current.width + deltaW / canvasWidth;
+    const newH = current.height + deltaH / canvasHeight;
+    resizeDeltaW.value = 0;
+    resizeDeltaH.value = 0;
+    onUpdate(component.id, {
+      ...current,
+      width: clamp(newW, 0.02, 1),
+      height: clamp(newH, 0.02, 1),
+    });
+  }, [component.id, canvasWidth, canvasHeight, onUpdate, resizeDeltaW, resizeDeltaH]);
+
+  const hugWidth = useCallback(() => {
+    onHugContent?.(component.id, "width");
+  }, [component.id, onHugContent]);
+  const hugHeight = useCallback(() => {
+    onHugContent?.(component.id, "height");
+  }, [component.id, onHugContent]);
+  const hugBoth = useCallback(() => {
+    onHugContent?.(component.id, "both");
+  }, [component.id, onHugContent]);
+
+  const notifyResizeStart = useCallback(() => {
+    onResizeStart?.();
+  }, [onResizeStart]);
+  const notifyResizeEnd = useCallback(() => {
+    onResizeEnd?.();
+  }, [onResizeEnd]);
+
+  const rightResizeGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .minDistance(5)
+      .onStart(() => {
+        runOnJS(notifyResizeStart)();
+      })
+      .onUpdate((e) => {
+        resizeDeltaW.value = e.translationX;
+      })
+      .onFinalize(() => {
+        const dw = resizeDeltaW.value;
+        resizeDeltaW.value = 0;
+        runOnJS(commitResize)(dw, 0);
+        runOnJS(notifyResizeEnd)();
+      });
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDuration(250)
+      .onEnd(() => { runOnJS(hugWidth)(); });
+    return Gesture.Exclusive(doubleTap, pan);
+  }, [resizeDeltaW, commitResize, hugWidth, notifyResizeStart, notifyResizeEnd]);
+
+  const bottomResizeGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .minDistance(5)
+      .onStart(() => {
+        runOnJS(notifyResizeStart)();
+      })
+      .onUpdate((e) => {
+        resizeDeltaH.value = e.translationY;
+      })
+      .onFinalize(() => {
+        const dh = resizeDeltaH.value;
+        resizeDeltaH.value = 0;
+        runOnJS(commitResize)(0, dh);
+        runOnJS(notifyResizeEnd)();
+      });
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDuration(250)
+      .onEnd(() => { runOnJS(hugHeight)(); });
+    return Gesture.Exclusive(doubleTap, pan);
+  }, [resizeDeltaH, commitResize, hugHeight, notifyResizeStart, notifyResizeEnd]);
+
+  const diagonalResizeGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .minDistance(5)
+      .onStart(() => {
+        runOnJS(notifyResizeStart)();
+      })
+      .onUpdate((e) => {
+        resizeDeltaW.value = e.translationX;
+        resizeDeltaH.value = e.translationY;
+      })
+      .onFinalize(() => {
+        const dw = resizeDeltaW.value;
+        const dh = resizeDeltaH.value;
+        resizeDeltaW.value = 0;
+        resizeDeltaH.value = 0;
+        runOnJS(commitResize)(dw, dh);
+        runOnJS(notifyResizeEnd)();
+      });
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDuration(250)
+      .onEnd(() => { runOnJS(hugBoth)(); });
+    return Gesture.Exclusive(doubleTap, pan);
+  }, [resizeDeltaW, resizeDeltaH, commitResize, hugBoth, notifyResizeStart, notifyResizeEnd]);
+
+  const showResizeHandles = isEditMode && !!isSelected && !isDimmed && !locked;
+
   // Drop target pulse animation
   const dropPulse = useSharedValue(0);
   useEffect(() => {
@@ -285,7 +409,11 @@ export function SDUIComponent({
     } else {
       dropPulse.value = withTiming(0, { duration: 200 });
     }
-  }, [isDropTarget, dropPulse]);
+    return () => {
+      cancelAnimation(dropPulse);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dropPulse is a stable shared value
+  }, [isDropTarget]);
 
   const dropTargetStyle = useAnimatedStyle(() => {
     if (dropPulse.value === 0) return {};
@@ -551,12 +679,35 @@ export function SDUIComponent({
             </View>
           </View>
         )}
+        {isMultiSelected && (
+          <View style={sduiStyles.multiSelectOutline} pointerEvents="none" />
+        )}
         <Renderer {...rendererProps} />
         {/* Transparent overlay to capture touches for gesture handler.
             Without this, Text/TextInput native views steal touch events
             and prevent pan/pinch/rotation gestures from firing. */}
         {!isComponentEditing && (
           <View style={sduiStyles.gestureOverlay} />
+        )}
+        {/* Resize handles: right edge (width) and bottom edge (height) */}
+        {showResizeHandles && (
+          <>
+            <GestureDetector gesture={rightResizeGesture}>
+              <Animated.View style={sduiStyles.rightResizeHandle}>
+                <View style={sduiStyles.resizeBarV} />
+              </Animated.View>
+            </GestureDetector>
+            <GestureDetector gesture={bottomResizeGesture}>
+              <Animated.View style={sduiStyles.bottomResizeHandle}>
+                <View style={sduiStyles.resizeBarH} />
+              </Animated.View>
+            </GestureDetector>
+            <GestureDetector gesture={diagonalResizeGesture}>
+              <Animated.View style={sduiStyles.diagonalResizeHandle}>
+                <View style={sduiStyles.resizeBarDiag} />
+              </Animated.View>
+            </GestureDetector>
+          </>
         )}
       </Animated.View>
     </GestureDetector>
@@ -590,10 +741,65 @@ const sduiStyles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "700",
   },
+  multiSelectOutline: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 2,
+    borderColor: "#3b82f6",
+    borderRadius: 8,
+    zIndex: 10,
+  },
   drilledIntoBorder: {
     borderWidth: 2,
     borderColor: "#fff",
     borderRadius: 12,
     zIndex: 50,
+  },
+  rightResizeHandle: {
+    position: "absolute",
+    right: -14,
+    top: 0,
+    bottom: 0,
+    width: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 20,
+  },
+  bottomResizeHandle: {
+    position: "absolute",
+    bottom: -14,
+    left: 0,
+    right: 0,
+    height: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 20,
+  },
+  resizeBarV: {
+    width: 4,
+    height: 32,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.8)",
+  },
+  resizeBarH: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.8)",
+  },
+  diagonalResizeHandle: {
+    position: "absolute",
+    right: -14,
+    bottom: -14,
+    width: 28,
+    height: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 21,
+  },
+  resizeBarDiag: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.8)",
   },
 });

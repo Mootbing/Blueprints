@@ -24,13 +24,13 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 **text**: { type: "text", id: uuid, layout, content: string, fontSize: number, color: string, fontWeight?: "normal"|"bold"|"100"-"900", backgroundColor?: string, fontFamily?: string, textAlign?: "left"|"center"|"right", wrapMode?: "wrap-word"|"wrap-text"|"no-wrap" }
 
-**button**: { type: "button", id: uuid, layout, label: string, backgroundColor: string, textColor: string, fontSize?: number, fontFamily?: string, fontWeight?: "normal"|"bold"|..., textAlign?: "left"|"center"|"right", borderRadius?: number }
+**button**: { type: "button", id: uuid, layout, label: string, backgroundColor: string, textColor: string, fontSize?: number, fontFamily?: string, fontWeight?: "normal"|"bold"|..., textAlign?: "left"|"center"|"right", borderRadius?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top" }
 
 **image**: { type: "image", id: uuid, layout, src: string, resizeMode?: "cover"|"contain"|"stretch"|"center", borderRadius?: number }
 
 **divider**: { type: "divider", id: uuid, layout, direction?: "horizontal"|"vertical", thickness?: number, color?: string, lineStyle?: "solid"|"dashed"|"dotted" }
 
-**shape**: { type: "shape", id: uuid, layout, shapeType?: "rectangle"|"circle"|"rounded-rectangle", backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, opacity?: number(0-1) }
+**shape**: { type: "shape", id: uuid, layout, shapeType?: "rectangle"|"circle"|"rounded-rectangle", backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, opacity?: number(0-1), shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top" }
 
 **toggle**: { type: "toggle", id: uuid, layout, label?: string, defaultValue?: boolean, activeColor?: string, inactiveColor?: string, thumbColor?: string, labelColor?: string, labelFontSize?: number, labelPosition?: "left"|"right" }
 
@@ -40,7 +40,7 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 **list**: { type: "list", id: uuid, layout, items: Array<{id: uuid, title: string, subtitle?: string, imageUrl?: string}>, itemHeight?: number, showDividers?: boolean, dividerColor?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, titleFontSize?: number, subtitleFontSize?: number, showImages?: boolean, imageShape?: "circle"|"square"|"rounded", borderRadius?: number }
 
-**container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number(0-1), shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", children?: Component[] }
+**container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number(0-1), shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, scrollable?: boolean, scrollDirection?: "vertical"|"horizontal", gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", children?: Component[] }
 
 ### Runtime Fields (available on ALL components)
 - bindings?: Record<string, string> - Bind component props to variable names (e.g., { content: "myVar" })

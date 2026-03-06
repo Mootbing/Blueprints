@@ -74,12 +74,17 @@ export function useSupabaseSync(storage: SyncableStorageProvider) {
     };
   }, []);
 
+  const syncingRef = useRef(false);
+
   const syncAll = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setIsSyncing(true);
     try {
       await storageRef.current.syncAll();
       setConnectionStatus(storageRef.current.getConnectionStatus());
     } finally {
+      syncingRef.current = false;
       setIsSyncing(false);
     }
   }, []);

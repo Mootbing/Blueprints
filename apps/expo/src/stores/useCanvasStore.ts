@@ -58,6 +58,10 @@ export interface CanvasState {
 
   // Active guides for snapping
   activeGuides: number[];
+
+  // Multi-select
+  multiSelectMode: boolean;
+  selectedComponentIds: Set<string>;
 }
 
 export interface CanvasActions {
@@ -116,6 +120,11 @@ export interface CanvasActions {
   setActiveGuides: (guides: number[]) => void;
   clearGuides: () => void;
 
+  // Multi-select
+  setMultiSelectMode: (mode: boolean) => void;
+  toggleMultiSelectId: (id: string) => void;
+  clearMultiSelect: () => void;
+
   // Compound reset for drill selection
   resetDrillSelection: () => void;
 }
@@ -153,6 +162,8 @@ export const createCanvasStore = (initialLockedIds?: Set<string>) =>
     agentPagerInitialMessage: null,
     versionHistoryOpen: false,
     activeGuides: [],
+    multiSelectMode: false,
+    selectedComponentIds: new Set<string>(),
 
     // --- Actions ---
     setCanvasDimensions: (dims) => set({ canvasDimensions: dims }),
@@ -176,6 +187,8 @@ export const createCanvasStore = (initialLockedIds?: Set<string>) =>
         selectedChildId: null,
         selectedComponentId: null,
         editingInfo: null,
+        multiSelectMode: false,
+        selectedComponentIds: new Set(),
       })),
 
     drillOut: () =>
@@ -184,6 +197,8 @@ export const createCanvasStore = (initialLockedIds?: Set<string>) =>
         selectedChildId: null,
         selectedComponentId: null,
         editingInfo: null,
+        multiSelectMode: false,
+        selectedComponentIds: new Set(),
       })),
 
     drillToLevel: (level) =>
@@ -192,6 +207,8 @@ export const createCanvasStore = (initialLockedIds?: Set<string>) =>
         selectedChildId: null,
         selectedComponentId: null,
         editingInfo: null,
+        multiSelectMode: false,
+        selectedComponentIds: new Set(),
       })),
 
     setSelectedChildId: (id) => set({ selectedChildId: id }),
@@ -238,8 +255,18 @@ export const createCanvasStore = (initialLockedIds?: Set<string>) =>
     setActiveGuides: (guides) => set({ activeGuides: guides }),
     clearGuides: () => set({ activeGuides: [] }),
 
+    setMultiSelectMode: (mode) => set({ multiSelectMode: mode }),
+    toggleMultiSelectId: (id) =>
+      set((s) => {
+        const next = new Set(s.selectedComponentIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { selectedComponentIds: next, multiSelectMode: next.size > 0 };
+      }),
+    clearMultiSelect: () => set({ multiSelectMode: false, selectedComponentIds: new Set() }),
+
     resetDrillSelection: () =>
-      set({ selectedChildId: null, selectedComponentId: null, editingInfo: null }),
+      set({ selectedChildId: null, selectedComponentId: null, editingInfo: null, multiSelectMode: false, selectedComponentIds: new Set() }),
   }));
 
 // Load persisted settings into the store

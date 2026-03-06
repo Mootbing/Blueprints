@@ -75,7 +75,6 @@ function NewAgentPage({ width }: { width: number }) {
 interface AgentPagerModalProps {
   visible: boolean;
   onClose: () => void;
-  apiKey: string;
   agentRunner?: ReturnType<typeof useAgentRunner>;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
@@ -91,7 +90,6 @@ interface AgentPagerModalProps {
 export function AgentPagerModal({
   visible,
   onClose,
-  apiKey,
   agentRunner,
   historyEntries,
   currentHistoryId,
@@ -279,32 +277,6 @@ export function AgentPagerModal({
 
   if (!visible) return null;
 
-  // No API key
-  if (!apiKey) {
-    return (
-      <View style={[StyleSheet.absoluteFill, s.overlay]}>
-        <Pressable style={[StyleSheet.absoluteFill, s.overlayBg]} onPress={onClose}>
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        </Pressable>
-        <SafeAreaView style={s.sheet} pointerEvents="box-none">
-          <View style={s.header}>
-            <Pressable style={s.backBtn} onPress={onClose}>
-              <Feather name="chevron-left" size={22} color="#fff" />
-              <Text style={s.headerTitle}>Agents</Text>
-            </Pressable>
-          </View>
-          <View style={s.noKeyContainer}>
-            <Feather name="key" size={32} color="#222" />
-            <Text style={s.noKeyTitle}>API Key Required</Text>
-            <Text style={s.noKeyText}>
-              Go to Settings and add your Anthropic API key.
-            </Text>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
   // No sessions yet - show empty state with create button
   if (sessions.length === 0) {
     return (
@@ -405,18 +377,22 @@ export function AgentPagerModal({
           style={s.pager}
           keyboardShouldPersistTaps="handled"
         >
-          {sessions.map((session) => (
+          {sessions.map((session, i) => (
             <View key={session.id} style={{ width: screenWidth, flex: 1 }}>
-              <ChatView
-                messages={session.messages}
-                isLoading={isLoading && currentSession?.id === session.id}
-                error={currentSession?.id === session.id ? error : null}
-                onSend={(text, images) => sendMessage(session.id, text, images)}
-                renderMessageActions={renderMessageActions}
-                placeholder="Ask anything -- generate screens, add logic, modify components..."
-                initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
-                streamingThinking={currentSession?.id === session.id ? agentRunner?.streamingThinking : null}
-              />
+              {Math.abs(sessionIndex - i) <= 1 ? (
+                <ChatView
+                  messages={session.messages}
+                  isLoading={isLoading && currentSession?.id === session.id}
+                  error={currentSession?.id === session.id ? error : null}
+                  onSend={(text, images) => sendMessage(session.id, text, images)}
+                  renderMessageActions={renderMessageActions}
+                  placeholder="Ask anything -- generate screens, add logic, modify components..."
+                  initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
+                  streamingThinking={currentSession?.id === session.id ? agentRunner?.streamingThinking : null}
+                />
+              ) : (
+                <View style={{ width: screenWidth, flex: 1 }} />
+              )}
             </View>
           ))}
 
@@ -532,26 +508,6 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
-  // Empty / no key states
-  noKeyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-    gap: 12,
-  },
-  noKeyTitle: {
-    color: "#ccc",
-    fontSize: 18,
-    fontWeight: "300",
-    letterSpacing: 0.5,
-  },
-  noKeyText: {
-    color: "#444",
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-  },
   emptyState: {
     flex: 1,
     alignItems: "center",

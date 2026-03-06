@@ -7,7 +7,7 @@ export interface ToggleRendererProps {
   isEditMode?: boolean;
 }
 
-export function ToggleRenderer({ component, isEditMode }: ToggleRendererProps) {
+export const ToggleRenderer = React.memo(function ToggleRenderer({ component, isEditMode }: ToggleRendererProps) {
   const activeColor = component.activeColor ?? "#ffffff";
   const inactiveColor = component.inactiveColor ?? "#333";
   const thumbColor = component.thumbColor ?? "#ffffff";
@@ -32,4 +32,4 @@ export function ToggleRenderer({ component, isEditMode }: ToggleRendererProps) {
       />
     </View>
   );
-}
+});

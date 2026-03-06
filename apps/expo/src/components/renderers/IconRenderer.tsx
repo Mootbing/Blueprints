@@ -14,7 +14,7 @@ export interface IconRendererProps {
   onEditStateChange?: (updates: Partial<TextEditingState>) => void;
 }
 
-export function IconRenderer({
+export const IconRenderer = React.memo(function IconRenderer({
   component,
   isEditMode,
   editTapFired,
@@ -68,4 +68,4 @@ export function IconRenderer({
       <IconComp name={iconName as any} size={size} color={color} />
     </View>
   );
-}
+});

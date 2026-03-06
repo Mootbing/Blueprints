@@ -10,6 +10,8 @@ export interface ChatMessage {
   branchEntryId?: string;
   /** Extended thinking / reasoning text from the model */
   thinking?: string;
+  /** Cryptographic signature for the thinking block (needed for multi-turn) */
+  thinkingSignature?: string;
   timestamp: number;
 }
 

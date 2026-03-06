@@ -13,7 +13,7 @@ const storage = new SupabaseStorageProvider();
 
 type Route =
   | { screen: "home" }
-  | { screen: "editor"; slateId: string };
+  | { screen: "editor"; slateId: string; shareRole?: 'viewer' | 'editor' };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ screen: "home" });
@@ -96,7 +96,7 @@ export default function App() {
         } else {
           setSlateList(list);
         }
-        setRoute({ screen: "editor", slateId: result.slateId });
+        setRoute({ screen: "editor", slateId: result.slateId, shareRole: result.role });
       } catch {
         crossAlert("Error", "Failed to load shared slate.");
       }
@@ -186,6 +186,7 @@ export default function App() {
         onDeleteSlate={() => handleDeleteSlate(route.slateId)}
         onRenameSlate={(name: string) => handleRenameSlate(route.slateId, name)}
         storage={storage}
+        shareRole={route.shareRole}
       />
     );
   }

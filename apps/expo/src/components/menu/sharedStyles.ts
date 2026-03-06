@@ -24,27 +24,6 @@ export const sharedMenuStyles = StyleSheet.create({
     backgroundColor: "#1a1a1a",
     marginVertical: 8,
   },
-  toggleTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#222",
-    justifyContent: "center" as const,
-    paddingHorizontal: 3,
-  },
-  toggleTrackOn: {
-    backgroundColor: "#fff",
-  },
-  toggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#555",
-  },
-  toggleThumbOn: {
-    alignSelf: "flex-end" as const,
-    backgroundColor: "#000",
-  },
   editCard: {
     marginHorizontal: 16,
     marginVertical: 8,

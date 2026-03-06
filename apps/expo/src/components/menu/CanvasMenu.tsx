@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Animated,
   SafeAreaView,
+  Modal,
   Dimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
@@ -22,7 +23,7 @@ import { DetailsPage } from "./ScreensPage";
 import type { ScreenActions } from "../Canvas";
 import { PagerScrollProvider, usePagerScroll } from "../PagerScrollContext";
 
-const PAGE_LABELS = ["Details", "Canvas", "Agent", "Settings"] as const;
+const PAGE_LABELS = ["Details", "Canvas", "Agent"] as const;
 const INITIAL_PAGE = 1; // Start on Canvas
 
 function PagerScrollRegistrar({ scrollRef }: { scrollRef: React.RefObject<ScrollView | null> }) {
@@ -83,9 +84,6 @@ interface CanvasMenuProps {
   canUndo?: boolean;
   canRedo?: boolean;
   onOpenVersionHistory?: () => void;
-  // AI props
-  apiKey: string;
-  onApiKeyChange: (key: string) => void;
   onApplyComponents?: (components: import("../../types").Component[], mode: "replace" | "add") => void;
   storage?: import("../../storage/StorageProvider").StorageProvider;
   // Agent orchestration props
@@ -98,6 +96,7 @@ interface CanvasMenuProps {
   agentRunner?: ReturnType<typeof useAgentRunner>;
   onAIChatComponent?: (id: string) => void;
   onOpenAgentPager?: (sessionId?: string, initialMessage?: string) => void;
+  isPreviewOnly?: boolean;
 }
 
 export function CanvasMenu({
@@ -135,8 +134,6 @@ export function CanvasMenu({
   canUndo,
   canRedo,
   onOpenVersionHistory,
-  apiKey,
-  onApiKeyChange,
   onApplyComponents,
   storage: storageProp,
   historyEntries,
@@ -148,8 +145,10 @@ export function CanvasMenu({
   agentRunner,
   onAIChatComponent,
   onOpenAgentPager,
+  isPreviewOnly,
 }: CanvasMenuProps) {
   const [pageIndex, setPageIndex] = useState(INITIAL_PAGE);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
   const didScrollToInitial = useRef(false);
@@ -233,143 +232,168 @@ export function CanvasMenu({
           }}
         >
           {/* Page 1: Details (Pages + Layers + Workflows) */}
-          <RegisteredScrollView
-            style={{ width: screenWidth }}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            nestedScrollEnabled
-          >
-            <DetailsPage
-              width={screenWidth}
-              screens={slate.screens}
-              currentScreenId={currentScreenId}
-              initialScreenId={initialScreenId}
-              onSwitchScreen={screenActions?.onSwitchScreen ?? (() => {})}
-              onAddScreen={screenActions?.onAddScreen ?? (() => {})}
-              onDeleteScreen={screenActions?.onDeleteScreen ?? (() => {})}
-              onRenameScreen={screenActions?.onRenameScreen ?? (() => {})}
-              onSetInitialScreen={screenActions?.onSetInitialScreen ?? (() => {})}
-              currentScreenName={screen.name}
-              currentComponents={screen.components}
-              onSelectComponent={onTreeSelect}
-              onDeleteComponent={onDeleteComponent}
-              lockedIds={lockedIds}
-              onToggleLock={onToggleLock}
-              onMoveComponent={onMoveComponent}
-              onReparentComponent={onReparentComponent}
-              onAIChatComponent={onAIChatComponent}
-              slate={slate}
-              currentScreen={screen}
-              showAdvancedCode={showAdvancedCode}
-              onNavigateToAgent={handleNavigateToAgent}
-              onEditWorkflow={handleEditWorkflow}
-              onNavigateToCanvas={handleNavigateToCanvas}
-              onOpenAgentPager={onOpenAgentPager}
-              onClose={onClose}
-            />
-          </RegisteredScrollView>
+          {Math.abs(pageIndex - 0) <= 1 ? (
+            <RegisteredScrollView
+              style={{ width: screenWidth }}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              nestedScrollEnabled
+            >
+              <DetailsPage
+                width={screenWidth}
+                screens={slate.screens}
+                currentScreenId={currentScreenId}
+                initialScreenId={initialScreenId}
+                onSwitchScreen={screenActions?.onSwitchScreen ?? (() => {})}
+                onAddScreen={screenActions?.onAddScreen ?? (() => {})}
+                onDeleteScreen={screenActions?.onDeleteScreen ?? (() => {})}
+                onRenameScreen={screenActions?.onRenameScreen ?? (() => {})}
+                onSetInitialScreen={screenActions?.onSetInitialScreen ?? (() => {})}
+                currentScreenName={screen.name}
+                currentComponents={screen.components}
+                onSelectComponent={onTreeSelect}
+                onDeleteComponent={onDeleteComponent}
+                lockedIds={lockedIds}
+                onToggleLock={onToggleLock}
+                onMoveComponent={onMoveComponent}
+                onReparentComponent={onReparentComponent}
+                onAIChatComponent={onAIChatComponent}
+                slate={slate}
+                currentScreen={screen}
+                showAdvancedCode={showAdvancedCode}
+                onNavigateToAgent={handleNavigateToAgent}
+                onEditWorkflow={handleEditWorkflow}
+                onNavigateToCanvas={handleNavigateToCanvas}
+                onOpenAgentPager={onOpenAgentPager}
+                onClose={onClose}
+              />
+            </RegisteredScrollView>
+          ) : (
+            <View style={{ width: screenWidth }} />
+          )}
 
           {/* Page 2: Canvas (Add components) */}
-          <RegisteredScrollView
-            style={{ width: screenWidth }}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            nestedScrollEnabled
-          >
-            <ComponentsPage
-              width={screenWidth}
-              onAddComponent={onAddComponent}
-              onUndo={onUndo}
-              onRedo={onRedo}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onOpenVersionHistory={() => {
-                onClose();
-                onOpenVersionHistory?.();
-              }}
-              storage={storageProp}
-              slateId={slateId}
-            />
-          </RegisteredScrollView>
+          {Math.abs(pageIndex - 1) <= 1 ? (
+            <RegisteredScrollView
+              style={{ width: screenWidth }}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              nestedScrollEnabled
+            >
+              <ComponentsPage
+                width={screenWidth}
+                onAddComponent={onAddComponent}
+                onOpenVersionHistory={() => {
+                  onClose();
+                  onOpenVersionHistory?.();
+                }}
+                storage={storageProp}
+                slateId={slateId}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
+            </RegisteredScrollView>
+          ) : (
+            <View style={{ width: screenWidth }} />
+          )}
 
           {/* Page 3: Agent (list + create) */}
-          <RegisteredScrollView
-            style={{ width: screenWidth }}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            nestedScrollEnabled
-          >
-            <View style={[styles.agentPage, { width: screenWidth }]}>
-              <Text style={styles.agentSectionHeader}>AGENTS</Text>
+          {Math.abs(pageIndex - 2) <= 1 ? (
+            <RegisteredScrollView
+              style={{ width: screenWidth }}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              nestedScrollEnabled
+            >
+              <View style={[styles.agentPage, { width: screenWidth }]}>
+                <Text style={styles.agentSectionHeader}>AGENTS</Text>
 
-              {(!agentRunner || agentRunner.sessions.length === 0) && (
-                <View style={styles.agentEmpty}>
-                  <Feather name="cpu" size={24} color="#222" />
-                  <Text style={styles.agentEmptyTitle}>No agents yet</Text>
-                  <Text style={styles.agentEmptySubtitle}>
-                    Create an agent to generate screens, add logic, or modify your app
-                  </Text>
-                </View>
-              )}
+                {(!agentRunner || agentRunner.sessions.length === 0) && (
+                  <View style={styles.agentEmpty}>
+                    <Feather name="cpu" size={24} color="#222" />
+                    <Text style={styles.agentEmptyTitle}>No agents yet</Text>
+                    <Text style={styles.agentEmptySubtitle}>
+                      Create an agent to generate screens, add logic, or modify your app
+                    </Text>
+                  </View>
+                )}
 
-              {agentRunner?.sessions.map((session) => {
-                const statusColor =
-                  session.status === "running" ? "#60a5fa"
-                  : session.status === "awaiting_review" ? "#f59e0b"
-                  : session.status === "accepted" ? "#22c55e"
-                  : session.status === "rejected" ? "#ef4444"
-                  : "#555";
-                const statusLabel =
-                  session.status === "awaiting_review" ? "Review"
-                  : session.status.charAt(0).toUpperCase() + session.status.slice(1);
-                return (
-                  <Pressable
-                    key={session.id}
-                    style={({ pressed }) => [
-                      styles.agentRow,
-                      pressed && styles.agentRowPressed,
-                    ]}
-                    onPress={() => onOpenAgentPager?.(session.id)}
-                  >
-                    <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
-                    <View style={styles.agentRowInfo}>
-                      <Text style={styles.agentRowName} numberOfLines={1}>
-                        {session.name}
-                      </Text>
-                      <View style={styles.agentRowMeta}>
-                        <View style={[styles.agentStatusDot, { backgroundColor: statusColor }]} />
-                        <Text style={[styles.agentRowStatus, { color: statusColor }]}>
-                          {statusLabel}
+                {agentRunner?.sessions.map((session) => {
+                  const statusColor =
+                    session.status === "running" ? "#60a5fa"
+                    : session.status === "awaiting_review" ? "#f59e0b"
+                    : session.status === "accepted" ? "#22c55e"
+                    : session.status === "rejected" ? "#ef4444"
+                    : "#555";
+                  const statusLabel =
+                    session.status === "awaiting_review" ? "Review"
+                    : session.status.charAt(0).toUpperCase() + session.status.slice(1);
+                  return (
+                    <Pressable
+                      key={session.id}
+                      style={({ pressed }) => [
+                        styles.agentRow,
+                        pressed && styles.agentRowPressed,
+                      ]}
+                      onPress={() => onOpenAgentPager?.(session.id)}
+                    >
+                      <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
+                      <View style={styles.agentRowInfo}>
+                        <Text style={styles.agentRowName} numberOfLines={1}>
+                          {session.name}
                         </Text>
-                        <Text style={styles.agentRowMsgCount}>
-                          {session.messages.length} msgs
-                        </Text>
+                        <View style={styles.agentRowMeta}>
+                          <View style={[styles.agentStatusDot, { backgroundColor: statusColor }]} />
+                          <Text style={[styles.agentRowStatus, { color: statusColor }]}>
+                            {statusLabel}
+                          </Text>
+                          <Text style={styles.agentRowMsgCount}>
+                            {session.messages.length} msgs
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                    <Feather name="chevron-right" size={16} color="#333" />
-                  </Pressable>
-                );
-              })}
+                      <Feather name="chevron-right" size={16} color="#333" />
+                    </Pressable>
+                  );
+                })}
 
-              <Pressable
-                style={({ pressed }) => [
-                  styles.agentAddBtn,
-                  pressed && styles.agentAddBtnPressed,
-                ]}
-                onPress={() => onOpenAgentPager?.()}
-              >
-                <Feather name="plus" size={14} color="#888" />
-                <Text style={styles.agentAddBtnText}>New Agent</Text>
-              </Pressable>
-            </View>
-          </RegisteredScrollView>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.agentAddBtn,
+                    pressed && styles.agentAddBtnPressed,
+                  ]}
+                  onPress={() => onOpenAgentPager?.()}
+                >
+                  <Feather name="plus" size={14} color="#888" />
+                  <Text style={styles.agentAddBtnText}>New Agent</Text>
+                </Pressable>
+              </View>
+            </RegisteredScrollView>
+          ) : (
+            <View style={{ width: screenWidth }} />
+          )}
 
-          {/* Page 4: Settings */}
-          <RegisteredScrollView
-            style={{ width: screenWidth }}
+        </ScrollView>
+        </PagerScrollProvider>
+      </SafeAreaView>
+
+      {/* Settings fullscreen modal */}
+      <Modal
+        visible={settingsOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setSettingsOpen(false)}
+      >
+        <SafeAreaView style={styles.settingsModal}>
+          <View style={styles.settingsHeader}>
+            <Pressable style={styles.settingsBackBtn} onPress={() => setSettingsOpen(false)}>
+              <Feather name="arrow-left" size={20} color="#fff" />
+            </Pressable>
+            <Text style={styles.settingsTitle}>Slate Settings</Text>
+            <View style={{ width: 36 }} />
+          </View>
+          <ScrollView
             showsVerticalScrollIndicator={false}
             bounces={false}
-            nestedScrollEnabled
           >
             <SettingsPage
               width={screenWidth}
@@ -381,23 +405,19 @@ export function CanvasMenu({
               onToggleSnapping={onToggleSnapping}
               onToggleInspector={onToggleInspector}
               onToggleAdvancedCode={onToggleAdvancedCode}
-              onCloseSlate={onCloseSlate}
-              onDeleteSlate={onDeleteSlate}
-              onClose={onClose}
+              onCloseSlate={() => { setSettingsOpen(false); onCloseSlate(); }}
+              onDeleteSlate={() => { setSettingsOpen(false); onDeleteSlate(); }}
+              onClose={() => { setSettingsOpen(false); onClose(); }}
               slate={slate}
               slateId={slateId}
               slateName={slateName}
               onRenameSlate={onRenameSlate}
               onSlateChange={onSlateChange}
-              apiKey={apiKey}
-              onApiKeyChange={onApiKeyChange}
               storage={storageProp}
             />
-          </RegisteredScrollView>
-
-        </ScrollView>
-        </PagerScrollProvider>
-      </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </Animated.View>
   );
 }
@@ -555,5 +575,31 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 13,
     fontWeight: "600",
+  },
+  settingsModal: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  settingsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#1a1a1a",
+  },
+  settingsBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsTitle: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 });

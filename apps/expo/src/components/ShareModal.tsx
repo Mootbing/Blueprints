@@ -105,7 +105,7 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
                 disabled={creating}
               >
                 <Feather name="eye" size={14} color="#ccc" />
-                <Text style={styles.createBtnText}>Viewer</Text>
+                <Text style={styles.createBtnText}>Preview</Text>
               </Pressable>
               <Pressable
                 style={[styles.createBtn, creating && styles.createBtnDisabled]}
@@ -155,7 +155,7 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
                           {url}
                         </Text>
                         <Text style={styles.linkRole}>
-                          {link.role} {!link.isActive ? "(revoked)" : ""}
+                          {link.role === 'viewer' ? 'preview' : link.role} {!link.isActive ? "(revoked)" : ""}
                         </Text>
                       </View>
                       <View style={styles.linkActions}>

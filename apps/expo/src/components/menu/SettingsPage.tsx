@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, Pressable, Text, TextInput, StyleSheet, Platform, Share, Modal } from "react-native";
+import { View, Pressable, Text, TextInput, StyleSheet, Platform, Share, Modal, Switch } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { crossAlert } from "../../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -153,68 +153,166 @@ function ValueEditorModal({
   const Demo = type === 'borderRadius' ? BorderRadiusDemo : type === 'spacing' ? SpacingDemo : FontSizeDemo;
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
-        onPress={onClose}
-      >
-        <View
-          style={{
-            backgroundColor: '#111', borderRadius: 16, padding: 24, width: 260,
-            alignItems: 'center', borderWidth: 1, borderColor: '#222',
-          }}
-          onStartShouldSetResponder={() => true}
-        >
-          <View style={{ height: 72, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={veStyles.overlay}>
+        <View style={veStyles.sheet}>
+          <View style={veStyles.header}>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Text style={veStyles.cancelText}>Cancel</Text>
+            </Pressable>
+            <Text style={veStyles.title}>{label}</Text>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Text style={veStyles.doneText}>Done</Text>
+            </Pressable>
+          </View>
+
+          <View style={veStyles.demoRow}>
             <Demo value={value} />
           </View>
-          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', fontFamily: 'monospace' }}>
-            {value}<Text style={{ color: '#555', fontSize: 14, fontWeight: '500' }}>px</Text>
+
+          <Text style={veStyles.valueDisplay}>
+            {value}<Text style={veStyles.valueUnit}>px</Text>
           </Text>
-          <Text style={{ color: '#666', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 20, letterSpacing: 1 }}>
-            {label}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, width: '100%' }}>
+
+          <View style={veStyles.sliderRow}>
             <Pressable
-              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }}
+              style={veStyles.stepBtn}
               onPress={() => onValueChange(Math.max(range.min, value - 1))}
             >
-              <Text style={{ color: '#888', fontSize: 18, fontWeight: '600' }}>{"\u2212"}</Text>
+              <Text style={veStyles.stepBtnText}>{"\u2212"}</Text>
             </Pressable>
             <View
-              style={{ flex: 1, height: 36, justifyContent: 'center', overflow: 'visible' }}
+              style={veStyles.sliderTrackWrap}
               onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width; }}
               onStartShouldSetResponder={() => true}
               onMoveShouldSetResponder={() => true}
               onResponderGrant={(e) => handleTouch(e.nativeEvent.locationX)}
               onResponderMove={(e) => handleTouch(e.nativeEvent.locationX)}
             >
-              <View style={{ height: 4, backgroundColor: '#222', borderRadius: 2, overflow: 'hidden' }}>
-                <View style={{ height: 4, backgroundColor: '#fff', width: `${ratio * 100}%` }} />
+              <View style={veStyles.sliderTrack}>
+                <View style={[veStyles.sliderFill, { width: `${ratio * 100}%` }]} />
               </View>
               <View
-                style={{
-                  position: 'absolute', left: `${ratio * 100}%`, top: 8,
-                  width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
-                  transform: [{ translateX: -10 }],
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.3, shadowRadius: 4, elevation: 4,
-                }}
+                style={[veStyles.sliderThumb, { left: `${ratio * 100}%` }]}
                 pointerEvents="none"
               />
             </View>
             <Pressable
-              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }}
+              style={veStyles.stepBtn}
               onPress={() => onValueChange(Math.min(range.max, value + 1))}
             >
-              <Text style={{ color: '#888', fontSize: 18, fontWeight: '600' }}>+</Text>
+              <Text style={veStyles.stepBtnText}>+</Text>
             </Pressable>
           </View>
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
+
+const veStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "#000",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 40,
+    paddingBottom: 40,
+    paddingTop: 16,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  cancelText: {
+    color: "#555",
+    fontSize: 16,
+  },
+  title: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "300",
+    letterSpacing: 0.5,
+  },
+  doneText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  demoRow: {
+    height: 80,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  valueDisplay: {
+    color: "#fff",
+    fontSize: 36,
+    fontWeight: "700",
+    fontFamily: "monospace",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  valueUnit: {
+    color: "#555",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  sliderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#1a1a1a",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepBtnText: {
+    color: "#888",
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  sliderTrackWrap: {
+    flex: 1,
+    height: 36,
+    justifyContent: "center",
+    overflow: "visible",
+  },
+  sliderTrack: {
+    height: 4,
+    backgroundColor: "#222",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  sliderFill: {
+    height: 4,
+    backgroundColor: "#fff",
+  },
+  sliderThumb: {
+    position: "absolute",
+    top: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    transform: [{ translateX: -10 }],
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+});
 
 interface SlateExportProject {
   _exportType: "project";
@@ -265,8 +363,6 @@ interface SettingsPageProps {
   slateName?: string;
   onRenameSlate?: (name: string) => void;
   onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
-  apiKey: string;
-  onApiKeyChange: (key: string) => void;
   storage?: StorageProvider;
 }
 
@@ -289,20 +385,16 @@ export function SettingsPage({
   slateName,
   onRenameSlate,
   onSlateChange,
-  apiKey,
-  onApiKeyChange,
   storage,
 }: SettingsPageProps) {
   const [isRenaming, setIsRenaming] = useState(false);
-  const [renameDraft, setRenameDraft] = useState(slateName ?? "");
+  const [renameDraft, setRenameDraft] = useState(slateName ?? "")
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [colorPickerTarget, setColorPickerTarget] = useState<{
     type: "color" | "bgColor";
     key: string;
     currentValue: string;
   } | null>(null);
-  const [showKeyInput, setShowKeyInput] = useState(false);
-  const [keyDraft, setKeyDraft] = useState("");
   const [activeEditor, setActiveEditor] = useState<{ type: EditorType; key: string; label: string } | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const isSyncable = storage && 'joinCollabChannel' in storage;
@@ -539,79 +631,19 @@ export function SettingsPage({
 
   return (
     <View style={[styles.page, { width }]}>
-      {/* Mode */}
-      <Text style={styles.categoryHeader}>MODE</Text>
-      <Pressable style={styles.row} onPress={onToggleEditMode}>
-        <Text style={styles.rowLabel}>Preview Mode</Text>
-        <View style={[styles.toggleTrack, !isEditMode && styles.toggleTrackOn]}>
-          <View style={[styles.toggleThumb, !isEditMode && styles.toggleThumbOn]} />
-        </View>
-      </Pressable>
-
-      <View style={styles.divider} />
-
-      {/* AI */}
-      <Text style={styles.categoryHeader}>AI</Text>
-      <View style={styles.aiSection}>
-        <Text style={styles.rowLabel}>Anthropic API Key</Text>
-        {apiKey && !showKeyInput ? (
-          <View style={styles.keyDisplayRow}>
-            <Text style={styles.keyMask}>
-              {"*".repeat(8)}...{apiKey.slice(-4)}
-            </Text>
-            <Pressable
-              style={styles.keyChangeBtn}
-              onPress={() => { setShowKeyInput(true); setKeyDraft(""); }}
-            >
-              <Text style={styles.keyChangeBtnText}>Change</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.keyInputRow}>
-            <TextInput
-              style={styles.keyInput}
-              value={keyDraft}
-              onChangeText={setKeyDraft}
-              placeholder="sk-ant-..."
-              placeholderTextColor="rgba(255,255,255,0.25)"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
-            <Pressable
-              style={[styles.keySaveBtn, !keyDraft.trim() && styles.keySaveBtnDisabled]}
-              onPress={() => {
-                if (keyDraft.trim()) {
-                  onApiKeyChange(keyDraft.trim());
-                  setShowKeyInput(false);
-                  setKeyDraft("");
-                }
-              }}
-              disabled={!keyDraft.trim()}
-            >
-              <Text style={styles.keySaveBtnText}>Save</Text>
-            </Pressable>
-            {apiKey && (
-              <Pressable style={styles.keyCancelBtn} onPress={() => setShowKeyInput(false)}>
-                <Text style={styles.keyCancelBtnText}>Cancel</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-      </View>
-
-      <View style={styles.divider} />
-
       {/* Design */}
       <Text style={styles.categoryHeader}>DESIGN</Text>
 
       {isEditMode && (
-        <Pressable style={styles.row} onPress={onToggleSnapping}>
+        <View style={styles.row}>
           <Text style={styles.rowLabel}>Snap to Style Guides</Text>
-          <View style={[styles.toggleTrack, snappingEnabled && styles.toggleTrackOn]}>
-            <View style={[styles.toggleThumb, snappingEnabled && styles.toggleThumbOn]} />
-          </View>
-        </Pressable>
+          <Switch
+            value={snappingEnabled}
+            onValueChange={onToggleSnapping}
+            trackColor={{ false: "#222", true: "#fff" }}
+            thumbColor={snappingEnabled ? "#000" : "#555"}
+          />
+        </View>
       )}
 
       <Pressable
@@ -699,18 +731,24 @@ export function SettingsPage({
 
       {/* Advanced */}
       <Text style={styles.categoryHeader}>ADVANCED</Text>
-      <Pressable style={styles.row} onPress={onToggleInspector}>
-        <Text style={styles.rowLabel}>View Code per Component</Text>
-        <View style={[styles.toggleTrack, inspectorEnabled && styles.toggleTrackOn]}>
-          <View style={[styles.toggleThumb, inspectorEnabled && styles.toggleThumbOn]} />
-        </View>
-      </Pressable>
-      <Pressable style={styles.row} onPress={onToggleAdvancedCode}>
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Show Code on Component</Text>
+        <Switch
+          value={inspectorEnabled}
+          onValueChange={onToggleInspector}
+          trackColor={{ false: "#222", true: "#fff" }}
+          thumbColor={inspectorEnabled ? "#000" : "#555"}
+        />
+      </View>
+      <View style={styles.row}>
         <Text style={styles.rowLabel}>Show Workflow Code</Text>
-        <View style={[styles.toggleTrack, showAdvancedCode && styles.toggleTrackOn]}>
-          <View style={[styles.toggleThumb, showAdvancedCode && styles.toggleThumbOn]} />
-        </View>
-      </Pressable>
+        <Switch
+          value={showAdvancedCode}
+          onValueChange={onToggleAdvancedCode}
+          trackColor={{ false: "#222", true: "#fff" }}
+          thumbColor={showAdvancedCode ? "#000" : "#555"}
+        />
+      </View>
 
       <View style={styles.divider} />
 
@@ -866,10 +904,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
-  toggleTrack: sharedMenuStyles.toggleTrack,
-  toggleTrackOn: sharedMenuStyles.toggleTrackOn,
-  toggleThumb: sharedMenuStyles.toggleThumb,
-  toggleThumbOn: sharedMenuStyles.toggleThumbOn,
   styleGuideRow: {
     backgroundColor: "#0a0a0a",
     borderTopWidth: 1,
@@ -1079,37 +1113,6 @@ const styles = StyleSheet.create({
     color: "#333",
     fontSize: 11,
     letterSpacing: 0.5,
-  },
-  // AI section
-  aiSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    gap: 10,
-  },
-  keyDisplayRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  keyMask: {
-    color: "#555",
-    fontSize: 13,
-    fontFamily: "monospace",
-    flex: 1,
-    letterSpacing: 0.5,
-  },
-  keyChangeBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-  },
-  keyChangeBtnText: {
-    color: "#ccc",
-    fontSize: 13,
-    fontWeight: "600",
   },
   keyInputRow: {
     flexDirection: "row",

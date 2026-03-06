@@ -18,7 +18,12 @@ function getWrapStyle(wrapMode?: string) {
   return {};
 }
 
-export function TextRenderer({
+/** Insert zero-width spaces between chars so RN can break at any letter */
+function letterWrap(text: string): string {
+  return text.split("").join("\u200B");
+}
+
+export const TextRenderer = React.memo(function TextRenderer({
   component,
   isEditMode,
   editTapFired,
@@ -88,7 +93,7 @@ export function TextRenderer({
 
   return (
     <Text style={textStyle} {...getWrapStyle(compWrapMode)}>
-      {component.content}
+      {compWrapMode === "wrap-text" ? letterWrap(component.content) : component.content}
     </Text>
   );
-}
+});

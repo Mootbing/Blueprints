@@ -7,7 +7,7 @@ export interface ImageRendererProps {
   onPickImage?: () => void;
 }
 
-export function ImageRenderer({ component, onPickImage }: ImageRendererProps) {
+export const ImageRenderer = React.memo(function ImageRenderer({ component, onPickImage }: ImageRendererProps) {
   const [hasError, setHasError] = useState(false);
 
   if (hasError) {
@@ -67,4 +67,4 @@ export function ImageRenderer({ component, onPickImage }: ImageRendererProps) {
       onError={() => setHasError(true)}
     />
   );
-}
+});

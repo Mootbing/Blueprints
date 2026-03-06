@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet, Platform, PanResponder, Animated, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { Component } from "../../types";
@@ -118,6 +118,9 @@ interface TreeViewProps {
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
   onReparentComponent?: (componentId: string, newParentId: string | null) => void;
   onAIChatComponent?: (id: string) => void;
+  selectedIds?: Set<string>;
+  multiSelectMode?: boolean;
+  onToggleMultiSelect?: (id: string) => void;
 }
 
 export function TreeView({
@@ -129,9 +132,12 @@ export function TreeView({
   onMoveComponent,
   onReparentComponent,
   onAIChatComponent,
+  selectedIds,
+  multiSelectMode,
+  onToggleMultiSelect,
 }: TreeViewProps) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const allNodes = flattenComponentTree(components);
+  const allNodes = useMemo(() => flattenComponentTree(components), [components]);
 
   const toggleCollapse = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -143,13 +149,13 @@ export function TreeView({
   }, []);
 
   // Filter out children of collapsed containers
-  const nodes = allNodes.filter((node) => {
+  const nodes = useMemo(() => allNodes.filter((node) => {
     const parts = node.path.split("/");
     for (let i = 0; i < parts.length - 1; i++) {
       if (collapsedIds.has(parts[i])) return false;
     }
     return true;
-  });
+  }), [allNodes, collapsedIds]);
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -319,6 +325,7 @@ export function TreeView({
       {nodes.map((node, i) => {
         const isDragged = dragFlatIndex === i;
         const isLocked = lockedIds?.has(node.component.id) ?? false;
+        const isMultiSelected = selectedIds?.has(node.component.id) ?? false;
 
         // Show insertion indicator at the hovered flat position
         const showInsertBefore =
@@ -365,8 +372,15 @@ export function TreeView({
                     { paddingLeft: !onMoveComponent && !onToggleLock ? 16 + node.depth * 24 : node.depth * 20 },
                     pressed && styles.treeRowPressed,
                     isLocked && styles.treeRowLocked,
+                    isMultiSelected && styles.treeRowMultiSelected,
                   ]}
-                  onPress={() => onSelectComponent(node.component.id)}
+                  onPress={() => {
+                    if (multiSelectMode && onToggleMultiSelect) {
+                      onToggleMultiSelect(node.component.id);
+                    } else {
+                      onSelectComponent(node.component.id);
+                    }
+                  }}
                 >
                   {node.component.type === "container" && (
                     <Pressable
@@ -452,6 +466,11 @@ const styles = StyleSheet.create({
   },
   treeRowLocked: {
     opacity: 0.5,
+  },
+  treeRowMultiSelected: {
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#3b82f6",
   },
   label: {
     color: "#ccc",

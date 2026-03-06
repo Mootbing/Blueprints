@@ -210,9 +210,22 @@ export const defaultSlate: AppSlate = {
       components: [
         bg("00000000-0000-0000-0000-0000000002b0"),
         {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000200",
+          layout: { x: 0.04, y: 0.06, width: 0.2, height: 0.045 },
+          label: "← Back",
+          backgroundColor: "#1a1a1a",
+          textColor: "#888",
+          fontSize: 14,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 10,
+          actions: { onTap: [{ type: "NAVIGATE", target: SCREEN_ID }] },
+        },
+        {
           type: "text",
           id: "00000000-0000-0000-0000-000000000201",
-          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          layout: { x: 0.06, y: 0.12, width: 0.88, height: 0.04 },
           content: "Timer",
           fontSize: 28,
           color: "#ffffff",
@@ -292,9 +305,22 @@ export const defaultSlate: AppSlate = {
       components: [
         bg("00000000-0000-0000-0000-0000000003b0"),
         {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000300",
+          layout: { x: 0.04, y: 0.06, width: 0.2, height: 0.045 },
+          label: "← Back",
+          backgroundColor: "#1a1a1a",
+          textColor: "#888",
+          fontSize: 14,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 10,
+          actions: { onTap: [{ type: "NAVIGATE", target: SCREEN_ID }] },
+        },
+        {
           type: "text",
           id: "00000000-0000-0000-0000-000000000301",
-          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          layout: { x: 0.06, y: 0.12, width: 0.88, height: 0.04 },
           content: "Counter",
           fontSize: 28,
           color: "#ffffff",
@@ -372,9 +398,22 @@ export const defaultSlate: AppSlate = {
       components: [
         bg("00000000-0000-0000-0000-0000000004b0"),
         {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000400",
+          layout: { x: 0.04, y: 0.06, width: 0.2, height: 0.045 },
+          label: "← Back",
+          backgroundColor: "#1a1a1a",
+          textColor: "#888",
+          fontSize: 14,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 10,
+          actions: { onTap: [{ type: "NAVIGATE", target: SCREEN_ID }] },
+        },
+        {
           type: "text",
           id: "00000000-0000-0000-0000-000000000401",
-          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          layout: { x: 0.06, y: 0.12, width: 0.88, height: 0.04 },
           content: "Random Number",
           fontSize: 28,
           color: "#ffffff",
@@ -474,6 +513,7 @@ interface SlateEditorProps {
   onDeleteSlate: () => void;
   onRenameSlate: (name: string) => void;
   storage: StorageProvider;
+  shareRole?: 'viewer' | 'editor';
 }
 
 export function SlateEditor({
@@ -483,6 +523,7 @@ export function SlateEditor({
   onDeleteSlate,
   onRenameSlate,
   storage,
+  shareRole,
 }: SlateEditorProps) {
   const {
     slate,
@@ -503,9 +544,9 @@ export function SlateEditor({
     createBranch,
     addBranchEntry,
   } = useUndoHistory(defaultSlate);
-  const [isEditMode, setIsEditMode] = useState(true);
+  const isPreviewOnly = shareRole === 'viewer';
+  const [isEditMode, setIsEditMode] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [apiKey, setApiKey] = useState(process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "");
   const [currentScreenId, setCurrentScreenId] = useState(SCREEN_ID);
   const currentScreenIdRef = useRef(currentScreenId);
   currentScreenIdRef.current = currentScreenId;
@@ -535,14 +576,12 @@ export function SlateEditor({
   useEffect(() => {
     (async () => {
       try {
-        const [bp, editMode, persistedJson, savedApiKey, savedHistory] = await Promise.all([
+        const [bp, editMode, persistedJson, savedHistory] = await Promise.all([
           storage.loadSlate(slateId),
           AsyncStorage.getItem("settings_editMode"),
           AsyncStorage.getItem(`runtime_persisted_variables_${slateId}`),
-          AsyncStorage.getItem("settings_anthropic_api_key"),
           storage.loadHistory(slateId),
         ]);
-        if (savedApiKey) setApiKey(savedApiKey);
 
         const loadedBp = bp ?? defaultSlate;
 
@@ -554,7 +593,7 @@ export function SlateEditor({
         }
         setCurrentScreenId(loadedBp.initial_screen_id);
 
-        // Always start in edit mode
+        if (editMode !== null) setIsEditMode(editMode === "true");
         isEditModeLoaded.current = true;
 
         // Init runtime store
@@ -873,10 +912,6 @@ export function SlateEditor({
     setSlate((prev) => ({ ...prev, initial_screen_id: screenId }), "Set initial screen");
   }, [setSlate]);
 
-  const handleApiKeyChange = useCallback((key: string) => {
-    setApiKey(key);
-    AsyncStorage.setItem("settings_anthropic_api_key", key);
-  }, []);
 
   if (!loaded) return null;
 
@@ -886,8 +921,9 @@ export function SlateEditor({
       <Canvas
         slate={slate}
         screenId={currentScreenId}
-        isEditMode={isEditMode}
-        onToggleEditMode={() => setIsEditMode((v) => !v)}
+        isEditMode={isPreviewOnly ? false : isEditMode}
+        onToggleEditMode={isPreviewOnly ? () => {} : () => setIsEditMode((v) => !v)}
+        isPreviewOnly={isPreviewOnly}
         onComponentUpdate={handleComponentUpdate}
         onContentChange={handleContentChange}
         onStyleChange={handleStyleChange}
@@ -930,8 +966,6 @@ export function SlateEditor({
           onRenameScreen: handleRenameScreen,
           onSetInitialScreen: handleSetInitialScreen,
         }}
-        apiKey={apiKey}
-        onApiKeyChange={handleApiKeyChange}
         slateId={slateId}
         storage={storage}
       />

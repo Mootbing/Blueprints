@@ -1,15 +1,14 @@
 import type { Component, Theme } from "../types";
-import { callClaude } from "./anthropicClient";
 import { modifyComponentSystemPrompt } from "./prompts";
-import { parseSingleComponent } from "./parseResponse";
+import { submitJob, getJobResult } from "./aiJobClient";
 import type { AnthropicMessage, AnthropicContentBlock } from "./types";
 
 /**
- * Modifies a single component via chat conversation with Claude.
+ * Modifies a single component via chat conversation with Claude (via edge function).
  * Returns the raw text response.
  */
 export async function modifyComponentChat(
-  apiKey: string,
+  slateId: string,
   component: Component,
   messages: AnthropicMessage[],
   theme?: Theme,
@@ -20,11 +19,9 @@ export async function modifyComponentChat(
   const contextPrefix = `Here is the current component JSON:\n\n<json>${JSON.stringify(component, null, 2)}</json>\n\n`;
   const augmentedMessages = messages.map((m, i) => {
     if (i !== 0) return m;
-    // Handle both string and content-block array formats
     if (typeof m.content === "string") {
       return { ...m, content: contextPrefix + m.content };
     }
-    // Content blocks: prepend context as a text block
     const blocks = m.content as AnthropicContentBlock[];
     const textIdx = blocks.findIndex((b) => b.type === "text");
     if (textIdx >= 0) {
@@ -36,8 +33,25 @@ export async function modifyComponentChat(
     return { ...m, content: [{ type: "text" as const, text: contextPrefix }, ...blocks] };
   });
 
-  const result = await callClaude(apiKey, system, augmentedMessages);
-  return result.text;
+  const jobId = await submitJob({
+    slateId,
+    jobType: "modify_component",
+    request: { system, messages: augmentedMessages },
+  });
+
+  // Poll for result
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const result = await getJobResult(jobId);
+    if (result?.status === "completed" && result.response?.text) {
+      return result.response.text;
+    }
+    if (result?.status === "failed") {
+      throw new Error(result.error_message ?? "Component modification failed");
+    }
+  }
+
+  throw new Error("Component modification timed out");
 }
 
 /**

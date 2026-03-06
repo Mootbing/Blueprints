@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -48,15 +48,15 @@ export function HomeScreen({
   const [renameTarget, setRenameTarget] = useState<SlateMeta | null>(null);
   const [renameText, setRenameText] = useState("");
 
-  const handleCreate = () => {
+  const handleCreate = useCallback(() => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     onCreateSlate(trimmed);
     setNewName("");
     setNameModalVisible(false);
-  };
+  }, [newName, onCreateSlate]);
 
-  const confirmDelete = (bp: SlateMeta) => {
+  const confirmDelete = useCallback((bp: SlateMeta) => {
     if (Platform.OS === "web") {
       if (window.confirm(`Delete "${bp.name}"?\n\nThis cannot be undone.`)) {
         onDeleteSlate(bp.id);
@@ -64,7 +64,7 @@ export function HomeScreen({
     } else {
       setDeleteTarget(bp);
     }
-  };
+  }, [onDeleteSlate]);
 
   const formatDate = (ts: number) => {
     const d = new Date(ts);
@@ -75,7 +75,7 @@ export function HomeScreen({
     });
   };
 
-  const sorted = [...slates].sort((a, b) => b.createdAt - a.createdAt);
+  const sorted = useMemo(() => [...slates].sort((a, b) => b.createdAt - a.createdAt), [slates]);
 
   return (
     <SafeAreaView style={styles.container}>

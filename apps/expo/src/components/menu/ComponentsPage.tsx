@@ -124,30 +124,40 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       padding: 0.02,
     }),
   },
+  {
+    label: "Scroll",
+    icon: "SCR",
+    create: (x, y) => ({
+      type: "container" as const,
+      id: uuid(),
+      layout: { x, y, width: 0.85, height: 0.4 },
+      backgroundColor: "#0a0a0a",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#1a1a1a",
+      padding: 0.02,
+      scrollable: true,
+      scrollDirection: "vertical" as const,
+    }),
+  },
 ];
 
 interface ComponentsPageProps {
   width: number;
   onAddComponent: (preset: (typeof PRESETS)[number]) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
   onOpenVersionHistory?: () => void;
   storage?: import("../../storage/StorageProvider").StorageProvider;
   slateId?: string;
+  onOpenSettings?: () => void;
 }
 
 export function ComponentsPage({
   width,
   onAddComponent,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
   onOpenVersionHistory,
   storage,
   slateId,
+  onOpenSettings,
 }: ComponentsPageProps) {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const isSyncable = storage && 'joinCollabChannel' in storage;
@@ -159,30 +169,6 @@ export function ComponentsPage({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.undoRow}
       >
-        <Pressable
-          style={({ pressed }) => [styles.undoBtn, pressed && canUndo && styles.undoBtnPressed]}
-          onPress={onUndo}
-          disabled={!canUndo}
-        >
-          <Feather
-            name="corner-up-left"
-            size={18}
-            color={canUndo ? "#fff" : "#333"}
-          />
-          <Text style={[styles.undoLabel, !canUndo && styles.undoLabelDisabled]}>Undo</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.undoBtn, pressed && canRedo && styles.undoBtnPressed]}
-          onPress={onRedo}
-          disabled={!canRedo}
-        >
-          <Feather
-            name="corner-up-right"
-            size={18}
-            color={canRedo ? "#fff" : "#333"}
-          />
-          <Text style={[styles.undoLabel, !canRedo && styles.undoLabelDisabled]}>Redo</Text>
-        </Pressable>
         <Pressable
           style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
           onPress={onOpenVersionHistory}
@@ -199,6 +185,13 @@ export function ComponentsPage({
             <Text style={styles.undoLabel}>Live Share</Text>
           </Pressable>
         )}
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+          onPress={onOpenSettings}
+        >
+          <Feather name="settings" size={18} color="#fff" />
+          <Text style={styles.undoLabel}>Slate Settings</Text>
+        </Pressable>
       </ScrollView>
 
       <View style={styles.sectionDivider} />
@@ -260,9 +253,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 0.3,
-  },
-  undoLabelDisabled: {
-    color: "#333",
   },
   row: {
     flexDirection: "row",

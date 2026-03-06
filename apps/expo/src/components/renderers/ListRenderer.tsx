@@ -7,7 +7,7 @@ export interface ListRendererProps {
   isEditMode?: boolean;
 }
 
-export function ListRenderer({ component }: ListRendererProps) {
+export const ListRenderer = React.memo(function ListRenderer({ component }: ListRendererProps) {
   const itemHeight = component.itemHeight ?? 56;
   const showDividers = component.showDividers ?? true;
   const dividerColor = component.dividerColor ?? "#1a1a1a";
@@ -72,4 +72,4 @@ export function ListRenderer({ component }: ListRendererProps) {
       </ScrollView>
     </View>
   );
-}
+});

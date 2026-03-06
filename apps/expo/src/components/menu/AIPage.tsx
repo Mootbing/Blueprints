@@ -15,7 +15,6 @@ import type { ChatMessage, AnthropicMessage } from "../../ai/types";
 interface AIPageProps {
   width: number;
   screen: Screen;
-  apiKey: string;
   theme?: Theme;
   slateId: string;
   onApplyComponents: (components: Component[], mode: "replace" | "add") => void;
@@ -27,7 +26,6 @@ interface AIPageProps {
 export function AIPage({
   width,
   screen,
-  apiKey,
   theme,
   slateId,
   onApplyComponents,
@@ -37,10 +35,9 @@ export function AIPage({
 }: AIPageProps) {
   const sendFn = useCallback(
     async (messages: AnthropicMessage[]) => {
-      if (!apiKey) throw new Error("Please set your API key in Settings first");
-      return generateScreenChat(apiKey, messages, theme);
+      return generateScreenChat(slateId, messages, theme);
     },
-    [apiKey, theme],
+    [slateId, theme],
   );
 
   const { messages, isLoading, error, sendMessage, clearMessages } = useAIChat({
@@ -104,19 +101,8 @@ export function AIPage({
     [screen.components, onApplyComponents],
   );
 
-  const hasKey = !!apiKey;
-
   return (
     <View style={[styles.page, { width }]}>
-      {!hasKey ? (
-        <View style={styles.noKeyContainer}>
-          <Feather name="key" size={32} color="#222" />
-          <Text style={styles.noKeyTitle}>API Key Required</Text>
-          <Text style={styles.noKeyText}>
-            Go to Settings tab and add your Anthropic API key to use AI features.
-          </Text>
-        </View>
-      ) : (
         <ChatView
           messages={messages}
           isLoading={isLoading || isTidying}
@@ -154,7 +140,6 @@ export function AIPage({
             </>
           }
         />
-      )}
     </View>
   );
 }
@@ -162,26 +147,6 @@ export function AIPage({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-  },
-  noKeyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-    paddingVertical: 80,
-    gap: 12,
-  },
-  noKeyTitle: {
-    color: "#ccc",
-    fontSize: 18,
-    fontWeight: "300",
-    letterSpacing: 0.5,
-  },
-  noKeyText: {
-    color: "#444",
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
   },
   actionBtn: {
     flexDirection: "row",

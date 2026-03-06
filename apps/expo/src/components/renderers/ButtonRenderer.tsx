@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Text, TextInput, View } from "react-native";
 import type { ButtonComponent } from "../../types";
 import type { TextEditingState } from "../EditorToolbar";
+import { GradientOverlay } from "../GradientOverlay";
 
 export interface ButtonRendererProps {
   component: ButtonComponent;
@@ -13,7 +14,7 @@ export interface ButtonRendererProps {
   onEditStateChange?: (updates: Partial<TextEditingState>) => void;
 }
 
-export function ButtonRenderer({
+export const ButtonRenderer = React.memo(function ButtonRenderer({
   component,
   isEditMode,
   editTapFired,
@@ -68,12 +69,26 @@ export function ButtonRenderer({
     );
   }
 
+  const shadowEnabled = component.shadowEnabled ?? false;
+  const gradientEnabled = component.gradientEnabled ?? false;
+  const gradientColors = component.gradientColors;
+  const btnBorderRadius = component.borderRadius ?? 8;
+
   const buttonStyle = {
     flex: 1,
     backgroundColor: component.backgroundColor,
     alignItems: "center" as const,
     justifyContent: "center" as const,
-    borderRadius: component.borderRadius ?? 8,
+    borderRadius: btnBorderRadius,
+    ...(shadowEnabled
+      ? {
+          shadowColor: component.shadowColor ?? "#000000",
+          shadowOpacity: component.shadowOpacity ?? 0.15,
+          shadowRadius: component.shadowRadius ?? 8,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
+        }
+      : {}),
   };
 
   const textStyle = {
@@ -86,7 +101,14 @@ export function ButtonRenderer({
 
   return (
     <View style={buttonStyle}>
+      {gradientEnabled && gradientColors && gradientColors.length >= 2 && (
+        <GradientOverlay
+          colors={gradientColors}
+          direction={component.gradientDirection}
+          borderRadius={btnBorderRadius}
+        />
+      )}
       <Text style={textStyle}>{component.label}</Text>
     </View>
   );
-}
+});

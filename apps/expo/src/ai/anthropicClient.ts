@@ -6,6 +6,7 @@ const MODEL = "claude-opus-4-6";
 export interface ClaudeResult {
   text: string;
   thinking?: string;
+  thinkingSignature?: string;
   stopReason: string;
 }
 
@@ -37,6 +38,7 @@ export async function callClaude(
   system: string,
   messages: Array<{ role: "user" | "assistant"; content: string | AnthropicContentBlock[] }>,
   maxTokens = 4096,
+  signal?: AbortSignal,
 ): Promise<ClaudeResult> {
   const body: AnthropicRequest = {
     model: MODEL,
@@ -54,6 +56,7 @@ export async function callClaude(
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!res.ok) {
@@ -89,6 +92,7 @@ export async function callClaudeStreaming(
   thinkingBudget = 10000,
   onThinking?: (chunk: string) => void,
   onText?: (chunk: string) => void,
+  signal?: AbortSignal,
 ): Promise<ClaudeResult> {
   const body = {
     model: MODEL,
@@ -108,6 +112,7 @@ export async function callClaudeStreaming(
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!res.ok) {
@@ -123,6 +128,7 @@ export async function callClaudeStreaming(
   }
 
   let thinking = "";
+  let thinkingSignature = "";
   let text = "";
   let stopReason = "";
 
@@ -152,6 +158,8 @@ export async function callClaudeStreaming(
             if (event.delta?.type === "thinking_delta" && event.delta.thinking) {
               thinking += event.delta.thinking;
               onThinking?.(event.delta.thinking);
+            } else if (event.delta?.type === "signature_delta" && event.delta.signature) {
+              thinkingSignature += event.delta.signature;
             } else if (event.delta?.type === "text_delta" && event.delta.text) {
               text += event.delta.text;
               onText?.(event.delta.text);
@@ -178,11 +186,13 @@ export async function callClaudeStreaming(
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({ ...body, stream: false }),
+      signal,
     });
     const data = await fallbackRes.json();
     for (const block of data.content ?? []) {
       if (block.type === "thinking") {
         thinking += block.thinking;
+        if (block.signature) thinkingSignature = block.signature;
         onThinking?.(block.thinking);
       } else if (block.type === "text") {
         text += block.text;
@@ -196,5 +206,5 @@ export async function callClaudeStreaming(
     throw new Error("Empty response from Claude");
   }
 
-  return { text, thinking: thinking || undefined, stopReason };
+  return { text, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, stopReason };
 }

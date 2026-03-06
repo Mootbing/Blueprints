@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Switch } from "react-native";
 import type { AppSlate, Variable, Component, Action, EventHandlers } from "../../types";
 import { uuid } from "../../utils/uuid";
 import { deepUpdateComponent, flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
@@ -237,11 +237,12 @@ function VariablesSection({
               />
               <View style={styles.persistRow}>
                 <Text style={styles.persistLabel}>Persist across restarts</Text>
-                <Pressable onPress={() => setEditPersist((v) => !v)}>
-                  <View style={[styles.toggleTrack, editPersist && styles.toggleTrackOn]}>
-                    <View style={[styles.toggleThumb, editPersist && styles.toggleThumbOn]} />
-                  </View>
-                </Pressable>
+                <Switch
+                  value={editPersist}
+                  onValueChange={setEditPersist}
+                  trackColor={{ false: "#222", true: "#fff" }}
+                  thumbColor={editPersist ? "#000" : "#555"}
+                />
               </View>
               <View style={styles.editActions}>
                 <Pressable style={styles.cancelBtn} onPress={() => setEditingId(null)}>
@@ -915,10 +916,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   persistLabel: { color: "#ccc", fontSize: 14 },
-  toggleTrack: sharedMenuStyles.toggleTrack,
-  toggleTrackOn: sharedMenuStyles.toggleTrackOn,
-  toggleThumb: sharedMenuStyles.toggleThumb,
-  toggleThumbOn: sharedMenuStyles.toggleThumbOn,
   editActions: sharedMenuStyles.editActions,
   cancelBtn: sharedMenuStyles.cancelBtn,
   cancelLabel: sharedMenuStyles.cancelLabel,

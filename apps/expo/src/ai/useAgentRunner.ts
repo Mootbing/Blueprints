@@ -1,152 +1,17 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { callClaude, callClaudeStreaming, buildContent, type ClaudeResult } from "./anthropicClient";
-import { generateSessionTitle } from "./generateTitle";
+import { buildContent } from "./anthropicClient";
 import { agentSystemPrompt } from "./prompts";
-import { containsComponentJson, parseComponentArray, extractJson } from "./parseResponse";
-import { containsWorkflowJson, parseWorkflowResult, applyWorkflow } from "./buildWorkflow";
-import { ComponentSchema } from "../types";
 import { uuid } from "../utils/uuid";
-import { z } from "zod";
-import type { AppSlate, Component, Screen } from "../types";
+import { submitJob, subscribeToJob, checkCompletedJobs, getJobResult } from "./aiJobClient";
+import type { AppSlate } from "../types";
 import type { ChatMessage, AgentSession } from "./types";
 import type { HistoryEntry } from "../hooks/useUndoHistory";
 import type { ChatLogEntry } from "./useChatLog";
+import { getSupabaseClient } from "../storage/supabaseClient";
 
-// ─── Screen management parsing ──────────────────────────────────
-
-interface ScreenOp {
-  op: "create" | "delete" | "rename" | "setComponents" | "setInitial";
-  id: string;
-  name?: string;
-  components?: Component[];
-}
-
-interface ScreenMgmtResult {
-  screenOps: ScreenOp[];
-  description: string;
-}
-
-function containsScreenOps(text: string): boolean {
-  try {
-    const json = extractJson(text);
-    if (!json) return false;
-    const parsed = JSON.parse(json);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.screenOps);
-  } catch {
-    return false;
-  }
-}
-
-function parseScreenOps(text: string): ScreenMgmtResult {
-  const json = extractJson(text);
-  if (!json) throw new Error("No JSON found");
-  const parsed = JSON.parse(json);
-  const ops: ScreenOp[] = [];
-  for (const op of parsed.screenOps) {
-    if (op.components) {
-      op.components = z.array(ComponentSchema).parse(op.components);
-    }
-    ops.push(op);
-  }
-  return { screenOps: ops, description: parsed.description ?? "Screen management" };
-}
-
-function applyScreenOps(slate: AppSlate, result: ScreenMgmtResult): AppSlate {
-  let updated = { ...slate, screens: { ...slate.screens } };
-  for (const op of result.screenOps) {
-    switch (op.op) {
-      case "create": {
-        const newScreen: Screen = {
-          id: op.id,
-          name: op.name ?? "New Screen",
-          components: op.components ?? [],
-        };
-        updated.screens[op.id] = newScreen;
-        break;
-      }
-      case "delete": {
-        const ids = Object.keys(updated.screens);
-        if (ids.length <= 1) break; // don't delete last screen
-        const { [op.id]: _, ...rest } = updated.screens;
-        updated.screens = rest;
-        if (updated.initial_screen_id === op.id) {
-          updated.initial_screen_id = Object.keys(rest)[0];
-        }
-        break;
-      }
-      case "rename": {
-        const screen = updated.screens[op.id];
-        if (screen && op.name) {
-          updated.screens[op.id] = { ...screen, name: op.name };
-        }
-        break;
-      }
-      case "setComponents": {
-        const screen = updated.screens[op.id];
-        if (screen && op.components) {
-          updated.screens[op.id] = { ...screen, components: op.components };
-        }
-        break;
-      }
-      case "setInitial": {
-        if (updated.screens[op.id]) {
-          updated.initial_screen_id = op.id;
-        }
-        break;
-      }
-    }
-  }
-  return updated;
-}
-
-// ─── Actionable detection & branch building ─────────────────────
-
-function hasActionableJson(text: string): boolean {
-  return containsScreenOps(text) || containsComponentJson(text) || containsWorkflowJson(text);
-}
-
-function buildBranchSlate(
-  slate: AppSlate,
-  screenId: string,
-  responseText: string,
-): { slate: AppSlate; description: string } | null {
-  try {
-    // Screen ops take priority
-    if (containsScreenOps(responseText)) {
-      const result = parseScreenOps(responseText);
-      return {
-        slate: applyScreenOps(slate, result),
-        description: result.description,
-      };
-    }
-    if (containsWorkflowJson(responseText)) {
-      const result = parseWorkflowResult(responseText);
-      return {
-        slate: applyWorkflow(slate, screenId, result),
-        description: result.description,
-      };
-    }
-    if (containsComponentJson(responseText)) {
-      const components = parseComponentArray(responseText);
-      const screen = slate.screens[screenId];
-      if (!screen) return null;
-      return {
-        slate: {
-          ...slate,
-          screens: {
-            ...slate.screens,
-            [screenId]: { ...screen, components },
-          },
-        },
-        description: "AI generated components",
-      };
-    }
-  } catch {}
-  return null;
-}
-
-// ─── Session persistence (lifted from WorkflowsPage) ──────────
+// ─── Session persistence ────────────────────────────────────────
 
 function useAgentSessions(slateId: string) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -154,7 +19,6 @@ function useAgentSessions(slateId: string) {
   const loadedRef = useRef(false);
   const storageKey = `agent_sessions_${slateId}`;
 
-  // Keep ref in sync with state
   sessionsRef.current = sessions;
 
   useEffect(() => {
@@ -226,13 +90,12 @@ function useAgentSessions(slateId: string) {
   return { sessions, sessionsRef, createSession, updateSession, deleteSession };
 }
 
-// ─── Agent runner (lives in Canvas, survives menu close) ──────
+// ─── Agent runner (job-based, server-side processing) ──────────
 
 interface UseAgentRunnerOptions {
   slateId: string;
   slate: AppSlate;
   screenId: string;
-  apiKey: string;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
   onAddBranchEntry?: (branchSlate: AppSlate, description: string) => string;
@@ -243,7 +106,6 @@ export function useAgentRunner({
   slateId,
   slate,
   screenId,
-  apiKey,
   historyEntries,
   currentHistoryId,
   onAddBranchEntry,
@@ -258,13 +120,29 @@ export function useAgentRunner({
   const isLoading = loadingCount > 0;
   const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
 
-  // Use refs for values accessed in async operations so they survive closures
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Track active job subscriptions for cleanup
+  const cleanupFnsRef = useRef(new Map<string, () => void>());
+
+  useEffect(() => {
+    return () => {
+      for (const cleanup of cleanupFnsRef.current.values()) {
+        cleanup();
+      }
+      cleanupFnsRef.current.clear();
+    };
+  }, []);
+
+  // Use refs for values accessed in async operations
   const slateRef = useRef(slate);
   slateRef.current = slate;
   const screenIdRef = useRef(screenId);
   screenIdRef.current = screenId;
-  const apiKeyRef = useRef(apiKey);
-  apiKeyRef.current = apiKey;
   const onAddBranchEntryRef = useRef(onAddBranchEntry);
   onAddBranchEntryRef.current = onAddBranchEntry;
   const chatLogRef = useRef(chatLog);
@@ -288,10 +166,24 @@ export function useAgentRunner({
   const historyMetaRef = useRef(historyMeta);
   historyMetaRef.current = historyMeta;
 
+  // Get slate version for CAS
+  const getSlateVersion = useCallback(async (): Promise<number | undefined> => {
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase
+        .from("user_slates")
+        .select("version")
+        .eq("id", slateId)
+        .single();
+      return data?.version;
+    } catch {
+      return undefined;
+    }
+  }, [slateId]);
+
   const sendMessage = useCallback(
     async (sessionId: string, text: string, images?: string[]) => {
       if (loadingSessionsRef.current.has(sessionId)) return;
-      // Use ref for immediate access (avoids stale closure after createSession)
       const session = sessionsRef.current.find((s) => s.id === sessionId);
       if (!session) return;
 
@@ -306,8 +198,8 @@ export function useAgentRunner({
       const newMessages = [...session.messages, userMsg];
       updateSession(sessionId, { messages: newMessages, status: "running" });
       loadingSessionsRef.current.add(sessionId);
-      setLoadingCount((c) => c + 1);
-      setError(null);
+      if (mountedRef.current) setLoadingCount((c) => c + 1);
+      if (mountedRef.current) setError(null);
 
       try {
         const system = agentSystemPrompt(
@@ -318,102 +210,233 @@ export function useAgentRunner({
           currentHistoryIdRef.current,
           chatLogRef.current,
         );
-        const apiMessages = newMessages.map((m) => ({
-          role: m.role,
-          content: m.images ? buildContent(m.content, m.images) : m.content,
-        }));
 
-        // Call with auto-continuation for truncated responses
-        const MAX_CONTINUATIONS = 3;
-        let fullResponse = "";
-        let thinkingText = "";
-        let currentMessages = apiMessages;
-
-        setStreamingThinking("");
-
-        for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-          let result: ClaudeResult;
-          if (i === 0) {
-            // First call: use streaming with extended thinking
-            result = await callClaudeStreaming(
-              apiKeyRef.current,
-              system,
-              currentMessages,
-              16384,
-              10000,
-              (chunk) => {
-                thinkingText += chunk;
-                setStreamingThinking(thinkingText);
-              },
-            );
-            if (result.thinking) thinkingText = result.thinking;
-          } else {
-            // Continuation calls: no thinking needed
-            result = await callClaude(
-              apiKeyRef.current,
-              system,
-              currentMessages,
-              16384,
-            );
+        const apiMessages = newMessages.map((m) => {
+          const role: "user" | "assistant" = m.role as "user" | "assistant";
+          if (role === "assistant" && m.thinking && m.thinkingSignature) {
+            return {
+              role,
+              content: [
+                { type: "thinking" as const, thinking: m.thinking, signature: m.thinkingSignature },
+                { type: "text" as const, text: m.content },
+              ],
+            };
           }
-          fullResponse += result.text;
-
-          if (result.stopReason !== "max_tokens") break;
-          if (i === MAX_CONTINUATIONS) break;
-
-          // Continue: feed partial response back as assistant, ask to continue
-          currentMessages = [
-            ...currentMessages,
-            { role: "assistant" as const, content: result.text },
-            { role: "user" as const, content: "Continue from where you left off. Output ONLY the remaining JSON, no explanation." },
-          ];
-        }
-
-        setStreamingThinking(null);
-        const response = fullResponse;
-
-        let branchEntryId: string | undefined;
-        const actionable = hasActionableJson(response);
-        if (actionable && onAddBranchEntryRef.current) {
-          const branch = buildBranchSlate(slateRef.current, screenIdRef.current, response);
-          if (branch) {
-            branchEntryId = onAddBranchEntryRef.current(branch.slate, branch.description);
-          }
-        }
-
-        const assistantMsg: ChatMessage = {
-          id: uuid(),
-          role: "assistant",
-          content: response,
-          hasComponentJson: actionable,
-          branchEntryId,
-          thinking: thinkingText || undefined,
-          timestamp: Date.now(),
-        };
-
-        const updatedMessages = [...newMessages, assistantMsg];
-        updateSession(sessionId, {
-          messages: updatedMessages,
-          status: "idle",
+          return {
+            role,
+            content: m.images ? buildContent(m.content, m.images) : m.content,
+          };
         });
 
-        // Auto-retitle after the first assistant response
-        const isFirstReply = !session.messages.some((m) => m.role === "assistant");
-        if (isFirstReply) {
-          generateSessionTitle(apiKeyRef.current, updatedMessages).then((title) => {
-            if (title) updateSession(sessionId, { name: title });
-          }).catch(() => {});
-        }
+        if (mountedRef.current) setStreamingThinking("");
+
+        // Get current slate version for CAS
+        const baseVersion = await getSlateVersion();
+
+        // Submit job to server
+        const jobId = await submitJob({
+          slateId,
+          sessionId,
+          jobType: "agent_message",
+          request: {
+            messages: apiMessages,
+            system,
+            model: "claude-opus-4-6",
+            maxTokens: 16384,
+            thinkingBudget: 10000,
+            screenId: screenIdRef.current,
+            slateId,
+          },
+          baseSlateVersion: baseVersion,
+        });
+
+        // Subscribe to job for streaming thinking + completion
+        const thinkingTextRef = { current: "" };
+
+        const cleanup = subscribeToJob(jobId, {
+          onThinking: (chunk) => {
+            thinkingTextRef.current += chunk;
+            if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
+          },
+          onComplete: (job) => {
+            if (!mountedRef.current) return;
+            setStreamingThinking(null);
+
+            const response = job.response;
+            const assistantMsg: ChatMessage = {
+              id: uuid(),
+              role: "assistant",
+              content: response.text ?? "",
+              hasComponentJson: response.hasActionableJson ?? response.applied ?? false,
+              thinking: response.thinking || undefined,
+              thinkingSignature: response.thinkingSignature,
+              timestamp: Date.now(),
+            };
+
+            const updatedMessages = [...newMessages, assistantMsg];
+            updateSession(sessionId, {
+              messages: updatedMessages,
+              status: "idle",
+            });
+
+            // Auto-retitle after the first assistant response
+            const isFirstReply = !session.messages.some((m) => m.role === "assistant");
+            if (isFirstReply) {
+              submitJob({
+                slateId,
+                sessionId,
+                jobType: "generate_title",
+                request: { messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })) },
+              }).then((titleJobId) => {
+                // Poll for title result
+                const pollTitle = setInterval(async () => {
+                  const result = await getJobResult(titleJobId);
+                  if (result && result.status === "completed" && result.response?.title) {
+                    clearInterval(pollTitle);
+                    if (mountedRef.current) {
+                      updateSession(sessionId, { name: result.response.title });
+                    }
+                  } else if (result && (result.status === "failed")) {
+                    clearInterval(pollTitle);
+                  }
+                }, 2000);
+                // Stop polling after 30s
+                setTimeout(() => clearInterval(pollTitle), 30000);
+              }).catch(() => {});
+            }
+
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.delete(sessionId);
+            cleanup();
+            if (mountedRef.current) setLoadingCount((c) => c - 1);
+          },
+          onError: (errorMsg) => {
+            if (!mountedRef.current) return;
+            setStreamingThinking(null);
+            setError(errorMsg);
+            updateSession(sessionId, { status: "idle" });
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.delete(sessionId);
+            cleanup();
+            if (mountedRef.current) setLoadingCount((c) => c - 1);
+          },
+        });
+
+        cleanupFnsRef.current.set(sessionId, cleanup);
+
+        // Fallback: poll in case Realtime fails
+        const pollInterval = setInterval(async () => {
+          const result = await getJobResult(jobId);
+          if (!result) return;
+          if (result.status === "completed" || result.status === "conflict") {
+            clearInterval(pollInterval);
+            // If Realtime already handled it, skip
+            if (!loadingSessionsRef.current.has(sessionId)) return;
+
+            if (mountedRef.current) {
+              setStreamingThinking(null);
+              const response = result.response;
+              const assistantMsg: ChatMessage = {
+                id: uuid(),
+                role: "assistant",
+                content: response?.text ?? "",
+                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
+                thinking: response?.thinking || undefined,
+                thinkingSignature: response?.thinkingSignature,
+                timestamp: Date.now(),
+              };
+              updateSession(sessionId, {
+                messages: [...newMessages, assistantMsg],
+                status: "idle",
+              });
+            }
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) setLoadingCount((c) => c - 1);
+          } else if (result.status === "failed") {
+            clearInterval(pollInterval);
+            if (!loadingSessionsRef.current.has(sessionId)) return;
+            if (mountedRef.current) {
+              setStreamingThinking(null);
+              setError(result.error_message ?? "Job failed");
+              updateSession(sessionId, { status: "idle" });
+            }
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) setLoadingCount((c) => c - 1);
+          }
+        }, 5000);
+
+        // Stop polling after 5 minutes
+        setTimeout(() => clearInterval(pollInterval), 300000);
+
       } catch (err) {
-        setStreamingThinking(null);
-        setError(err instanceof Error ? err.message : "Unknown error");
-        updateSession(sessionId, { status: "idle" });
-      } finally {
+        if (mountedRef.current) {
+          setStreamingThinking(null);
+          setError(err instanceof Error ? err.message : "Unknown error");
+          updateSession(sessionId, { status: "idle" });
+        }
         loadingSessionsRef.current.delete(sessionId);
-        setLoadingCount((c) => c - 1);
+        if (mountedRef.current) setLoadingCount((c) => c - 1);
       }
     },
-    [sessionsRef, updateSession],
+    [sessionsRef, updateSession, slateId, getSlateVersion],
+  );
+
+  // Foreground reconciliation: check for completed jobs when app returns
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      checkCompletedJobs(slateId).then((jobs) => {
+        for (const job of jobs) {
+          if (job.status === "completed" && job.response) {
+            // If this job's session has a pending loading state, handle it
+            const sessionId = (job as any).session_id;
+            if (sessionId && loadingSessionsRef.current.has(sessionId)) {
+              const session = sessionsRef.current.find((s) => s.id === sessionId);
+              if (session && session.status === "running") {
+                const assistantMsg: ChatMessage = {
+                  id: uuid(),
+                  role: "assistant",
+                  content: job.response.text ?? "",
+                  hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
+                  thinking: job.response.thinking || undefined,
+                  thinkingSignature: job.response.thinkingSignature,
+                  timestamp: Date.now(),
+                };
+                updateSession(sessionId, {
+                  messages: [...session.messages, assistantMsg],
+                  status: "idle",
+                });
+                loadingSessionsRef.current.delete(sessionId);
+                cleanupFnsRef.current.get(sessionId)?.();
+                cleanupFnsRef.current.delete(sessionId);
+                if (mountedRef.current) {
+                  setStreamingThinking(null);
+                  setLoadingCount((c) => Math.max(0, c - 1));
+                }
+              }
+            }
+          }
+        }
+      }).catch(() => {});
+    });
+    return () => subscription.remove();
+  }, [slateId, sessionsRef, updateSession]);
+
+  const deleteSessionWithAbort = useCallback(
+    (id: string) => {
+      const cleanup = cleanupFnsRef.current.get(id);
+      if (cleanup) {
+        cleanup();
+        cleanupFnsRef.current.delete(id);
+      }
+      loadingSessionsRef.current.delete(id);
+      deleteSession(id);
+    },
+    [deleteSession],
   );
 
   return {
@@ -424,7 +447,7 @@ export function useAgentRunner({
     sendMessage,
     createSession,
     updateSession,
-    deleteSession,
+    deleteSession: deleteSessionWithAbort,
     setError,
   };
 }

@@ -15,7 +15,7 @@ const KEYBOARD_TYPE_MAP: Record<string, "default" | "email-address" | "numeric" 
   url: "url",
 };
 
-export function TextInputRenderer({ component, isEditMode }: TextInputRendererProps) {
+export const TextInputRenderer = React.memo(function TextInputRenderer({ component, isEditMode }: TextInputRendererProps) {
   const [value, setValue] = useState(component.defaultValue ?? "");
 
   const fontSize = component.fontSize ?? 16;
@@ -59,4 +59,4 @@ export function TextInputRenderer({ component, isEditMode }: TextInputRendererPr
       />
     </View>
   );
-}
+});

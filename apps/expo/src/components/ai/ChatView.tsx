@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   TextInput,
   Pressable,
+  FlatList,
   ScrollView,
   Image,
   StyleSheet,
@@ -34,6 +35,8 @@ interface ChatViewProps {
   streamingThinking?: string | null;
 }
 
+const keyExtractor = (item: ChatMessageType) => item.id;
+
 export function ChatView({
   messages,
   isLoading,
@@ -49,7 +52,7 @@ export function ChatView({
 }: ChatViewProps) {
   const [input, setInput] = useState(initialText ?? "");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (initialText) setInput(initialText);
@@ -57,9 +60,11 @@ export function ChatView({
 
   useEffect(() => {
     // Auto-scroll to bottom on new messages or streaming thinking updates
-    setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    if (messages.length > 0) {
+      setTimeout(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
   }, [messages.length, isLoading, streamingThinking]);
 
   const handleSend = () => {
@@ -98,23 +103,12 @@ export function ChatView({
         <View style={styles.headerActions}>{headerActions}</View>
       )}
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.messageList}
-        contentContainerStyle={styles.messageListContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-      >
-        {messages.length === 0 && !isLoading && (
-          <View style={styles.emptyState}>
-            <Feather name="message-circle" size={32} color="#222" />
-            <Text style={styles.emptyText}>Start a conversation</Text>
-          </View>
-        )}
-
-        {messages.map((msg) => (
-          <View key={msg.id}>
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={keyExtractor}
+        renderItem={({ item: msg }) => (
+          <View>
             <ChatMessage message={msg} />
             {msg.role === "assistant" && (
               renderMessageActions ? renderMessageActions(msg) : (
@@ -133,31 +127,48 @@ export function ChatView({
               )
             )}
           </View>
-        ))}
-
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <View style={styles.loadingRow}>
-              <ActivityIndicator size="small" color="#555" />
-              <Text style={styles.loadingText}>
-                {streamingThinking ? "Reasoning..." : "Thinking..."}
-              </Text>
+        )}
+        style={styles.messageList}
+        contentContainerStyle={styles.messageListContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        ListEmptyComponent={
+          !isLoading ? (
+            <View style={styles.emptyState}>
+              <Feather name="message-circle" size={32} color="#222" />
+              <Text style={styles.emptyText}>Start a conversation</Text>
             </View>
-            {streamingThinking ? (
-              <Text style={styles.streamingThinkingText} numberOfLines={6}>
-                {streamingThinking.slice(-500)}
-              </Text>
-            ) : null}
-          </View>
-        )}
-
-        {error && (
-          <View style={styles.errorContainer}>
-            <Feather name="alert-circle" size={14} color="#dc2626" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-      </ScrollView>
+          ) : null
+        }
+        ListFooterComponent={
+          <>
+            {isLoading && (
+              <View style={styles.loadingContainer}>
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator size="small" color="#555" />
+                  <Text style={styles.loadingText}>
+                    {streamingThinking ? "Reasoning..." : "Processing on server..."}
+                  </Text>
+                </View>
+                {streamingThinking ? (
+                  <Text style={styles.streamingThinkingText} numberOfLines={6}>
+                    {streamingThinking.slice(-500)}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+            {error && (
+              <View style={styles.errorContainer}>
+                <Feather name="alert-circle" size={14} color="#dc2626" />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+          </>
+        }
+      />
 
       <View style={styles.inputBar}>
         {pendingImages.length > 0 && (

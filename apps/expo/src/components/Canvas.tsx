@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   View,
   Pressable,
@@ -38,6 +38,7 @@ import { AgentPagerModal } from "./ai/AgentPagerModal";
 import { tidyLayout } from "../ai/tidyLayout";
 import { useChatLog } from "../ai/useChatLog";
 import { useAgentRunner } from "../ai/useAgentRunner";
+import { CanvasStoreProvider, useCanvasStore, useCanvasStoreApi } from "../stores/CanvasStoreProvider";
 
 import type { HistoryEntry } from "../hooks/useUndoHistory";
 
@@ -70,8 +71,8 @@ function LongPressRing({
         width: size,
         height: size,
         position: "absolute",
-        top: (48 - size) / 2,
-        left: (48 - size) / 2,
+        top: (48 - size) / 2 - 1.5,
+        left: (48 - size) / 2 - 1.5,
         transform: [{ rotate: "-90deg" }],
       }}
       pointerEvents="none"
@@ -100,10 +101,12 @@ function AddSphere({
   onPress,
   isEditMode,
   onToggleEditMode,
+  isPreviewOnly,
 }: {
   onPress: () => void;
   isEditMode: boolean;
   onToggleEditMode: () => void;
+  isPreviewOnly?: boolean;
 }) {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const moved = useRef(false);
@@ -131,10 +134,12 @@ function AddSphere({
           duration: LONG_PRESS_DURATION,
           useNativeDriver: false,
         }).start();
-        longPressTimer.current = setTimeout(() => {
-          didLongPress.current = true;
-          onToggleRef.current();
-        }, LONG_PRESS_DURATION);
+        if (!isPreviewOnly) {
+          longPressTimer.current = setTimeout(() => {
+            didLongPress.current = true;
+            onToggleRef.current();
+          }, LONG_PRESS_DURATION);
+        }
       },
       onPanResponderMove: (_, g) => {
         if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) {
@@ -169,18 +174,24 @@ function AddSphere({
     <Animated.View
       style={[
         styles.devSphere,
-        isEditMode ? styles.devSphereEdit : styles.devSpherePreview,
+        isPreviewOnly ? styles.devSphereLeave : isEditMode ? styles.devSphereEdit : styles.devSpherePreview,
         { transform: pan.getTranslateTransform() },
       ]}
       {...panResponder.panHandlers}
     >
-      <LongPressRing
-        progress={longPressProgress}
-        size={54}
-        strokeWidth={3}
-        color={isEditMode ? "#007AFF" : "#5AC8FA"}
+      {!isPreviewOnly && (
+        <LongPressRing
+          progress={longPressProgress}
+          size={54}
+          strokeWidth={3}
+          color={isEditMode ? "#007AFF" : "#5AC8FA"}
+        />
+      )}
+      <Feather
+        name={isPreviewOnly ? "log-out" : isEditMode ? "code" : "eye"}
+        size={22}
+        color={isPreviewOnly ? "#ff4444" : isEditMode ? "#000" : "#fff"}
       />
-      <Feather name={isEditMode ? "code" : "eye"} size={22} color={isEditMode ? "#000" : "#fff"} />
     </Animated.View>
   );
 }
@@ -229,15 +240,22 @@ interface CanvasProps {
   addBranchEntry?: (branchSlate: AppSlate, description: string) => string;
   startBatch?: (description: string) => void;
   endBatch?: () => void;
-  // AI props
-  apiKey: string;
-  onApiKeyChange: (key: string) => void;
   slateId: string;
   // Storage
   storage?: import("../storage/StorageProvider").StorageProvider;
+  // Preview-only mode (viewer share link)
+  isPreviewOnly?: boolean;
 }
 
-export function Canvas({
+export function Canvas(props: CanvasProps) {
+  return (
+    <CanvasStoreProvider>
+      <CanvasInner {...props} />
+    </CanvasStoreProvider>
+  );
+}
+
+function CanvasInner({
   slate,
   screenId,
   isEditMode,
@@ -273,43 +291,82 @@ export function Canvas({
   addBranchEntry,
   startBatch,
   endBatch,
-  apiKey,
-  onApiKeyChange,
   slateId,
   storage: storageProp,
+  isPreviewOnly,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
-  const [canvasDimensions, setCanvasDimensions] = useState({
-    width: 0,
-    height: 0,
-  });
-  const [menuOpen, setMenuOpen] = useState(false);
-  const dropPoint = { normX: 0.1, normY: 0.3 };
-  const [activeGuides, setActiveGuides] = useState<number[]>([]);
-  const [snappingEnabled, setSnappingEnabled] = useState(true);
-  const snappingLoaded = useRef(false);
+  const store = useCanvasStoreApi();
 
-  // Load snapping setting
-  useEffect(() => {
-    AsyncStorage.getItem("settings_snapping").then((val) => {
-      if (val !== null) setSnappingEnabled(val === "true");
-      snappingLoaded.current = true;
-    });
-  }, []);
+  // Read store state via selectors
+  const canvasDimensions = useCanvasStore((s) => s.canvasDimensions);
+  const menuOpen = useCanvasStore((s) => s.menuOpen);
+  const activeGuides = useCanvasStore((s) => s.activeGuides);
+  const snappingEnabled = useCanvasStore((s) => s.snappingEnabled);
+  const contextMenu = useCanvasStore((s) => s.contextMenu);
+  const versionHistoryOpen = useCanvasStore((s) => s.versionHistoryOpen);
+  const agentPagerOpen = useCanvasStore((s) => s.agentPagerOpen);
+  const agentPagerSessionId = useCanvasStore((s) => s.agentPagerSessionId);
+  const agentPagerInitialMessage = useCanvasStore((s) => s.agentPagerInitialMessage);
+  const editingInfo = useCanvasStore((s) => s.editingInfo);
+  const selectedComponentId = useCanvasStore((s) => s.selectedComponentId);
+  const autoEditId = useCanvasStore((s) => s.autoEditId);
+  const draggingId = useCanvasStore((s) => s.draggingId);
+  const dragOverTrash = useCanvasStore((s) => s.dragOverTrash);
+  const dropTargetId = useCanvasStore((s) => s.dropTargetId);
+  const drillPath = useCanvasStore((s) => s.drillPath);
+  const selectedChildId = useCanvasStore((s) => s.selectedChildId);
+  const lockedIds = useCanvasStore((s) => s.lockedIds);
+  const inspectorEnabled = useCanvasStore((s) => s.inspectorEnabled);
+  const showAdvancedCode = useCanvasStore((s) => s.showAdvancedCode);
+  const inspectorOpen = useCanvasStore((s) => s.inspectorOpen);
+  const inspectorJson = useCanvasStore((s) => s.inspectorJson);
+  const inspectorError = useCanvasStore((s) => s.inspectorError);
+  const aiChatTarget = useCanvasStore((s) => s.aiChatTarget);
+  const isTidying = useCanvasStore((s) => s.isTidying);
+  const pendingAIChange = useCanvasStore((s) => s.pendingAIChange);
+  const multiSelectMode = useCanvasStore((s) => s.multiSelectMode);
+  const selectedComponentIds = useCanvasStore((s) => s.selectedComponentIds);
 
-  // Persist snapping setting
-  useEffect(() => {
-    if (!snappingLoaded.current) return;
-    AsyncStorage.setItem("settings_snapping", String(snappingEnabled));
-  }, [snappingEnabled]);
+  // Store actions (stable references)
+  const {
+    setCanvasDimensions,
+    setMenuOpen,
+    setEditingInfo,
+    setSelectedComponentId,
+    setAutoEditId,
+    setDraggingId,
+    setDragOverTrash,
+    setDropTargetId,
+    drillInto,
+    drillOut,
+    drillToLevel,
+    setSelectedChildId,
+    toggleLock,
+    setSnappingEnabled,
+    setInspectorEnabled,
+    setShowAdvancedCode,
+    setInspectorOpen,
+    setInspectorJson,
+    setInspectorError,
+    setContextMenu,
+    setAiChatTarget,
+    setIsTidying,
+    setPendingAIChange,
+    setAgentPagerOpen,
+    setAgentPagerSessionId,
+    setAgentPagerInitialMessage,
+    setVersionHistoryOpen,
+    setActiveGuides,
+    clearGuides,
+    toggleMultiSelectId,
+    clearMultiSelect,
+  } = store.getState();
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ componentId: string | null; x: number; y: number } | null>(null);
   const clipboardRef = useRef<Component | null>(null);
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
-  const [agentPagerOpen, setAgentPagerOpen] = useState(false);
-  const [agentPagerSessionId, setAgentPagerSessionId] = useState<string | null>(null);
-  const [agentPagerInitialMessage, setAgentPagerInitialMessage] = useState<string | null>(null);
+  const dropTargetIdRef = useRef<string | null>(null);
+  const editingInfoRef = useRef(editingInfo);
+  editingInfoRef.current = editingInfo;
 
   // Chat log for agent context
   const { chatLog, logInteraction } = useChatLog(slateId);
@@ -319,79 +376,13 @@ export function Canvas({
     slateId,
     slate,
     screenId,
-    apiKey,
     historyEntries: entries,
     currentHistoryId: currentId,
     onAddBranchEntry: addBranchEntry,
     chatLog,
   });
 
-  // AI state
-  const [aiChatTarget, setAiChatTarget] = useState<Component | null>(null);
-  const [isTidying, setIsTidying] = useState(false);
-  const [pendingAIChange, setPendingAIChange] = useState<{
-    componentId: string;
-    original: Component;
-  } | null>(null);
-  const [showAdvancedCode, setShowAdvancedCode] = useState(false);
-
-  // Load advanced code setting
-  useEffect(() => {
-    AsyncStorage.getItem("settings_advancedCode").then((val) => {
-      if (val !== null) setShowAdvancedCode(val === "true");
-    });
-  }, []);
-
-  const [autoEditId, setAutoEditId] = useState<string | null>(null);
-  const [editingInfo, setEditingInfo] = useState<
-    | { mode: "text"; componentId: string; state: TextEditingState }
-    | { mode: "style"; componentId: string; state: StyleEditingState; initialState: StyleEditingState }
-    | null
-  >(null);
-  const editingInfoRef = useRef(editingInfo);
-  editingInfoRef.current = editingInfo;
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverTrash, setDragOverTrash] = useState(false);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const dropTargetIdRef = useRef<string | null>(null);
-
-  // Locked components (cannot be selected/dragged on canvas)
-  const [lockedIds, setLockedIds] = useState<Set<string>>(() => new Set([BACKGROUND_ID]));
-  const toggleLock = useCallback((id: string) => {
-    setLockedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  // Component Inspector
-  const [inspectorEnabled, setInspectorEnabled] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorJson, setInspectorJson] = useState("");
-  const [inspectorError, setInspectorError] = useState<string | null>(null);
-  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
-  const inspectorLoaded = useRef(false);
-
-  // Load inspector setting
-  useEffect(() => {
-    AsyncStorage.getItem("settings_inspector").then((val) => {
-      if (val !== null) setInspectorEnabled(val === "true");
-      inspectorLoaded.current = true;
-    });
-  }, []);
-
-  // Persist inspector setting
-  useEffect(() => {
-    if (!inspectorLoaded.current) return;
-    AsyncStorage.setItem("settings_inspector", String(inspectorEnabled));
-  }, [inspectorEnabled]);
-
-  // --- Drill-in navigation ---
-  const [drillPath, setDrillPath] = useState<string[]>([]);
-  const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
-
+  const dropPoint = { normX: 0.1, normY: 0.3 };
 
   const currentContainerId = drillPath.length > 0 ? drillPath[drillPath.length - 1] : null;
   const isDrilledIn = drillPath.length > 0;
@@ -403,27 +394,6 @@ export function Canvas({
   const currentContainerComp = isDrilledIn && currentContainerId && screen
     ? findComponent(screen.components, currentContainerId)
     : undefined;
-
-  const resetDrillSelection = useCallback(() => {
-    setSelectedChildId(null);
-    setSelectedComponentId(null);
-    setEditingInfo(null);
-  }, []);
-
-  const drillInto = useCallback((containerId: string) => {
-    setDrillPath(prev => [...prev, containerId]);
-    resetDrillSelection();
-  }, [resetDrillSelection]);
-
-  const drillOut = useCallback(() => {
-    setDrillPath(prev => prev.slice(0, -1));
-    resetDrillSelection();
-  }, [resetDrillSelection]);
-
-  const drillToLevel = useCallback((level: number) => {
-    setDrillPath(prev => prev.slice(0, level));
-    resetDrillSelection();
-  }, [resetDrillSelection]);
 
   const siblingRects = useSharedValue<number[]>([]);
   useEffect(() => {
@@ -442,6 +412,7 @@ export function Canvas({
 
   const openMenu = useCallback(() => {
     if (!isEditMode) onToggleEditMode();
+    clearMultiSelect();
     setMenuOpen(true);
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
@@ -449,7 +420,7 @@ export function Canvas({
       duration: 250,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim, isEditMode, onToggleEditMode]);
+  }, [fadeAnim, isEditMode, onToggleEditMode, setMenuOpen, clearMultiSelect]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(fadeAnim, {
@@ -459,7 +430,7 @@ export function Canvas({
     }).start(() => {
       setMenuOpen(false);
     });
-  }, [fadeAnim]);
+  }, [fadeAnim, setMenuOpen]);
 
   const handleAdd = (preset: (typeof PRESETS)[number]) => {
     if (isDrilledIn && currentContainerId) {
@@ -518,7 +489,6 @@ export function Canvas({
         const scr = prev.screens[screenId];
         if (!scr) return prev;
 
-        // Find and remove the component from its current location
         let draggedComp: Component | null = null;
         let oldParentId: string | null = null;
         function removeComp(comps: Component[], parentId: string | null): Component[] {
@@ -543,7 +513,6 @@ export function Canvas({
         const newComponents = removeComp(scr.components, null);
         if (!draggedComp) return prev;
 
-        // Convert layout: first to canvas-absolute, then to new parent-relative
         const comp = draggedComp as Component;
         let absLayout = { ...comp.layout };
         if (oldParentId) {
@@ -571,7 +540,6 @@ export function Canvas({
           };
         }
 
-        // Convert absolute coords to new-parent-relative
         const newParent = findComponent(newComponents, newParentId);
         if (newParent) {
           const pw = newParent.layout.width || 1;
@@ -615,8 +583,6 @@ export function Canvas({
     [onSlateChange, screenId],
   );
 
-  const clearGuides = useCallback(() => setActiveGuides([]), []);
-
   const openStyleEditor = useCallback((componentId: string) => {
     const comp = findComponent(screen.components, componentId);
     if (!comp) return;
@@ -624,7 +590,10 @@ export function Canvas({
     const hasBorder = ["shape", "textInput", "container"].includes(comp.type);
     const hasBackgroundColor = ["shape", "textInput", "list", "container"].includes(comp.type);
     const hasLayoutMode = comp.type === "container";
-    if (!hasBorderRadius && !hasBorder && !hasBackgroundColor && !hasLayoutMode) return;
+    const hasScrollable = comp.type === "container";
+    const hasShadow = ["container", "shape", "button"].includes(comp.type);
+    const hasGradient = ["container", "shape", "button"].includes(comp.type);
+    if (!hasBorderRadius && !hasBorder && !hasBackgroundColor && !hasLayoutMode && !hasShadow && !hasGradient) return;
     const initialState: StyleEditingState = {
       borderRadius: ("borderRadius" in comp && typeof comp.borderRadius === "number") ? comp.borderRadius : 0,
       borderWidth: ("borderWidth" in comp && typeof comp.borderWidth === "number") ? comp.borderWidth : 0,
@@ -639,6 +608,18 @@ export function Canvas({
       gap: (comp.type === "container" && typeof comp.gap === "number") ? comp.gap : 0,
       justifyContent: (comp.type === "container" && comp.justifyContent) || "flex-start",
       alignItems: (comp.type === "container" && comp.alignItems) || "stretch",
+      hasScrollable,
+      scrollable: (comp.type === "container" && comp.scrollable) || false,
+      scrollDirection: (comp.type === "container" && comp.scrollDirection) || "vertical",
+      hasShadow,
+      shadowEnabled: ("shadowEnabled" in comp && typeof comp.shadowEnabled === "boolean") ? comp.shadowEnabled : false,
+      shadowColor: ("shadowColor" in comp && typeof comp.shadowColor === "string") ? comp.shadowColor : "#000000",
+      shadowOpacity: ("shadowOpacity" in comp && typeof comp.shadowOpacity === "number") ? comp.shadowOpacity : 0.15,
+      shadowRadius: ("shadowRadius" in comp && typeof comp.shadowRadius === "number") ? comp.shadowRadius : 8,
+      hasGradient,
+      gradientEnabled: ("gradientEnabled" in comp && typeof comp.gradientEnabled === "boolean") ? comp.gradientEnabled : false,
+      gradientColors: ("gradientColors" in comp && Array.isArray(comp.gradientColors)) ? comp.gradientColors : ["#000000", "#ffffff"],
+      gradientDirection: ("gradientDirection" in comp && typeof comp.gradientDirection === "string") ? comp.gradientDirection as any : "to-bottom",
     };
     setEditingInfo({
       mode: "style",
@@ -646,7 +627,7 @@ export function Canvas({
       state: { ...initialState },
       initialState,
     });
-  }, [screen?.components]);
+  }, [screen?.components, setEditingInfo]);
 
   const handleTreeSelect = useCallback((componentId: string) => {
     closeMenu();
@@ -677,13 +658,18 @@ export function Canvas({
     } else {
       setSelectedComponentId(componentId);
     }
-  }, [closeMenu, isEditMode, onToggleEditMode, screen?.components, openStyleEditor]);
+  }, [closeMenu, isEditMode, onToggleEditMode, screen?.components, openStyleEditor, setSelectedComponentId, setEditingInfo]);
 
   const handleSelect = useCallback((componentId: string) => {
     if (editingInfo) return;
     if (lockedIds.has(componentId)) return;
 
-    // If tapping an already-selected container, drill into it
+    // Multi-select mode: tap toggles
+    if (multiSelectMode) {
+      toggleMultiSelectId(componentId);
+      return;
+    }
+
     const comp = findComponent(screen.components, componentId);
     if (comp?.type === "container" && selectedComponentId === componentId) {
       drillInto(componentId);
@@ -693,36 +679,42 @@ export function Canvas({
     setSelectedComponentId(componentId);
     if (!comp) return;
     if (comp.type === "text" || comp.type === "button" || comp.type === "icon") return;
-    if (comp.type === "container") return; // First tap selects, second tap drills in
+    if (comp.type === "container") return;
     openStyleEditor(componentId);
-  }, [editingInfo, lockedIds, screen?.components, selectedComponentId, drillInto, openStyleEditor]);
+  }, [editingInfo, lockedIds, screen?.components, selectedComponentId, drillInto, openStyleEditor, setSelectedComponentId, multiSelectMode, toggleMultiSelectId]);
 
-  // Child select/edit handlers for drill-in mode
   const handleChildSelect = useCallback((childId: string) => {
     setSelectedChildId(childId);
     setSelectedComponentId(childId);
-  }, []);
+  }, [setSelectedChildId, setSelectedComponentId]);
 
   const handleChildStyleSelect = useCallback((componentId: string) => {
     setSelectedChildId(componentId);
     setSelectedComponentId(componentId);
     openStyleEditor(componentId);
-  }, [openStyleEditor]);
+  }, [openStyleEditor, setSelectedChildId, setSelectedComponentId]);
+
+  // --- Resize batch handlers ---
+  const handleResizeStart = useCallback(() => {
+    startBatch?.("Resized component");
+  }, [startBatch]);
+
+  const handleResizeEnd = useCallback(() => {
+    endBatch?.();
+  }, [endBatch]);
 
   // --- Drag-to-trash handlers ---
   const handleDragStart = useCallback((componentId: string) => {
     if (lockedIds.has(componentId)) return;
     setDraggingId(componentId);
     startBatch?.("Moved component");
-  }, [lockedIds, startBatch]);
+  }, [lockedIds, startBatch, setDraggingId]);
 
   const handleDragMove = useCallback((componentId: string, centerX: number, centerY: number) => {
     if (!screen) return;
-    // Find a container that the dragged component center is over (skip self and parents already containing it)
     let hoveredContainer: string | null = null;
     for (const comp of screen.components) {
       if (comp.type !== "container" || comp.id === componentId) continue;
-      // Skip if the dragged component is already a direct child
       if (comp.children?.some((ch) => ch.id === componentId)) continue;
       const cx = comp.layout.x * canvasDimensions.width;
       const cy = comp.layout.y * canvasDimensions.height;
@@ -734,18 +726,16 @@ export function Canvas({
     }
     dropTargetIdRef.current = hoveredContainer;
     setDropTargetId(hoveredContainer);
-  }, [screen, canvasDimensions]);
+  }, [screen, canvasDimensions, setDropTargetId]);
 
   const handleDragEnd = useCallback(() => {
     const currentDropTarget = dropTargetIdRef.current;
-    // Reparent into container if dropping over one
     if (draggingId && currentDropTarget && !dragOverTrash) {
       const targetId = currentDropTarget;
       const sourceId = draggingId;
       onSlateChange?.((prev) => {
         const scr = prev.screens[screenId];
         if (!scr) return prev;
-        // Find and remove the dragged component from its current location
         let draggedComp: Component | null = null;
         function removeComp(comps: Component[]): Component[] {
           const result: Component[] = [];
@@ -767,7 +757,6 @@ export function Canvas({
         }
         const newComponents = removeComp(scr.components);
         if (!draggedComp) return prev;
-        // Convert layout to be relative to the container
         const container = findComponent(newComponents, targetId);
         if (!container || container.type !== "container") return prev;
         const contX = container.layout.x;
@@ -788,7 +777,6 @@ export function Canvas({
             height: Math.min(relH, 1),
           },
         };
-        // Add to container's children
         function addChild(comps: Component[]): Component[] {
           return comps.map((c) => {
             if (c.id === targetId) {
@@ -814,35 +802,37 @@ export function Canvas({
     setDropTargetId(null);
     dropTargetIdRef.current = null;
     endBatch?.();
-  }, [endBatch, draggingId, dragOverTrash, onSlateChange, screenId]);
+  }, [endBatch, draggingId, dragOverTrash, onSlateChange, screenId, setDraggingId, setDragOverTrash, setDropTargetId]);
 
   const handleDragOverTrashChange = useCallback((isOver: boolean) => {
     setDragOverTrash(isOver);
-  }, []);
+  }, [setDragOverTrash]);
 
   // --- Context menu handlers ---
   const handleLongPress = useCallback((componentId: string, screenX: number, screenY: number) => {
     if (lockedIds.has(componentId)) return;
-    setContextMenu({ componentId, x: screenX, y: screenY });
-  }, [lockedIds]);
+    if (editingInfo) return;
+    // Enter multi-select mode
+    Vibration.vibrate(50);
+    toggleMultiSelectId(componentId);
+  }, [lockedIds, editingInfo, toggleMultiSelectId]);
 
   const handleCopy = useCallback(() => {
     if (!contextMenu?.componentId || !screen) return;
     const comp = findComponent(screen.components, contextMenu.componentId);
     if (comp) clipboardRef.current = comp;
     setContextMenu(null);
-  }, [contextMenu, screen]);
+  }, [contextMenu, screen, setContextMenu]);
 
   const handlePaste = useCallback(() => {
     if (!clipboardRef.current || !contextMenu) return;
     const cloned = deepCloneComponent(clipboardRef.current);
-    // Place near the long-press location
     const normX = Math.min(Math.max(contextMenu.x / Math.max(canvasDimensions.width, 1), 0), 0.9);
     const normY = Math.min(Math.max(contextMenu.y / Math.max(canvasDimensions.height, 1), 0), 0.9);
     cloned.layout = { ...cloned.layout, x: normX, y: normY };
     onAddComponent(cloned);
     setContextMenu(null);
-  }, [onAddComponent, contextMenu, canvasDimensions]);
+  }, [onAddComponent, contextMenu, canvasDimensions, setContextMenu]);
 
   const handleDuplicate = useCallback(() => {
     if (!contextMenu?.componentId || !screen) return;
@@ -852,15 +842,15 @@ export function Canvas({
     cloned.layout = { ...cloned.layout, x: cloned.layout.x + 0.02, y: cloned.layout.y + 0.02 };
     onAddComponent(cloned);
     setContextMenu(null);
-  }, [contextMenu, screen, onAddComponent]);
+  }, [contextMenu, screen, onAddComponent, setContextMenu]);
 
   // --- AI handlers ---
   const handleTidy = useCallback(async () => {
-    if (!apiKey || isTidying || !screen) return;
+    if (isTidying || !screen) return;
     setIsTidying(true);
     try {
       startBatch?.("AI Tidy Layout");
-      const tidied = await tidyLayout(apiKey, screen.components, slate.theme);
+      const tidied = await tidyLayout(slateId, screen.components, slate.theme);
       onSlateChange?.((prev: any) => {
         const scr = prev.screens[screenId];
         if (!scr) return prev;
@@ -876,14 +866,14 @@ export function Canvas({
     } finally {
       setIsTidying(false);
     }
-  }, [apiKey, isTidying, screen, slate.theme, screenId, onSlateChange, startBatch, endBatch]);
+  }, [slateId, isTidying, screen, slate.theme, screenId, onSlateChange, startBatch, endBatch, setIsTidying]);
 
   const handleOpenAIChat = useCallback(() => {
     if (!contextMenu?.componentId || !screen) return;
     const comp = findComponent(screen.components, contextMenu.componentId);
     if (comp) setAiChatTarget(comp);
     setContextMenu(null);
-  }, [contextMenu, screen]);
+  }, [contextMenu, screen, setAiChatTarget, setContextMenu]);
 
   const handleOpenAIChatFromToolbar = useCallback(() => {
     if (!screen) return;
@@ -894,16 +884,15 @@ export function Canvas({
       setEditingInfo(null);
       setAiChatTarget(comp);
     }
-  }, [screen, editingInfo, selectedComponentId]);
+  }, [screen, editingInfo, selectedComponentId, setEditingInfo, setAiChatTarget]);
 
   const handleAIChatFromLayer = useCallback((componentId: string) => {
     if (!screen) return;
     const comp = findComponent(screen.components, componentId);
     if (comp) setAiChatTarget(comp);
-  }, [screen]);
+  }, [screen, setAiChatTarget]);
 
   const handleAIChatApply = useCallback((component: Component) => {
-    // Save original before applying so we can revert
     if (aiChatTarget) {
       setPendingAIChange({ componentId: component.id, original: aiChatTarget });
     }
@@ -911,11 +900,11 @@ export function Canvas({
     onComponentReplace?.(component.id, component);
     endBatch?.();
     setAiChatTarget(null);
-  }, [onComponentReplace, startBatch, endBatch, aiChatTarget]);
+  }, [onComponentReplace, startBatch, endBatch, aiChatTarget, setPendingAIChange, setAiChatTarget]);
 
   const handleKeepAIChange = useCallback(() => {
     setPendingAIChange(null);
-  }, []);
+  }, [setPendingAIChange]);
 
   const handleDiscardAIChange = useCallback(() => {
     if (!pendingAIChange) return;
@@ -923,7 +912,7 @@ export function Canvas({
     onComponentReplace?.(pendingAIChange.componentId, pendingAIChange.original);
     endBatch?.();
     setPendingAIChange(null);
-  }, [pendingAIChange, onComponentReplace, startBatch, endBatch]);
+  }, [pendingAIChange, onComponentReplace, startBatch, endBatch, setPendingAIChange]);
 
   const handleApplyComponents = useCallback((components: Component[], mode: "replace" | "add") => {
     startBatch?.("AI Generated Screen");
@@ -939,19 +928,74 @@ export function Canvas({
     endBatch?.();
   }, [screenId, onSlateChange, startBatch, endBatch]);
 
+  // --- Hug content handler ---
+  const handleHugContent = useCallback((componentId: string, axis: "width" | "height" | "both") => {
+    if (!screen) return;
+    const comp = findComponent(screen.components, componentId);
+    if (!comp) return;
+    const cw = canvasDimensions.width;
+    const ch = canvasDimensions.height;
+
+    startBatch?.("Hug content");
+    if (comp.type === "container" && comp.children?.length) {
+      const children = comp.children;
+      let scaleX = 1, scaleY = 1;
+      if (axis !== "height") {
+        const maxRight = Math.max(...children.map(c => c.layout.x + c.layout.width), 0.1);
+        scaleX = Math.min(1, maxRight + 0.02);
+      }
+      if (axis !== "width") {
+        const maxBottom = Math.max(...children.map(c => c.layout.y + c.layout.height), 0.1);
+        scaleY = Math.min(1, maxBottom + 0.02);
+      }
+      const newComp = {
+        ...comp,
+        layout: {
+          ...comp.layout,
+          ...(axis !== "height" && { width: comp.layout.width * scaleX }),
+          ...(axis !== "width" && { height: comp.layout.height * scaleY }),
+        },
+        children: children.map(c => ({
+          ...c,
+          layout: {
+            ...c.layout,
+            ...(axis !== "height" && { x: c.layout.x / scaleX, width: c.layout.width / scaleX }),
+            ...(axis !== "width" && { y: c.layout.y / scaleY, height: c.layout.height / scaleY }),
+          },
+        })),
+      };
+      onComponentReplace?.(componentId, newComp as Component);
+    } else {
+      let { width: w, height: h } = comp.layout;
+      if ("fontSize" in comp) {
+        const fontSize = (comp as any).fontSize || 16;
+        const content: string = (comp as any).content || (comp as any).label || "";
+        const lines = content.split?.("\n") || [content];
+        const maxLen = Math.max(...lines.map((l: string) => l.length), 1);
+        if (axis !== "height") w = Math.max(0.05, (maxLen * fontSize * 0.55 + 16) / cw);
+        if (axis !== "width") h = Math.max(0.03, (lines.length * fontSize * 1.4 + 8) / ch);
+      } else {
+        if (axis !== "height") w = Math.max(0.05, w * 0.5);
+        if (axis !== "width") h = Math.max(0.05, h * 0.5);
+      }
+      onComponentUpdate(componentId, { ...comp.layout, width: Math.min(w, 1), height: Math.min(h, 1) });
+    }
+    endBatch?.();
+  }, [screen, canvasDimensions, onComponentUpdate, onComponentReplace, startBatch, endBatch]);
+
   // --- Inline editing handlers ---
   const handleEditStart = useCallback((componentId: string, initialState: TextEditingState) => {
     if (lockedIds.has(componentId)) return;
     setSelectedComponentId(componentId);
     setEditingInfo({ mode: "text", componentId, state: initialState });
-  }, [lockedIds]);
+  }, [lockedIds, setSelectedComponentId, setEditingInfo]);
 
   const handleEditStateChange = useCallback((updates: Partial<TextEditingState>) => {
-    setEditingInfo(prev => prev && prev.mode === "text" ? { ...prev, state: { ...prev.state, ...updates } } : prev);
-  }, []);
+    setEditingInfo((prev) => prev && prev.mode === "text" ? { ...prev, state: { ...prev.state, ...updates } } : prev);
+  }, [setEditingInfo]);
 
   const handleStyleStateChange = useCallback((updates: Partial<StyleEditingState>) => {
-    setEditingInfo(prev => {
+    setEditingInfo((prev) => {
       if (!prev || prev.mode !== "style") return prev;
       return { ...prev, state: { ...prev.state, ...updates } };
     });
@@ -967,11 +1011,20 @@ export function Canvas({
       if (updates.gap !== undefined) styleUpdates.gap = updates.gap;
       if (updates.justifyContent !== undefined) styleUpdates.justifyContent = updates.justifyContent;
       if (updates.alignItems !== undefined) styleUpdates.alignItems = updates.alignItems;
+      if (updates.scrollable !== undefined) styleUpdates.scrollable = updates.scrollable;
+      if (updates.scrollDirection !== undefined) styleUpdates.scrollDirection = updates.scrollDirection;
+      if (updates.shadowEnabled !== undefined) styleUpdates.shadowEnabled = updates.shadowEnabled;
+      if (updates.shadowColor !== undefined) styleUpdates.shadowColor = updates.shadowColor;
+      if (updates.shadowOpacity !== undefined) styleUpdates.shadowOpacity = updates.shadowOpacity;
+      if (updates.shadowRadius !== undefined) styleUpdates.shadowRadius = updates.shadowRadius;
+      if (updates.gradientEnabled !== undefined) styleUpdates.gradientEnabled = updates.gradientEnabled;
+      if (updates.gradientColors !== undefined) styleUpdates.gradientColors = updates.gradientColors;
+      if (updates.gradientDirection !== undefined) styleUpdates.gradientDirection = updates.gradientDirection;
       if (Object.keys(styleUpdates).length > 0) {
         onStyleChange?.(info.componentId, styleUpdates);
       }
     }
-  }, [onStyleChange]);
+  }, [onStyleChange, setEditingInfo]);
 
   const handleEditDone = useCallback(() => {
     if (!editingInfo || !screen) return;
@@ -1013,11 +1066,10 @@ export function Canvas({
     setEditingInfo(null);
     setSelectedComponentId(null);
     setInspectorOpen(false);
-  }, [editingInfo, screen.components, onContentChange, onStyleChange]);
+  }, [editingInfo, screen?.components, onContentChange, onStyleChange, setEditingInfo, setSelectedComponentId, setInspectorOpen]);
 
   const handleEditCancel = useCallback(() => {
     const info = editingInfoRef.current;
-    // Revert live style changes to their original values
     if (info?.mode === "style") {
       const { componentId, initialState } = info;
       const revert: Record<string, unknown> = {};
@@ -1034,6 +1086,21 @@ export function Canvas({
         revert.justifyContent = initialState.justifyContent;
         revert.alignItems = initialState.alignItems;
       }
+      if (initialState.hasScrollable) {
+        revert.scrollable = initialState.scrollable;
+        revert.scrollDirection = initialState.scrollDirection;
+      }
+      if (initialState.hasShadow) {
+        revert.shadowEnabled = initialState.shadowEnabled;
+        revert.shadowColor = initialState.shadowColor;
+        revert.shadowOpacity = initialState.shadowOpacity;
+        revert.shadowRadius = initialState.shadowRadius;
+      }
+      if (initialState.hasGradient) {
+        revert.gradientEnabled = initialState.gradientEnabled;
+        revert.gradientColors = initialState.gradientColors;
+        revert.gradientDirection = initialState.gradientDirection;
+      }
       if (Object.keys(revert).length > 0) {
         onStyleChange?.(componentId, revert);
       }
@@ -1042,7 +1109,7 @@ export function Canvas({
     setEditingInfo(null);
     setSelectedComponentId(null);
     setInspectorOpen(false);
-  }, [onStyleChange]);
+  }, [onStyleChange, setEditingInfo, setSelectedComponentId, setInspectorOpen]);
 
   const handlePickImage = useCallback(async (componentId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -1068,14 +1135,13 @@ export function Canvas({
     setInspectorJson(JSON.stringify(comp, null, 2));
     setInspectorError(null);
     setInspectorOpen(true);
-  }, [selectedComponentId, editingInfo, screen?.components]);
+  }, [selectedComponentId, editingInfo, screen?.components, setInspectorJson, setInspectorError, setInspectorOpen]);
 
   const applyInspectorChanges = useCallback(() => {
     const compId = selectedComponentId ?? editingInfo?.componentId;
     if (!compId) return;
     try {
       const parsed = ComponentSchema.parse(JSON.parse(inspectorJson));
-      // Preserve the original ID so we don't break selection
       const updated = { ...parsed, id: compId };
       onComponentReplace?.(compId, updated);
       setInspectorError(null);
@@ -1085,7 +1151,103 @@ export function Canvas({
     } catch (e) {
       setInspectorError(e instanceof Error ? e.message : "Invalid JSON");
     }
-  }, [inspectorJson, selectedComponentId, editingInfo, onComponentReplace]);
+  }, [inspectorJson, selectedComponentId, editingInfo, onComponentReplace, setInspectorError, setInspectorOpen, setEditingInfo, setSelectedComponentId]);
+
+  // --- Multi-select alignment handlers ---
+  const handleAlign = useCallback((alignment: string) => {
+    if (!screen || selectedComponentIds.size < 2) return;
+    const selected = screen.components.filter((c) => selectedComponentIds.has(c.id));
+    if (selected.length < 2) return;
+    startBatch?.("Align components");
+    const layouts = selected.map((c) => ({ id: c.id, ...c.layout }));
+    switch (alignment) {
+      case "left": {
+        const minX = Math.min(...layouts.map((l) => l.x));
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, x: minX }));
+        break;
+      }
+      case "centerX": {
+        const centers = layouts.map((l) => l.x + l.width / 2);
+        const avg = centers.reduce((a, b) => a + b, 0) / centers.length;
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, x: avg - l.width / 2 }));
+        break;
+      }
+      case "right": {
+        const maxR = Math.max(...layouts.map((l) => l.x + l.width));
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, x: maxR - l.width }));
+        break;
+      }
+      case "top": {
+        const minY = Math.min(...layouts.map((l) => l.y));
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, y: minY }));
+        break;
+      }
+      case "middleY": {
+        const mids = layouts.map((l) => l.y + l.height / 2);
+        const avg = mids.reduce((a, b) => a + b, 0) / mids.length;
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, y: avg - l.height / 2 }));
+        break;
+      }
+      case "bottom": {
+        const maxB = Math.max(...layouts.map((l) => l.y + l.height));
+        layouts.forEach((l) => onComponentUpdate(l.id, { ...l, y: maxB - l.height }));
+        break;
+      }
+      case "distributeH": {
+        const sorted = [...layouts].sort((a, b) => a.x - b.x);
+        const totalW = sorted.reduce((s, l) => s + l.width, 0);
+        const span = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width - sorted[0].x;
+        const gap = (span - totalW) / Math.max(sorted.length - 1, 1);
+        let cx = sorted[0].x;
+        sorted.forEach((l) => { onComponentUpdate(l.id, { ...l, x: cx }); cx += l.width + gap; });
+        break;
+      }
+      case "distributeV": {
+        const sorted = [...layouts].sort((a, b) => a.y - b.y);
+        const totalH = sorted.reduce((s, l) => s + l.height, 0);
+        const span = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height - sorted[0].y;
+        const gap = (span - totalH) / Math.max(sorted.length - 1, 1);
+        let cy = sorted[0].y;
+        sorted.forEach((l) => { onComponentUpdate(l.id, { ...l, y: cy }); cy += l.height + gap; });
+        break;
+      }
+    }
+    endBatch?.();
+  }, [screen, selectedComponentIds, onComponentUpdate, startBatch, endBatch]);
+
+  // --- Multi-select group drag ---
+  const multiDragRef = useRef<Map<string, Layout>>(new Map());
+
+  const handleMultiDragUpdate = useCallback((id: string, newLayout: Layout) => {
+    if (!multiSelectMode || selectedComponentIds.size < 2 || !screen) {
+      onComponentUpdate(id, newLayout);
+      return;
+    }
+    const origLayout = multiDragRef.current.get(id);
+    if (!origLayout) { onComponentUpdate(id, newLayout); return; }
+    const dx = newLayout.x - origLayout.x;
+    const dy = newLayout.y - origLayout.y;
+    selectedComponentIds.forEach((compId) => {
+      const orig = multiDragRef.current.get(compId);
+      if (!orig) return;
+      onComponentUpdate(compId, compId === id ? newLayout : { ...orig, x: orig.x + dx, y: orig.y + dy });
+    });
+  }, [multiSelectMode, selectedComponentIds, screen, onComponentUpdate]);
+
+  const handleMultiDragStart = useCallback((componentId: string) => {
+    if (multiSelectMode && selectedComponentIds.size >= 2 && screen) {
+      multiDragRef.current.clear();
+      screen.components.forEach((c) => {
+        if (selectedComponentIds.has(c.id)) multiDragRef.current.set(c.id, { ...c.layout });
+      });
+    }
+    handleDragStart(componentId);
+  }, [multiSelectMode, selectedComponentIds, screen, handleDragStart]);
+
+  const handleMultiDragEnd = useCallback(() => {
+    multiDragRef.current.clear();
+    handleDragEnd();
+  }, [handleDragEnd]);
 
   if (!screen) return null;
 
@@ -1105,6 +1267,7 @@ export function Canvas({
         style={StyleSheet.absoluteFill}
         onPress={() => {
           if (!isEditMode) return;
+          if (multiSelectMode) { clearMultiSelect(); return; }
           if (menuOpen) closeMenu();
           else if (isDrilledIn && !editingInfo) drillOut();
           else if (editingInfo) handleEditCancel();
@@ -1129,7 +1292,7 @@ export function Canvas({
               isEditMode={isEditMode}
               autoEdit={autoEditId === component.id}
               onAutoEditConsumed={() => setAutoEditId(null)}
-              onUpdate={onComponentUpdate}
+              onUpdate={multiSelectMode && selectedComponentIds.has(component.id) ? handleMultiDragUpdate : onComponentUpdate}
               onContentChange={onContentChange}
               onStyleChange={onStyleChange}
               onNavigate={onNavigate}
@@ -1148,8 +1311,8 @@ export function Canvas({
               onEditStart={handleEditStart}
               onEditStateChange={handleEditStateChange}
               onSelect={handleSelect}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
+              onDragStart={handleMultiDragStart}
+              onDragEnd={handleMultiDragEnd}
               onDragMove={handleDragMove}
               onDragOverTrashChange={handleDragOverTrashChange}
               isDropTarget={dropTargetId === component.id}
@@ -1157,6 +1320,11 @@ export function Canvas({
               onPickImage={handlePickImage}
               isDimmed={isDimmed}
               locked={lockedIds.has(component.id)}
+              isMultiSelected={selectedComponentIds.has(component.id)}
+              isSelected={selectedComponentId === component.id}
+              onHugContent={handleHugContent}
+              onResizeStart={handleResizeStart}
+              onResizeEnd={handleResizeEnd}
               onLongPress={handleLongPress}
               isDrilledInto={isTheDrilledContainer}
               selectedChildId={isTheDrilledContainer ? selectedChildId : undefined}
@@ -1187,6 +1355,33 @@ export function Canvas({
         />
       )}
 
+
+      {/* Multi-select alignment toolbar */}
+      {isEditMode && multiSelectMode && selectedComponentIds.size >= 2 && !editingInfo && (
+        <View style={styles.alignToolbar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.alignToolbarContent}>
+            {[
+              { key: "left", icon: "align-left" as const, label: "Left" },
+              { key: "centerX", icon: "align-center" as const, label: "Center" },
+              { key: "right", icon: "align-right" as const, label: "Right" },
+              { key: "top", icon: "arrow-up" as const, label: "Top" },
+              { key: "middleY", icon: "minus" as const, label: "Middle" },
+              { key: "bottom", icon: "arrow-down" as const, label: "Bottom" },
+              { key: "distributeH", icon: "more-horizontal" as const, label: "Dist H" },
+              { key: "distributeV", icon: "more-vertical" as const, label: "Dist V" },
+            ].map((btn) => (
+              <Pressable
+                key={btn.key}
+                style={styles.alignButton}
+                onPress={() => handleAlign(btn.key)}
+              >
+                <Feather name={btn.icon} size={16} color="#fff" />
+                <Text style={styles.alignLabel}>{btn.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Trash pill - appears at bottom when dragging */}
       {isEditMode && draggingId && (
@@ -1253,20 +1448,30 @@ export function Canvas({
           )}
           onUndo={handleEditCancel}
           onInspect={inspectorEnabled ? openInspector : undefined}
-          onAIChat={apiKey ? handleOpenAIChatFromToolbar : undefined}
+          onAIChat={handleOpenAIChatFromToolbar}
           theme={slate.theme}
         />
       )}
 
-      {/* Floating sphere – tap to switch modes, long-press to open menu */}
-      {!menuOpen && (
+      {/* Floating sphere – tap to open menu (edit mode only), long-press to toggle */}
+      {!menuOpen && !isPreviewOnly && (
         <AddSphere
-          onPress={openMenu}
+          onPress={isEditMode ? openMenu : () => {}}
           isEditMode={isEditMode}
           onToggleEditMode={() => {
             onToggleEditMode();
             Vibration.vibrate(50);
           }}
+        />
+      )}
+
+      {/* Preview-only: red leave sphere */}
+      {!menuOpen && isPreviewOnly && (
+        <AddSphere
+          onPress={() => onCloseSlate?.()}
+          isEditMode={false}
+          onToggleEditMode={() => {}}
+          isPreviewOnly
         />
       )}
 
@@ -1280,7 +1485,7 @@ export function Canvas({
           onCopy={handleCopy}
           onPaste={handlePaste}
           onDuplicate={handleDuplicate}
-          onAIChat={apiKey ? handleOpenAIChat : undefined}
+          onAIChat={handleOpenAIChat}
           onUndo={onUndo}
           onRedo={onRedo}
           canUndo={canUndo}
@@ -1313,7 +1518,6 @@ export function Canvas({
           setAgentPagerInitialMessage(null);
           openMenu();
         }}
-        apiKey={apiKey}
         agentRunner={agentRunner}
         historyEntries={entries}
         currentHistoryId={currentId}
@@ -1354,7 +1558,6 @@ export function Canvas({
               padding={pad}
               style={{ zIndex: 899 }}
             />
-            {/* Buttons */}
             <View
               style={[
                 styles.aiConfirmRow,
@@ -1385,7 +1588,7 @@ export function Canvas({
         <AIChatSheet
           visible={true}
           component={aiChatTarget}
-          apiKey={apiKey}
+          slateId={slateId}
           theme={slate.theme}
           componentRect={
             canvasDimensions.width > 0
@@ -1417,14 +1620,9 @@ export function Canvas({
         onClose={closeMenu}
         onAddComponent={handleAdd}
         onToggleEditMode={onToggleEditMode}
-        onToggleSnapping={() => setSnappingEnabled(v => !v)}
-        onToggleInspector={() => setInspectorEnabled(v => !v)}
-        onToggleAdvancedCode={() => {
-          setShowAdvancedCode(v => {
-            AsyncStorage.setItem("settings_advancedCode", String(!v));
-            return !v;
-          });
-        }}
+        onToggleSnapping={() => setSnappingEnabled(!snappingEnabled)}
+        onToggleInspector={() => setInspectorEnabled(!inspectorEnabled)}
+        onToggleAdvancedCode={() => setShowAdvancedCode(!showAdvancedCode)}
         onCloseSlate={() => onCloseSlate?.()}
         onDeleteSlate={() => onDeleteSlate?.()}
         slateName={slateName}
@@ -1445,8 +1643,6 @@ export function Canvas({
         canUndo={canUndo}
         canRedo={canRedo}
         onOpenVersionHistory={() => setVersionHistoryOpen(true)}
-        apiKey={apiKey}
-        onApiKeyChange={onApiKeyChange}
         storage={storageProp}
         onApplyComponents={handleApplyComponents}
         historyEntries={entries}
@@ -1463,6 +1659,7 @@ export function Canvas({
           closeMenu();
           setTimeout(() => setAgentPagerOpen(true), 200);
         }}
+        isPreviewOnly={isPreviewOnly}
       />
     </View>
   );
@@ -1472,6 +1669,33 @@ const styles = StyleSheet.create({
   editBackdrop: {
     backgroundColor: "rgba(0,0,0,0.6)",
     zIndex: 100,
+  },
+  alignToolbar: {
+    position: "absolute",
+    bottom: 20,
+    left: 0,
+    right: 0,
+    zIndex: 300,
+  },
+  alignToolbarContent: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  alignButton: {
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    gap: 2,
+  },
+  alignLabel: {
+    color: "#555",
+    fontSize: 9,
+    fontWeight: "700",
   },
   trashPillContainer: {
     position: "absolute",
@@ -1584,6 +1808,10 @@ const styles = StyleSheet.create({
   devSpherePreview: {
     backgroundColor: "#333",
     borderColor: "#555",
+  },
+  devSphereLeave: {
+    backgroundColor: "#1a0000",
+    borderColor: "#ff4444",
   },
   tidyOverlay: {
     ...StyleSheet.absoluteFillObject,

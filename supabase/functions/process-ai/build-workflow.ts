@@ -1,10 +1,17 @@
-import { z } from "zod";
-import type { AppSlate, Theme, Action, Variable, Component } from "../types";
-import { ActionSchema, VariableSchema } from "../types";
-import { workflowSystemPrompt } from "./prompts";
-import { extractJson } from "./parseResponse";
-import { submitJob, getJobResult } from "./aiJobClient";
-import type { AnthropicMessage } from "./types";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { ActionSchema } from "./schema.ts";
+import { extractJson } from "./parse-response.ts";
+import type { Component } from "./schema.ts";
+
+interface AppSlate {
+  version: number;
+  initial_screen_id: string;
+  theme?: any;
+  screens: Record<string, { id: string; name: string; components: Component[]; variables?: any[] }>;
+  variables?: any[];
+}
+
+type Variable = { id: string; name: string; type: string; defaultValue: unknown; persist?: boolean };
 
 const WorkflowVariableSchema = z.object({
   id: z.string().uuid(),
@@ -30,45 +37,7 @@ export const WorkflowResultSchema = z.object({
 });
 
 export type WorkflowResult = z.infer<typeof WorkflowResultSchema>;
-export type WorkflowVariable = z.infer<typeof WorkflowVariableSchema>;
 
-/**
- * Chat with Claude to build a workflow via edge function.
- * Returns the raw text response.
- */
-export async function buildWorkflowChat(
-  slateId: string,
-  slate: AppSlate,
-  screenId: string,
-  messages: AnthropicMessage[],
-  theme?: Theme,
-): Promise<string> {
-  const system = workflowSystemPrompt(slate, screenId, theme);
-
-  const jobId = await submitJob({
-    slateId,
-    jobType: "workflow",
-    request: { system, messages },
-  });
-
-  // Poll for result
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const result = await getJobResult(jobId);
-    if (result?.status === "completed" && result.response?.text) {
-      return result.response.text;
-    }
-    if (result?.status === "failed") {
-      throw new Error(result.error_message ?? "Workflow generation failed");
-    }
-  }
-
-  throw new Error("Workflow generation timed out");
-}
-
-/**
- * Parse a workflow result from Claude's response.
- */
 export function parseWorkflowResult(text: string): WorkflowResult {
   const json = extractJson(text);
   if (!json) throw new Error("No workflow JSON found in response");
@@ -83,9 +52,6 @@ export function parseWorkflowResult(text: string): WorkflowResult {
   return WorkflowResultSchema.parse(parsed);
 }
 
-/**
- * Apply a workflow result to a slate, returning the updated slate.
- */
 export function applyWorkflow(
   slate: AppSlate,
   screenId: string,
@@ -93,7 +59,6 @@ export function applyWorkflow(
 ): AppSlate {
   let updated = { ...slate };
 
-  // Add variables
   if (result.variables && result.variables.length > 0) {
     for (const v of result.variables) {
       const variable: Variable = {
@@ -106,15 +71,14 @@ export function applyWorkflow(
 
       if (v.scope === "app") {
         const existing = updated.variables ?? [];
-        // Don't duplicate by name
-        if (!existing.some((e) => e.name === v.name)) {
+        if (!existing.some((e: Variable) => e.name === v.name)) {
           updated = { ...updated, variables: [...existing, variable] };
         }
       } else {
         const screen = updated.screens[screenId];
         if (screen) {
           const existing = screen.variables ?? [];
-          if (!existing.some((e) => e.name === v.name)) {
+          if (!existing.some((e: Variable) => e.name === v.name)) {
             updated = {
               ...updated,
               screens: {
@@ -128,7 +92,6 @@ export function applyWorkflow(
     }
   }
 
-  // Apply component updates
   if (result.componentUpdates && result.componentUpdates.length > 0) {
     const screen = updated.screens[screenId];
     if (screen) {
@@ -161,29 +124,24 @@ function applyUpdateToComponent(
     const result = { ...comp } as any;
     if (update.actions) {
       if (Object.keys(update.actions).length === 0) {
-        // Empty object clears all actions
         result.actions = undefined;
       } else {
-        // Merge actions: keep existing events, override specified ones
         result.actions = { ...(comp.actions ?? {}), ...update.actions };
       }
     }
     if (update.bindings) {
       if (Object.keys(update.bindings).length === 0) {
-        // Empty object clears all bindings
         result.bindings = undefined;
       } else {
         result.bindings = { ...(comp.bindings ?? {}), ...update.bindings };
       }
     }
     if (update.visibleWhen !== undefined) {
-      // Empty string clears visibility condition
       result.visibleWhen = update.visibleWhen || undefined;
     }
     return result as Component;
   }
 
-  // Recurse into container children
   if (comp.type === "container" && comp.children) {
     const updatedChildren = comp.children.map((child) =>
       applyUpdateToComponent(child, update),
@@ -196,9 +154,6 @@ function applyUpdateToComponent(
   return comp;
 }
 
-/**
- * Check if a response text contains a valid workflow result.
- */
 export function containsWorkflowJson(text: string): boolean {
   try {
     parseWorkflowResult(text);

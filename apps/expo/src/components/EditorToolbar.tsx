@@ -49,6 +49,21 @@ export interface StyleEditingState {
   gap: number;
   justifyContent: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems: "flex-start" | "center" | "flex-end" | "stretch";
+  // Scroll
+  hasScrollable: boolean;
+  scrollable: boolean;
+  scrollDirection: "vertical" | "horizontal";
+  // Shadow
+  hasShadow: boolean;
+  shadowEnabled: boolean;
+  shadowColor: string;
+  shadowOpacity: number;
+  shadowRadius: number;
+  // Gradient
+  hasGradient: boolean;
+  gradientEnabled: boolean;
+  gradientColors: string[];
+  gradientDirection: "to-bottom" | "to-right" | "to-bottom-right" | "to-top";
 }
 
 // ── Props ──
@@ -110,12 +125,14 @@ const DEFAULT_BORDER_WIDTHS = [
   { value: 10, label: "10" },
 ] as const;
 
-type StyleSliderTarget = "borderRadius" | "borderWidth" | "gap";
+type StyleSliderTarget = "borderRadius" | "borderWidth" | "gap" | "shadowRadius" | "shadowOpacity";
 
 const SLIDER_CONFIG: Record<StyleSliderTarget, { min: number; max: number }> = {
   borderRadius: { min: 0, max: 50 },
   borderWidth: { min: 0, max: 20 },
   gap: { min: 0, max: 40 },
+  shadowRadius: { min: 0, max: 30 },
+  shadowOpacity: { min: 0, max: 100 },
 };
 
 const JUSTIFY_OPTIONS = [
@@ -488,7 +505,7 @@ function InlineColorRow({
 
 type PanelType =
   | "fonts" | "color" | "highlight" | "format" | "alignment" | "textSizes"
-  | "borderColor" | "backgroundColor"
+  | "borderColor" | "backgroundColor" | "shadowColor" | "gradientColors"
   | null;
 
 // ── Main component ──
@@ -542,12 +559,16 @@ export function EditorToolbar(props: EditorToolbarProps) {
     ? props.textState!.fontSize
     : sliderTarget === "borderRadius" ? props.styleState!.borderRadius
     : sliderTarget === "borderWidth" ? props.styleState!.borderWidth
+    : sliderTarget === "shadowRadius" ? props.styleState!.shadowRadius
+    : sliderTarget === "shadowOpacity" ? Math.round(props.styleState!.shadowOpacity * 100)
     : props.styleState!.gap;
 
   const showSlider = mode === "text" || (
     (sliderTarget === "borderRadius" && props.styleState!.hasBorderRadius) ||
     (sliderTarget === "borderWidth" && props.styleState!.hasBorder) ||
-    (sliderTarget === "gap" && props.styleState!.hasLayoutMode && props.styleState!.layoutMode === "flex")
+    (sliderTarget === "gap" && props.styleState!.hasLayoutMode && props.styleState!.layoutMode === "flex") ||
+    (sliderTarget === "shadowRadius" && props.styleState!.hasShadow && props.styleState!.shadowEnabled) ||
+    (sliderTarget === "shadowOpacity" && props.styleState!.hasShadow && props.styleState!.shadowEnabled)
   );
 
   // ── Vertical slider logic ──
@@ -576,6 +597,8 @@ export function EditorToolbar(props: EditorToolbarProps) {
     const newVal = Math.round(sliderMin + normalized * (sliderMax - sliderMin));
     if (mode === "text") {
       props.onTextStateChange?.({ fontSize: newVal });
+    } else if (sliderTarget === "shadowOpacity") {
+      props.onStyleStateChange?.({ shadowOpacity: newVal / 100 });
     } else {
       props.onStyleStateChange?.({ [sliderTarget]: newVal } as any);
     }
@@ -611,20 +634,28 @@ export function EditorToolbar(props: EditorToolbarProps) {
   const isUnderline = mode === "text" ? props.textState!.textDecorationLine === "underline" : false;
 
   // ── Color picker resolution ──
+  const [editingGradientIndex, setEditingGradientIndex] = useState(0);
+
   const pickerInitialColor = useMemo(() => {
     if (mode === "text") {
       return pickerTarget === "color" ? props.textState!.color : props.textState!.backgroundColor;
     }
+    if (pickerTarget === "shadowColor") return props.styleState!.shadowColor;
+    if (pickerTarget === "gradientStop") return props.styleState!.gradientColors[editingGradientIndex] ?? "#000000";
     return pickerTarget === "borderColor" ? props.styleState!.borderColor : props.styleState!.backgroundColor;
-  }, [mode, pickerTarget, props.textState, props.styleState]);
+  }, [mode, pickerTarget, editingGradientIndex, props.textState, props.styleState]);
 
   const handlePickerSelect = useCallback((color: string) => {
     if (mode === "text") {
       props.onTextStateChange?.(pickerTarget === "color" ? { color } : { backgroundColor: color });
+    } else if (pickerTarget === "gradientStop") {
+      const next = [...(props.styleState!.gradientColors)];
+      next[editingGradientIndex] = color;
+      props.onStyleStateChange?.({ gradientColors: next });
     } else {
       props.onStyleStateChange?.({ [pickerTarget]: color } as any);
     }
-  }, [mode, pickerTarget, props.onTextStateChange, props.onStyleStateChange]);
+  }, [mode, pickerTarget, editingGradientIndex, props.onTextStateChange, props.onStyleStateChange, props.styleState]);
 
   // ── Slider text input handler ──
   const handleSliderInput = useCallback((val: string) => {
@@ -632,6 +663,9 @@ export function EditorToolbar(props: EditorToolbarProps) {
     if (mode === "text") {
       if (!isNaN(num) && num >= 1 && num <= 999) props.onTextStateChange?.({ fontSize: num });
       else if (val === "") props.onTextStateChange?.({ fontSize: 12 });
+    } else if (sliderTarget === "shadowOpacity") {
+      if (!isNaN(num) && num >= 0 && num <= 100) props.onStyleStateChange?.({ shadowOpacity: num / 100 });
+      else if (val === "") props.onStyleStateChange?.({ shadowOpacity: 0 });
     } else {
       if (!isNaN(num) && num >= 0 && num <= sliderMax) props.onStyleStateChange?.({ [sliderTarget]: num } as any);
       else if (val === "") props.onStyleStateChange?.({ [sliderTarget]: 0 } as any);
@@ -716,8 +750,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
             />
             <BubbleRow
               options={[
-                { label: "Wrap Word", value: "wrap-word" },
-                { label: "Wrap Text", value: "wrap-text" },
+                { label: "Wrap", value: "wrap-word" },
                 { label: "No Wrap", value: "no-wrap" },
               ]}
               activeValue={props.textState!.wrapMode}
@@ -777,6 +810,58 @@ export function EditorToolbar(props: EditorToolbarProps) {
             onSelect={(col) => props.onStyleStateChange!({ backgroundColor: col })}
             onAddCustom={() => { setPickerTarget("backgroundColor"); setPickerVisible(true); }}
           />
+        )}
+
+        {/* Shadow color panel */}
+        {mode === "style" && activePanel === "shadowColor" && props.styleState!.hasShadow && props.styleState!.shadowEnabled && (
+          <ScrollColorRow
+            colors={BORDER_COLORS}
+            themeColors={themeColorValues}
+            activeColor={props.styleState!.shadowColor}
+            onSelect={(col) => props.onStyleStateChange!({ shadowColor: col })}
+            onAddCustom={() => { setPickerTarget("shadowColor"); setPickerVisible(true); }}
+          />
+        )}
+
+        {/* Gradient colors panel */}
+        {mode === "style" && activePanel === "gradientColors" && props.styleState!.hasGradient && props.styleState!.gradientEnabled && (
+          <View style={s.inlineColorPicker}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.inlineColorContent}
+            >
+              {props.styleState!.gradientColors.map((col, idx) => (
+                <Pressable
+                  key={idx}
+                  style={[s.colorOption, { backgroundColor: col, borderWidth: 2, borderColor: "#333" }]}
+                  onPress={() => {
+                    setEditingGradientIndex(idx);
+                    setPickerTarget("gradientStop");
+                    setPickerVisible(true);
+                  }}
+                  onLongPress={() => {
+                    if (props.styleState!.gradientColors.length > 2) {
+                      const next = [...props.styleState!.gradientColors];
+                      next.splice(idx, 1);
+                      props.onStyleStateChange!({ gradientColors: next });
+                    }
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700", textShadowColor: "rgba(0,0,0,0.8)", textShadowRadius: 2, textShadowOffset: { width: 0, height: 1 } }}>{idx + 1}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[s.colorOption, s.addCustomButton]}
+                onPress={() => {
+                  const next = [...props.styleState!.gradientColors, "#888888"];
+                  props.onStyleStateChange!({ gradientColors: next });
+                }}
+              >
+                <Feather name="plus" size={22} color="#FFF" />
+              </Pressable>
+            </ScrollView>
+          </View>
         )}
 
         {mode === "style" && sliderTarget === "borderRadius" && props.styleState!.hasBorderRadius && activePanel === null && (
@@ -970,6 +1055,108 @@ export function EditorToolbar(props: EditorToolbarProps) {
                 >
                   <Feather name="maximize-2" size={14} color="#FFFFFF" />
                   <Text style={s.iconSubLabel}>{props.styleState!.gap}</Text>
+                </Pressable>
+              )}
+
+              {/* Scroll toggle */}
+              {props.styleState!.hasScrollable && (
+                <Pressable
+                  style={[s.iconButton, props.styleState!.scrollable && s.iconButtonActive]}
+                  onPress={() => props.onStyleStateChange!({ scrollable: !props.styleState!.scrollable })}
+                >
+                  <Feather name="list" size={16} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>{props.styleState!.scrollable ? "Scrl" : "No"}</Text>
+                </Pressable>
+              )}
+              {props.styleState!.hasScrollable && props.styleState!.scrollable && (
+                <Pressable
+                  style={s.iconButton}
+                  onPress={() => props.onStyleStateChange!({ scrollDirection: props.styleState!.scrollDirection === "vertical" ? "horizontal" : "vertical" })}
+                >
+                  <Feather name={props.styleState!.scrollDirection === "vertical" ? "arrow-down" : "arrow-right"} size={16} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>{props.styleState!.scrollDirection === "vertical" ? "V" : "H"}</Text>
+                </Pressable>
+              )}
+
+              {/* Shadow toggle */}
+              {props.styleState!.hasShadow && (
+                <Pressable
+                  style={[s.iconButton, props.styleState!.shadowEnabled && s.iconButtonActive]}
+                  onPress={() => props.onStyleStateChange!({ shadowEnabled: !props.styleState!.shadowEnabled })}
+                >
+                  <Feather name="sun" size={16} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>{props.styleState!.shadowEnabled ? "On" : "Off"}</Text>
+                </Pressable>
+              )}
+              {props.styleState!.hasShadow && props.styleState!.shadowEnabled && (
+                <Pressable
+                  style={[s.iconButton, sliderTarget === "shadowRadius" && s.iconButtonActive]}
+                  onPress={() => setSliderTarget("shadowRadius")}
+                >
+                  <Feather name="circle" size={14} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>{props.styleState!.shadowRadius}</Text>
+                </Pressable>
+              )}
+              {props.styleState!.hasShadow && props.styleState!.shadowEnabled && (
+                <Pressable
+                  style={[s.iconButton, sliderTarget === "shadowOpacity" && s.iconButtonActive]}
+                  onPress={() => setSliderTarget("shadowOpacity")}
+                >
+                  <Feather name="eye" size={14} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>{Math.round(props.styleState!.shadowOpacity * 100)}</Text>
+                </Pressable>
+              )}
+              {props.styleState!.hasShadow && props.styleState!.shadowEnabled && (
+                <Pressable
+                  style={[s.iconButton, activePanel === "shadowColor" && s.iconButtonActive]}
+                  onPress={() => togglePanel("shadowColor")}
+                >
+                  <View style={[s.colorIndicator, { backgroundColor: props.styleState!.shadowColor }]} />
+                </Pressable>
+              )}
+
+              {/* Gradient toggle */}
+              {props.styleState!.hasGradient && (
+                <Pressable
+                  style={[s.iconButton, props.styleState!.gradientEnabled && s.iconButtonActive]}
+                  onPress={() => {
+                    if (!props.styleState!.gradientEnabled && props.styleState!.gradientColors.length < 2) {
+                      props.onStyleStateChange!({ gradientEnabled: true, gradientColors: ["#000000", "#ffffff"] });
+                    } else {
+                      props.onStyleStateChange!({ gradientEnabled: !props.styleState!.gradientEnabled });
+                    }
+                  }}
+                >
+                  <Feather name="sunset" size={16} color="#FFFFFF" />
+                  <Text style={s.iconSubLabel}>Grad</Text>
+                </Pressable>
+              )}
+              {props.styleState!.hasGradient && props.styleState!.gradientEnabled && (
+                <Pressable
+                  style={s.iconButton}
+                  onPress={() => {
+                    const dirs: Array<"to-bottom" | "to-right" | "to-bottom-right" | "to-top"> = ["to-bottom", "to-right", "to-bottom-right", "to-top"];
+                    const idx = dirs.indexOf(props.styleState!.gradientDirection);
+                    props.onStyleStateChange!({ gradientDirection: dirs[(idx + 1) % dirs.length] });
+                  }}
+                >
+                  <Feather
+                    name={props.styleState!.gradientDirection === "to-right" ? "arrow-right" : props.styleState!.gradientDirection === "to-top" ? "arrow-up" : props.styleState!.gradientDirection === "to-bottom-right" ? "arrow-down-right" : "arrow-down"}
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                </Pressable>
+              )}
+              {props.styleState!.hasGradient && props.styleState!.gradientEnabled && (
+                <Pressable
+                  style={[s.iconButton, activePanel === "gradientColors" && s.iconButtonActive]}
+                  onPress={() => togglePanel("gradientColors")}
+                >
+                  <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "#fff", overflow: "hidden", flexDirection: "row" }}>
+                    {props.styleState!.gradientColors.slice(0, 3).map((c, i) => (
+                      <View key={i} style={{ flex: 1, backgroundColor: c }} />
+                    ))}
+                  </View>
                 </Pressable>
               )}
             </>

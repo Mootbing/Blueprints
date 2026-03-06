@@ -7,7 +7,7 @@ interface ChatMessageProps {
   message: ChatMessageType;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
@@ -65,7 +65,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </View>
     </View>
   );
-}
+}, (prev, next) =>
+  prev.message.id === next.message.id &&
+  prev.message.content === next.message.content
+);
 
 const styles = StyleSheet.create({
   container: {

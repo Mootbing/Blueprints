@@ -34,6 +34,21 @@ export interface StyleEditingState {
   gap: number;
   justifyContent: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems: "flex-start" | "center" | "flex-end" | "stretch";
+  // Scroll
+  hasScrollable: boolean;
+  scrollable: boolean;
+  scrollDirection: "vertical" | "horizontal";
+  // Shadow
+  hasShadow: boolean;
+  shadowEnabled: boolean;
+  shadowColor: string;
+  shadowOpacity: number;
+  shadowRadius: number;
+  // Gradient
+  hasGradient: boolean;
+  gradientEnabled: boolean;
+  gradientColors: string[];
+  gradientDirection: "to-bottom" | "to-right" | "to-bottom-right" | "to-top";
 }
 
 interface StyleEditorToolbarProps {
@@ -71,13 +86,15 @@ const BORDER_COLORS = [
   "#ec4899", "#f43f5e",
 ];
 
-type SliderTarget = "borderRadius" | "borderWidth" | "gap";
-type PanelType = "borderColor" | "backgroundColor" | null;
+type SliderTarget = "borderRadius" | "borderWidth" | "gap" | "shadowRadius" | "shadowOpacity";
+type PanelType = "borderColor" | "backgroundColor" | "shadowColor" | "gradientColors" | null;
 
 const SLIDER_CONFIG: Record<SliderTarget, { min: number; max: number }> = {
   borderRadius: { min: 0, max: 50 },
   borderWidth: { min: 0, max: 20 },
   gap: { min: 0, max: 40 },
+  shadowRadius: { min: 0, max: 30 },
+  shadowOpacity: { min: 0, max: 100 },
 };
 
 const JUSTIFY_OPTIONS = [
@@ -120,7 +137,8 @@ export function StyleEditorToolbar({
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [sliderTarget, setSliderTarget] = useState<SliderTarget>("borderRadius");
   const [pickerVisible, setPickerVisible] = useState(false);
-  const [pickerTarget, setPickerTarget] = useState<"borderColor" | "backgroundColor">("borderColor");
+  const [pickerTarget, setPickerTarget] = useState<"borderColor" | "backgroundColor" | "shadowColor" | "gradientStop">("borderColor");
+  const [editingGradientIndex, setEditingGradientIndex] = useState(0);
 
   const togglePanel = useCallback((panel: PanelType) => {
     setActivePanel((current) => (current === panel ? null : panel));
@@ -128,7 +146,12 @@ export function StyleEditorToolbar({
 
   // Dynamic slider config based on target
   const { min: sliderMin, max: sliderMax } = SLIDER_CONFIG[sliderTarget];
-  const currentValue = sliderTarget === "borderRadius" ? state.borderRadius : sliderTarget === "borderWidth" ? state.borderWidth : state.gap;
+  const currentValue = sliderTarget === "borderRadius" ? state.borderRadius
+    : sliderTarget === "borderWidth" ? state.borderWidth
+    : sliderTarget === "shadowRadius" ? state.shadowRadius
+    : sliderTarget === "shadowOpacity" ? Math.round(state.shadowOpacity * 100)
+    : sliderTarget === "gap" ? state.gap
+    : 0;
 
   const thumbSize = 40;
   const [trackHeight, setTrackHeight] = useState(screenHeight * 0.25);
@@ -153,7 +176,12 @@ export function StyleEditorToolbar({
     const trackRange = Math.max(1, trackHeight - thumbSize);
     const normalized = 1 - Math.max(0, Math.min(offset / trackRange, 1));
     const newVal = sliderMin + normalized * (sliderMax - sliderMin);
-    onStateChange({ [sliderTarget]: Math.round(newVal) });
+    const rounded = Math.round(newVal);
+    if (sliderTarget === "shadowOpacity") {
+      onStateChange({ shadowOpacity: rounded / 100 });
+    } else {
+      onStateChange({ [sliderTarget]: rounded });
+    }
   }, [trackHeight, sliderMin, sliderMax, sliderTarget, onStateChange]);
 
   const setDragging = useCallback((v: boolean) => { isDraggingSlider.current = v; }, []);
@@ -186,7 +214,9 @@ export function StyleEditorToolbar({
       {/* Dynamic Slider - Left Side */}
       {((sliderTarget === "borderRadius" && state.hasBorderRadius) ||
         (sliderTarget === "borderWidth" && state.hasBorder) ||
-        (sliderTarget === "gap" && state.hasLayoutMode && state.layoutMode === "flex")) && (
+        (sliderTarget === "gap" && state.hasLayoutMode && state.layoutMode === "flex") ||
+        (sliderTarget === "shadowRadius" && state.hasShadow && state.shadowEnabled) ||
+        (sliderTarget === "shadowOpacity" && state.hasShadow && state.shadowEnabled)) && (
         <View style={[styles.sizeSliderContainer, keyboardHeight > 0 && { bottom: keyboardHeight + 80 }]}>
           <TextInput
             style={styles.radiusInput}
@@ -326,6 +356,85 @@ export function StyleEditorToolbar({
               <Pressable
                 style={[styles.colorOption, styles.addCustomButton]}
                 onPress={() => { setPickerTarget("backgroundColor"); setPickerVisible(true); }}
+              >
+                <Feather name="plus" size={22} color="#FFF" />
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Shadow Color Panel */}
+        {activePanel === "shadowColor" && state.hasShadow && state.shadowEnabled && (
+          <View style={styles.colorPicker}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.colorPickerContent}
+            >
+              {BORDER_COLORS.map((col) => (
+                <Pressable
+                  key={col}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: col },
+                    state.shadowColor === col && styles.colorOptionSelected,
+                  ]}
+                  onPress={() => onStateChange({ shadowColor: col })}
+                >
+                  {state.shadowColor === col && (
+                    <View style={styles.colorCheckmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.colorOption, styles.addCustomButton]}
+                onPress={() => { setPickerTarget("shadowColor"); setPickerVisible(true); }}
+              >
+                <Feather name="plus" size={22} color="#FFF" />
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Gradient Colors Panel */}
+        {activePanel === "gradientColors" && state.hasGradient && state.gradientEnabled && (
+          <View style={styles.colorPicker}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.colorPickerContent}
+            >
+              {state.gradientColors.map((col, idx) => (
+                <Pressable
+                  key={idx}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: col, borderWidth: 2, borderColor: "#333" },
+                  ]}
+                  onPress={() => {
+                    setEditingGradientIndex(idx);
+                    setPickerTarget("gradientStop");
+                    setPickerVisible(true);
+                  }}
+                  onLongPress={() => {
+                    if (state.gradientColors.length > 2) {
+                      const next = [...state.gradientColors];
+                      next.splice(idx, 1);
+                      onStateChange({ gradientColors: next });
+                    }
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700", textShadowColor: "rgba(0,0,0,0.8)", textShadowRadius: 2, textShadowOffset: { width: 0, height: 1 } }}>{idx + 1}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.colorOption, styles.addCustomButton]}
+                onPress={() => {
+                  const next = [...state.gradientColors, "#888888"];
+                  onStateChange({ gradientColors: next });
+                }}
               >
                 <Feather name="plus" size={22} color="#FFF" />
               </Pressable>
@@ -512,6 +621,122 @@ export function StyleEditorToolbar({
             </Pressable>
           )}
 
+          {/* Scroll toggle */}
+          {state.hasScrollable && (
+            <Pressable
+              style={[styles.iconButton, state.scrollable && styles.iconButtonActive]}
+              onPress={() => onStateChange({ scrollable: !state.scrollable })}
+            >
+              <Feather name="list" size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.scrollable ? "Scrl" : "No"}</Text>
+            </Pressable>
+          )}
+
+          {/* Scroll direction toggle */}
+          {state.hasScrollable && state.scrollable && (
+            <Pressable
+              style={[styles.iconButton]}
+              onPress={() => onStateChange({
+                scrollDirection: state.scrollDirection === "vertical" ? "horizontal" : "vertical",
+              })}
+            >
+              <Feather name={state.scrollDirection === "vertical" ? "arrow-down" : "arrow-right"} size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.scrollDirection === "vertical" ? "V" : "H"}</Text>
+            </Pressable>
+          )}
+
+          {/* Shadow toggle */}
+          {state.hasShadow && (
+            <Pressable
+              style={[styles.iconButton, state.shadowEnabled && styles.iconButtonActive]}
+              onPress={() => onStateChange({ shadowEnabled: !state.shadowEnabled })}
+            >
+              <Feather name="sun" size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.shadowEnabled ? "On" : "Off"}</Text>
+            </Pressable>
+          )}
+
+          {/* Shadow radius slider */}
+          {state.hasShadow && state.shadowEnabled && (
+            <Pressable
+              style={[styles.iconButton, sliderTarget === "shadowRadius" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("shadowRadius")}
+            >
+              <Feather name="circle" size={14} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{state.shadowRadius}</Text>
+            </Pressable>
+          )}
+
+          {/* Shadow opacity slider */}
+          {state.hasShadow && state.shadowEnabled && (
+            <Pressable
+              style={[styles.iconButton, sliderTarget === "shadowOpacity" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("shadowOpacity")}
+            >
+              <Feather name="eye" size={14} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>{Math.round(state.shadowOpacity * 100)}</Text>
+            </Pressable>
+          )}
+
+          {/* Shadow color */}
+          {state.hasShadow && state.shadowEnabled && (
+            <Pressable
+              style={[styles.iconButton, activePanel === "shadowColor" && styles.iconButtonActive]}
+              onPress={() => togglePanel("shadowColor")}
+            >
+              <View style={[styles.colorIndicator, { backgroundColor: state.shadowColor }]} />
+            </Pressable>
+          )}
+
+          {/* Gradient toggle */}
+          {state.hasGradient && (
+            <Pressable
+              style={[styles.iconButton, state.gradientEnabled && styles.iconButtonActive]}
+              onPress={() => {
+                if (!state.gradientEnabled && state.gradientColors.length < 2) {
+                  onStateChange({ gradientEnabled: true, gradientColors: ["#000000", "#ffffff"] });
+                } else {
+                  onStateChange({ gradientEnabled: !state.gradientEnabled });
+                }
+              }}
+            >
+              <Feather name="sunset" size={16} color="#FFFFFF" />
+              <Text style={styles.iconSubLabel}>Grad</Text>
+            </Pressable>
+          )}
+
+          {/* Gradient direction cycle */}
+          {state.hasGradient && state.gradientEnabled && (
+            <Pressable
+              style={[styles.iconButton]}
+              onPress={() => {
+                const dirs: Array<"to-bottom" | "to-right" | "to-bottom-right" | "to-top"> = ["to-bottom", "to-right", "to-bottom-right", "to-top"];
+                const idx = dirs.indexOf(state.gradientDirection);
+                onStateChange({ gradientDirection: dirs[(idx + 1) % dirs.length] });
+              }}
+            >
+              <Feather
+                name={state.gradientDirection === "to-right" ? "arrow-right" : state.gradientDirection === "to-top" ? "arrow-up" : state.gradientDirection === "to-bottom-right" ? "arrow-down-right" : "arrow-down"}
+                size={16}
+                color="#FFFFFF"
+              />
+            </Pressable>
+          )}
+
+          {/* Gradient colors panel */}
+          {state.hasGradient && state.gradientEnabled && (
+            <Pressable
+              style={[styles.iconButton, activePanel === "gradientColors" && styles.iconButtonActive]}
+              onPress={() => togglePanel("gradientColors")}
+            >
+              <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "#fff", overflow: "hidden", flexDirection: "row" }}>
+                {state.gradientColors.slice(0, 3).map((c, i) => (
+                  <View key={i} style={{ flex: 1, backgroundColor: c }} />
+                ))}
+              </View>
+            </Pressable>
+          )}
+
           {onInspect && (
             <Pressable
               style={[styles.iconButton]}
@@ -525,8 +750,21 @@ export function StyleEditorToolbar({
 
       <ColorPickerModal
         visible={pickerVisible}
-        initialColor={pickerTarget === "borderColor" ? state.borderColor : state.backgroundColor}
-        onSelect={(color) => onStateChange({ [pickerTarget]: color })}
+        initialColor={
+          pickerTarget === "borderColor" ? state.borderColor
+          : pickerTarget === "shadowColor" ? state.shadowColor
+          : pickerTarget === "gradientStop" ? (state.gradientColors[editingGradientIndex] ?? "#000000")
+          : state.backgroundColor
+        }
+        onSelect={(color) => {
+          if (pickerTarget === "gradientStop") {
+            const next = [...state.gradientColors];
+            next[editingGradientIndex] = color;
+            onStateChange({ gradientColors: next });
+          } else {
+            onStateChange({ [pickerTarget]: color });
+          }
+        }}
         onClose={() => setPickerVisible(false)}
       />
     </View>

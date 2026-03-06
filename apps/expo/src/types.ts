@@ -85,5 +85,17 @@ export type BorderStyleUpdates = {
   gap?: number;
   justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
+  // Scroll
+  scrollable?: boolean;
+  scrollDirection?: "vertical" | "horizontal";
+  // Shadow
+  shadowEnabled?: boolean;
+  shadowColor?: string;
+  shadowOpacity?: number;
+  shadowRadius?: number;
+  // Gradient
+  gradientEnabled?: boolean;
+  gradientColors?: string[];
+  gradientDirection?: "to-bottom" | "to-right" | "to-bottom-right" | "to-top";
 };
 export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates | IconStyleUpdates | BorderStyleUpdates;

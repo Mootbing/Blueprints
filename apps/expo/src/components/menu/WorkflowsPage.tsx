@@ -196,7 +196,6 @@ function AgentListView({
 
 interface AgentPageProps {
   width: number;
-  apiKey: string;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
   onRestoreToId?: (id: string) => void;
@@ -211,7 +210,6 @@ interface AgentPageProps {
 
 export function AgentPage({
   width,
-  apiKey,
   historyEntries,
   currentHistoryId,
   onRestoreToId,
@@ -415,22 +413,6 @@ export function AgentPage({
     [handlePreview, handleUndoPreview, handleCherryPick, currentHistoryId],
   );
 
-  // ─── No API key ───────────────────────────────────────────────
-
-  if (!apiKey) {
-    return (
-      <View style={[s.page, { width }]}>
-        <View style={s.noKeyContainer}>
-          <Feather name="key" size={32} color="#222" />
-          <Text style={s.noKeyTitle}>API Key Required</Text>
-          <Text style={s.noKeyText}>
-            Go to Settings and add your Anthropic API key.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   // ─── Agent chat view ──────────────────────────────────────────
 
   if (activeSession) {
@@ -499,27 +481,6 @@ const s = StyleSheet.create({
   page: {
     flex: 1,
   },
-  noKeyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-    paddingVertical: 80,
-    gap: 12,
-  },
-  noKeyTitle: {
-    color: "#ccc",
-    fontSize: 18,
-    fontWeight: "300",
-    letterSpacing: 0.5,
-  },
-  noKeyText: {
-    color: "#444",
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-
   // ─── Agent list ─────────────────────────────────────────────
   listContainer: {
     flex: 1,

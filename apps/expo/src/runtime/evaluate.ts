@@ -16,7 +16,7 @@ export function evaluate(
 ): unknown {
   try {
     const expr = parser.parse(expression);
-    return expr.evaluate(context as any);
+    return expr.evaluate(context.variables as any);
   } catch {
     return undefined;
   }
