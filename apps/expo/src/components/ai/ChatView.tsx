@@ -5,12 +5,14 @@ import {
   TextInput,
   Pressable,
   ScrollView,
+  Image,
   StyleSheet,
   ActivityIndicator,
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { ChatMessage } from "./ChatMessage";
 import type { ChatMessage as ChatMessageType } from "../../ai/types";
 
@@ -18,7 +20,7 @@ interface ChatViewProps {
   messages: ChatMessageType[];
   isLoading: boolean;
   error: string | null;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: string[]) => void;
   onApply?: (message: ChatMessageType) => void;
   onClear?: () => void;
   placeholder?: string;
@@ -40,6 +42,7 @@ export function ChatView({
   renderMessageActions,
 }: ChatViewProps) {
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -51,8 +54,28 @@ export function ChatView({
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    onSend(input.trim());
+    onSend(input.trim(), pendingImages.length > 0 ? pendingImages : undefined);
     setInput("");
+    setPendingImages([]);
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      base64: true,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      const uris = result.assets
+        .filter((a) => a.base64)
+        .map((a) => `data:${a.mimeType ?? "image/jpeg"};base64,${a.base64}`);
+      setPendingImages((prev) => [...prev, ...uris]);
+    }
+  };
+
+  const removePendingImage = (index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -118,33 +141,55 @@ export function ChatView({
       </ScrollView>
 
       <View style={styles.inputBar}>
-        <TextInput
-          style={styles.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder={placeholder}
-          placeholderTextColor="#333"
-          multiline
-          maxLength={2000}
-          returnKeyType="default"
-          blurOnSubmit={false}
-          editable={!isLoading}
-        />
-        <Pressable
-          style={({ pressed }) => [
-            styles.sendBtn,
-            (!input.trim() || isLoading) && styles.sendBtnDisabled,
-            pressed && input.trim() && !isLoading && styles.sendBtnPressed,
-          ]}
-          onPress={handleSend}
-          disabled={!input.trim() || isLoading}
-        >
-          <Feather
-            name="send"
-            size={18}
-            color={input.trim() && !isLoading ? "#000" : "#333"}
+        {pendingImages.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingImageRow} contentContainerStyle={styles.pendingImageRowContent}>
+            {pendingImages.map((uri, i) => (
+              <View key={i} style={styles.pendingImageWrap}>
+                <Image source={{ uri }} style={styles.pendingImage} resizeMode="cover" />
+                <Pressable style={styles.pendingImageRemove} onPress={() => removePendingImage(i)} hitSlop={8}>
+                  <Feather name="x" size={10} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+        <View style={styles.inputRow}>
+          <Pressable
+            style={({ pressed }) => [styles.attachBtn, pressed && styles.attachBtnPressed]}
+            onPress={handlePickImage}
+            disabled={isLoading}
+            hitSlop={8}
+          >
+            <Feather name="image" size={18} color={isLoading ? "#222" : "#555"} />
+          </Pressable>
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder={placeholder}
+            placeholderTextColor="#333"
+            multiline
+            maxLength={2000}
+            returnKeyType="default"
+            blurOnSubmit={false}
+            editable={!isLoading}
           />
-        </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.sendBtn,
+              (!input.trim() || isLoading) && styles.sendBtnDisabled,
+              pressed && input.trim() && !isLoading && styles.sendBtnPressed,
+            ]}
+            onPress={handleSend}
+            disabled={!input.trim() || isLoading}
+          >
+            <Feather
+              name="send"
+              size={18}
+              color={input.trim() && !isLoading ? "#000" : "#333"}
+            />
+          </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -230,13 +275,25 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    gap: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#1a1a1a",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachBtnPressed: {
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   input: {
     flex: 1,
@@ -264,5 +321,32 @@ const styles = StyleSheet.create({
   },
   sendBtnPressed: {
     backgroundColor: "#ccc",
+  },
+  pendingImageRow: {
+    marginBottom: 8,
+    maxHeight: 68,
+  },
+  pendingImageRowContent: {
+    gap: 8,
+  },
+  pendingImageWrap: {
+    position: "relative",
+  },
+  pendingImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: "#1a1a1a",
+  },
+  pendingImageRemove: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#333",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

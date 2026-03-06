@@ -166,7 +166,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000018",
           layout: { x: 0.06, y: 0.73, width: 0.88, height: 0.03 },
-          content: "4. Long-press the eye icon to preview",
+          content: "4. Tap the icon to switch dev/preview modes",
           fontSize: 13,
           color: "#555",
           fontWeight: "normal",

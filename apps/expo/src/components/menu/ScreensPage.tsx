@@ -6,12 +6,47 @@ import type { Screen, Component, AppSlate, Action } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { TreeView } from "./TreeView";
 import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
-import { SwipeToDelete } from "../SwipeToDelete";
 
-// ─── Layers Page ────────────────────────────────────────────────────────────
+// ─── Collapsible Section Header ─────────────────────────────────────────────
 
-interface LayersPageProps {
+function SectionHeader({
+  title,
+  isOpen,
+  onToggle,
+  trailing,
+}: {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <Pressable style={styles.collapsibleHeader} onPress={onToggle}>
+      <Feather
+        name={isOpen ? "chevron-down" : "chevron-right"}
+        size={14}
+        color="#444"
+      />
+      <Text style={styles.collapsibleHeaderText}>{title}</Text>
+      {trailing}
+    </Pressable>
+  );
+}
+
+// ─── Details Page (Pages + Layers + Workflows) ─────────────────────────────
+
+interface DetailsPageProps {
   width: number;
+  // Pages
+  screens: Record<string, Screen>;
+  currentScreenId: string;
+  initialScreenId: string;
+  onSwitchScreen: (id: string) => void;
+  onAddScreen: () => void;
+  onDeleteScreen: (id: string) => void;
+  onRenameScreen: (id: string, name: string) => void;
+  onSetInitialScreen: (id: string) => void;
+  // Layers
   currentScreenName: string;
   currentComponents: Component[];
   onSelectComponent: (id: string) => void;
@@ -19,12 +54,27 @@ interface LayersPageProps {
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
-  onClose: () => void;
   onAIChatComponent?: (id: string) => void;
+  // Workflows
+  slate: AppSlate;
+  currentScreen?: Screen;
+  showAdvancedCode: boolean;
+  onNavigateToAgent?: () => void;
+  onEditWorkflow?: (component: Component) => void;
+  // Common
+  onClose: () => void;
 }
 
-export function LayersPage({
+export function DetailsPage({
   width,
+  screens,
+  currentScreenId,
+  initialScreenId,
+  onSwitchScreen,
+  onAddScreen,
+  onDeleteScreen,
+  onRenameScreen,
+  onSetInitialScreen,
   currentScreenName,
   currentComponents,
   onSelectComponent,
@@ -32,13 +82,41 @@ export function LayersPage({
   lockedIds,
   onToggleLock,
   onMoveComponent,
-  onClose,
   onAIChatComponent,
-}: LayersPageProps) {
+  slate,
+  currentScreen,
+  showAdvancedCode,
+  onNavigateToAgent,
+  onEditWorkflow,
+  onClose,
+}: DetailsPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    () => new Set(["pages", "layers", "workflows"]),
+  );
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [expandedWorkflowId, setExpandedWorkflowId] = useState<string | null>(null);
 
+  const toggleSection = (key: string) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const q = searchQuery.trim().toLowerCase();
+
+  // ─── Pages filtering ──────────────────────────────────────────
+  const allScreens = Object.values(screens);
+  const filteredScreens = q
+    ? allScreens.filter((s) => s.name.toLowerCase().includes(q))
+    : allScreens;
+
+  // ─── Layers filtering ─────────────────────────────────────────
   const filteredComponents = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     if (!q) return currentComponents;
     const filterTree = (comps: Component[]): Component[] =>
       comps
@@ -55,254 +133,9 @@ export function LayersPage({
         })
         .filter(Boolean) as Component[];
     return filterTree(currentComponents);
-  }, [currentComponents, searchQuery]);
+  }, [currentComponents, q]);
 
-  return (
-    <View style={[styles.page, { width }]}>
-      <View style={styles.searchContainer}>
-        <Feather name="search" size={14} color="#333" />
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search layers..."
-          placeholderTextColor="#333"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-            <Feather name="x" size={14} color="#444" />
-          </Pressable>
-        )}
-      </View>
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionHeader}>LAYERS</Text>
-        <Text style={styles.sectionHint}>Higher is above</Text>
-      </View>
-      <TreeView
-        components={filteredComponents}
-        onSelectComponent={(id) => {
-          onSelectComponent(id);
-          onClose();
-        }}
-        onDeleteComponent={onDeleteComponent}
-        lockedIds={lockedIds}
-        onToggleLock={onToggleLock}
-        onMoveComponent={onMoveComponent}
-        onAIChatComponent={onAIChatComponent ? (id) => { onAIChatComponent(id); onClose(); } : undefined}
-      />
-    </View>
-  );
-}
-
-// ─── Pages Page ─────────────────────────────────────────────────────────────
-
-interface PagesPageProps {
-  width: number;
-  screens: Record<string, Screen>;
-  currentScreenId: string;
-  initialScreenId: string;
-  onSwitchScreen: (id: string) => void;
-  onAddScreen: () => void;
-  onDeleteScreen: (id: string) => void;
-  onRenameScreen: (id: string, name: string) => void;
-  onSetInitialScreen: (id: string) => void;
-  onClose: () => void;
-}
-
-export function PagesPage({
-  width,
-  screens,
-  currentScreenId,
-  initialScreenId,
-  onSwitchScreen,
-  onAddScreen,
-  onDeleteScreen,
-  onRenameScreen,
-  onSetInitialScreen,
-  onClose,
-}: PagesPageProps) {
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameText, setRenameText] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const allScreens = Object.values(screens);
-  const q = searchQuery.trim().toLowerCase();
-  const filteredScreens = q
-    ? allScreens.filter((s) => s.name.toLowerCase().includes(q))
-    : allScreens;
-
-  const startRename = (screen: Screen) => {
-    setRenamingId(screen.id);
-    setRenameText(screen.name);
-  };
-
-  const commitRename = () => {
-    if (renamingId && renameText.trim()) {
-      onRenameScreen(renamingId, renameText.trim());
-    }
-    setRenamingId(null);
-  };
-
-  const handleDelete = (id: string) => {
-    if (allScreens.length <= 1) {
-      crossAlert("Cannot delete", "You must have at least one screen.");
-      return;
-    }
-    const screen = screens[id];
-    crossAlert(
-      "Delete Screen",
-      `Delete "${screen?.name}"? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => onDeleteScreen(id),
-        },
-      ]
-    );
-  };
-
-  return (
-    <View style={[styles.page, { width }]}>
-      <View style={styles.searchContainer}>
-        <Feather name="search" size={14} color="#333" />
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search pages..."
-          placeholderTextColor="#333"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-            <Feather name="x" size={14} color="#444" />
-          </Pressable>
-        )}
-      </View>
-
-      <Text style={styles.sectionHeader}>PAGES</Text>
-
-      {filteredScreens.map((screen) => {
-        const isCurrent = screen.id === currentScreenId;
-        const isInitial = screen.id === initialScreenId;
-        const componentCount = screen.components.length;
-
-        return (
-          <Pressable
-            key={screen.id}
-            style={styles.screenRow}
-            onPress={() => {
-              onSwitchScreen(screen.id);
-              onClose();
-            }}
-          >
-            <View style={styles.screenInfo}>
-              {renamingId === screen.id ? (
-                <TextInput
-                  style={styles.renameInput}
-                  value={renameText}
-                  onChangeText={setRenameText}
-                  onBlur={commitRename}
-                  onSubmitEditing={commitRename}
-                  autoFocus
-                  selectTextOnFocus
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              ) : (
-                <Text style={styles.screenName}>{screen.name}</Text>
-              )}
-              <View style={styles.metaRow}>
-                <Text style={styles.screenMeta}>
-                  {componentCount} component{componentCount !== 1 ? "s" : ""}
-                </Text>
-                {isInitial && (
-                  <View style={styles.badgeInitial}>
-                    <Text style={styles.badgeText}>Initial</Text>
-                  </View>
-                )}
-                {isCurrent && (
-                  <View style={styles.badgeCurrent}>
-                    <Text style={styles.badgeText}>Current</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <View style={styles.actions}>
-              <Pressable style={styles.iconBtn} onPress={() => startRename(screen)}>
-                <Feather name="edit-2" size={14} color="#555" />
-              </Pressable>
-              {!isInitial && (
-                <Pressable
-                  style={styles.iconBtn}
-                  onPress={() => onSetInitialScreen(screen.id)}
-                >
-                  <Feather name="home" size={14} color="#555" />
-                </Pressable>
-              )}
-              <Pressable
-                style={[styles.iconBtn, allScreens.length <= 1 && styles.iconBtnDisabled]}
-                onPress={() => handleDelete(screen.id)}
-                disabled={allScreens.length <= 1}
-              >
-                <Feather
-                  name="trash-2"
-                  size={14}
-                  color={allScreens.length <= 1 ? "#222" : "#dc2626"}
-                />
-              </Pressable>
-            </View>
-          </Pressable>
-        );
-      })}
-
-      {!q && (
-        <Pressable style={styles.addPageBtn} onPress={onAddScreen}>
-          <Feather name="plus" size={14} color="#888" />
-          <Text style={styles.addPageBtnText}>Add New Page</Text>
-        </Pressable>
-      )}
-
-      {q && filteredScreens.length === 0 && (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No results for "{searchQuery}"</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// ─── Workflows Page ─────────────────────────────────────────────────────────
-
-interface WorkflowsSummaryPageProps {
-  width: number;
-  currentComponents: Component[];
-  slate: AppSlate;
-  currentScreen?: Screen;
-  showAdvancedCode: boolean;
-  onNavigateToAgent?: () => void;
-  onDeleteComponent?: (id: string) => void;
-  onEditWorkflow?: (component: Component) => void;
-}
-
-export function WorkflowsSummaryPage({
-  width,
-  currentComponents,
-  slate,
-  currentScreen,
-  showAdvancedCode,
-  onNavigateToAgent,
-  onDeleteComponent,
-  onEditWorkflow,
-}: WorkflowsSummaryPageProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-
+  // ─── Workflows filtering ──────────────────────────────────────
   const flatNodes = useMemo(
     () => flattenComponentTree(currentComponents, 0, null, "", false),
     [currentComponents],
@@ -329,58 +162,63 @@ export function WorkflowsSummaryPage({
     return [...appVars, ...screenVars];
   }, [slate.variables, currentScreen?.variables]);
 
-  const q = searchQuery.trim().toLowerCase();
   const logicComponents = useMemo(
-    () => q
-      ? allLogicComponents.filter(({ component: c }) =>
-          getComponentLabel(c, { includeType: true }).toLowerCase().includes(q)
-        )
-      : allLogicComponents,
+    () =>
+      q
+        ? allLogicComponents.filter(({ component: c }) =>
+            getComponentLabel(c, { includeType: true }).toLowerCase().includes(q),
+          )
+        : allLogicComponents,
     [allLogicComponents, q],
   );
   const variables = useMemo(
-    () => q ? allVariables.filter((v) => v.name.toLowerCase().includes(q)) : allVariables,
+    () => (q ? allVariables.filter((v) => v.name.toLowerCase().includes(q)) : allVariables),
     [allVariables, q],
   );
 
-  if (allLogicComponents.length === 0 && allVariables.length === 0) {
-    return (
-      <View style={[styles.page, { width }]}>
-        <View style={styles.emptyContainer}>
-          <Feather name="zap" size={24} color="#222" />
-          <Text style={styles.emptyText}>No workflows configured</Text>
-          <Text style={styles.emptyHint}>
-            Add actions, bindings, or visibility rules to components to see them here.
-          </Text>
-        </View>
-        {onNavigateToAgent && (
-          <Pressable
-            style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
-            onPress={onNavigateToAgent}
-          >
-            <Feather name="cpu" size={16} color="#fff" />
-            <View style={styles.aiCtaTextCol}>
-              <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
-              <Text style={styles.aiCtaHint}>
-                Describe the logic you want and an agent will wire it up for you.
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={16} color="#444" />
-          </Pressable>
-        )}
-      </View>
+  // ─── Pages helpers ────────────────────────────────────────────
+  const startRename = (screen: Screen) => {
+    setRenamingId(screen.id);
+    setRenameText(screen.name);
+  };
+
+  const commitRename = () => {
+    if (renamingId && renameText.trim()) {
+      onRenameScreen(renamingId, renameText.trim());
+    }
+    setRenamingId(null);
+  };
+
+  const handleDeleteScreen = (id: string) => {
+    if (allScreens.length <= 1) {
+      crossAlert("Cannot delete", "You must have at least one screen.");
+      return;
+    }
+    const screen = screens[id];
+    crossAlert(
+      "Delete Screen",
+      `Delete "${screen?.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => onDeleteScreen(id),
+        },
+      ],
     );
-  }
+  };
 
   return (
     <View style={[styles.page, { width }]}>
+      {/* Shared search bar */}
       <View style={styles.searchContainer}>
         <Feather name="search" size={14} color="#333" />
         <TextInput
           style={styles.searchInput}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search workflows..."
+          placeholder="Search pages, layers, workflows..."
           placeholderTextColor="#333"
           autoCapitalize="none"
           autoCorrect={false}
@@ -392,150 +230,350 @@ export function WorkflowsSummaryPage({
         )}
       </View>
 
-      {variables.length > 0 && (
+      {/* ─── PAGES section ──────────────────────────────────────── */}
+      <SectionHeader
+        title="PAGES"
+        isOpen={openSections.has("pages")}
+        onToggle={() => toggleSection("pages")}
+      />
+      {openSections.has("pages") && (
         <>
-          <Text style={styles.sectionHeader}>VARIABLES</Text>
-          {variables.map((v) => (
-            <View key={v.id} style={styles.varRow}>
-              <View style={styles.varDot} />
-              <Text style={styles.varName}>{v.name}</Text>
-              <Text style={styles.varType}>{v.type}</Text>
-              <Text style={styles.varDefault}>
-                = {JSON.stringify(v.defaultValue)}
+          {filteredScreens.map((screen) => {
+            const isCurrent = screen.id === currentScreenId;
+            const isInitial = screen.id === initialScreenId;
+            const componentCount = screen.components.length;
+
+            return (
+              <Pressable
+                key={screen.id}
+                style={styles.screenRow}
+                onPress={() => {
+                  onSwitchScreen(screen.id);
+                  onClose();
+                }}
+              >
+                <View style={styles.screenInfo}>
+                  {renamingId === screen.id ? (
+                    <TextInput
+                      style={styles.renameInput}
+                      value={renameText}
+                      onChangeText={setRenameText}
+                      onBlur={commitRename}
+                      onSubmitEditing={commitRename}
+                      autoFocus
+                      selectTextOnFocus
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  ) : (
+                    <Text style={styles.screenName}>{screen.name}</Text>
+                  )}
+                  <View style={styles.metaRow}>
+                    <Text style={styles.screenMeta}>
+                      {componentCount} component{componentCount !== 1 ? "s" : ""}
+                    </Text>
+                    {isInitial && (
+                      <View style={styles.badgeInitial}>
+                        <Text style={styles.badgeText}>Initial</Text>
+                      </View>
+                    )}
+                    {isCurrent && (
+                      <View style={styles.badgeCurrent}>
+                        <Text style={styles.badgeText}>Current</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.actions}>
+                  <Pressable style={styles.iconBtn} onPress={() => startRename(screen)}>
+                    <Feather name="edit-2" size={14} color="#555" />
+                  </Pressable>
+                  {!isInitial && (
+                    <Pressable
+                      style={styles.iconBtn}
+                      onPress={() => onSetInitialScreen(screen.id)}
+                    >
+                      <Feather name="home" size={14} color="#555" />
+                    </Pressable>
+                  )}
+                  <Pressable
+                    style={[styles.iconBtn, allScreens.length <= 1 && styles.iconBtnDisabled]}
+                    onPress={() => handleDeleteScreen(screen.id)}
+                    disabled={allScreens.length <= 1}
+                  >
+                    <Feather
+                      name="trash-2"
+                      size={14}
+                      color={allScreens.length <= 1 ? "#222" : "#dc2626"}
+                    />
+                  </Pressable>
+                </View>
+              </Pressable>
+            );
+          })}
+
+          {!q && (
+            <Pressable style={styles.addPageBtn} onPress={onAddScreen}>
+              <Feather name="plus" size={14} color="#888" />
+              <Text style={styles.addPageBtnText}>Add New Page</Text>
+            </Pressable>
+          )}
+
+          {q && filteredScreens.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No pages match "{searchQuery}"</Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* ─── LAYERS section ─────────────────────────────────────── */}
+      <SectionHeader
+        title="LAYERS"
+        isOpen={openSections.has("layers")}
+        onToggle={() => toggleSection("layers")}
+        trailing={<Text style={styles.sectionHint}>Higher is above</Text>}
+      />
+      {openSections.has("layers") && (
+        <>
+          <TreeView
+            components={filteredComponents}
+            onSelectComponent={(id) => {
+              onSelectComponent(id);
+              onClose();
+            }}
+            onDeleteComponent={onDeleteComponent}
+            lockedIds={lockedIds}
+            onToggleLock={onToggleLock}
+            onMoveComponent={onMoveComponent}
+            onAIChatComponent={
+              onAIChatComponent
+                ? (id) => {
+                    onAIChatComponent(id);
+                    onClose();
+                  }
+                : undefined
+            }
+          />
+          {filteredComponents.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {q ? `No layers match "${searchQuery}"` : "No components on canvas"}
               </Text>
             </View>
-          ))}
+          )}
         </>
       )}
 
-      {logicComponents.length === 0 && variables.length > 0 && (
-        <Text style={styles.wfEmptyText}>
-          Variables defined but no component logic yet.
-        </Text>
-      )}
-
-      {logicComponents.length > 0 && (
+      {/* ─── WORKFLOWS section ──────────────────────────────────── */}
+      <SectionHeader
+        title="WORKFLOWS"
+        isOpen={openSections.has("workflows")}
+        onToggle={() => toggleSection("workflows")}
+      />
+      {openSections.has("workflows") && (
         <>
-          {variables.length > 0 && <View style={styles.sectionDivider} />}
-          <Text style={styles.sectionHeader}>COMPONENT LOGIC</Text>
-        </>
-      )}
-
-      {logicComponents.map(({ component: comp }) => {
-        const isExpanded = expandedId === comp.id;
-        const pseudocode = generatePseudocode(comp, slate);
-
-        const row = (
-          <View key={comp.id}>
-            <Pressable
-              style={styles.workflowRow}
-              onPress={() => setExpandedId(isExpanded ? null : comp.id)}
-            >
-              <Feather name="zap" size={14} color="#555" style={{ marginTop: 2 }} />
-              <View style={styles.workflowInfo}>
-                <Text style={styles.workflowTitle}>
-                  {getComponentLabel(comp, { includeType: true })}
-                </Text>
-                <View style={styles.wfBadgeRow}>
-                  {comp.actions &&
-                    Object.keys(comp.actions).length > 0 && (
-                      <View style={styles.wfBadge}>
-                        <Text style={styles.wfBadgeText}>Actions</Text>
-                      </View>
-                    )}
-                  {comp.bindings &&
-                    Object.keys(comp.bindings).length > 0 && (
-                      <View style={styles.wfBadge}>
-                        <Text style={styles.wfBadgeText}>Bindings</Text>
-                      </View>
-                    )}
-                  {comp.visibleWhen && (
-                    <View style={styles.wfBadge}>
-                      <Text style={styles.wfBadgeText}>Visibility</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-              <Pressable
-                onPress={() => onEditWorkflow?.(comp)}
-                disabled={!onEditWorkflow}
-                hitSlop={10}
-                style={({ pressed }) => [
-                  styles.starBtn,
-                  pressed && onEditWorkflow && styles.starBtnPressed,
-                ]}
-              >
-                <MaterialIcons
-                  name="auto-awesome"
-                  size={14}
-                  color={onEditWorkflow ? "#f59e0b" : "#555"}
-                />
-              </Pressable>
-              <Feather
-                name={isExpanded ? "chevron-up" : "chevron-down"}
-                size={16}
-                color="#333"
-              />
-            </Pressable>
-
-            {isExpanded && (
-              <View style={styles.expandedSection}>
-                <Text style={styles.pseudoHeader}>LOGIC</Text>
-                {pseudocode.map((line, i) => (
-                  <Text key={i} style={styles.pseudoLine}>
-                    {line}
-                  </Text>
-                ))}
-                {showAdvancedCode && (
-                  <>
-                    <Text style={styles.pseudoHeader}>CODE</Text>
-                    <View style={styles.codeBlock}>
-                      <Text style={styles.codeText}>
-                        {JSON.stringify(
-                          {
-                            actions: comp.actions,
-                            bindings: comp.bindings,
-                            visibleWhen: comp.visibleWhen,
-                          },
-                          null,
-                          2,
-                        )}
+          {allLogicComponents.length === 0 && allVariables.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Feather name="zap" size={24} color="#222" />
+              <Text style={styles.emptyText}>No workflows configured</Text>
+              <Text style={styles.emptyHint}>
+                Add actions, bindings, or visibility rules to components to see them here.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {variables.length > 0 && (
+                <>
+                  <Text style={styles.sectionHeader}>VARIABLES</Text>
+                  {variables.map((v) => (
+                    <View key={v.id} style={styles.varRow}>
+                      <View style={styles.varDot} />
+                      <Text style={styles.varName}>{v.name}</Text>
+                      <Text style={styles.varType}>{v.type}</Text>
+                      <Text style={styles.varDefault}>
+                        = {JSON.stringify(v.defaultValue)}
                       </Text>
                     </View>
-                  </>
-                )}
+                  ))}
+                </>
+              )}
+
+              {logicComponents.length === 0 && variables.length > 0 && (
+                <Text style={styles.wfEmptyText}>
+                  Variables defined but no component logic yet.
+                </Text>
+              )}
+
+              {logicComponents.length > 0 && (
+                <>
+                  {variables.length > 0 && <View style={styles.sectionDivider} />}
+                </>
+              )}
+
+              {logicComponents.map(({ component: comp }) => {
+                const isExpanded = expandedWorkflowId === comp.id;
+                const pseudocode = generatePseudocode(comp, slate);
+
+                return (
+                  <View key={comp.id}>
+                    <Pressable
+                      style={styles.workflowRow}
+                      onPress={() => setExpandedWorkflowId(isExpanded ? null : comp.id)}
+                    >
+                      <Feather name="zap" size={14} color="#555" style={{ marginTop: 2 }} />
+                      <View style={styles.workflowInfo}>
+                        <Text style={styles.workflowTitle}>
+                          {getComponentLabel(comp, { includeType: true })}
+                        </Text>
+                        <View style={styles.wfBadgeRow}>
+                          {comp.actions &&
+                            Object.keys(comp.actions).length > 0 && (
+                              <View style={styles.wfBadge}>
+                                <Text style={styles.wfBadgeText}>Actions</Text>
+                              </View>
+                            )}
+                          {comp.bindings &&
+                            Object.keys(comp.bindings).length > 0 && (
+                              <View style={styles.wfBadge}>
+                                <Text style={styles.wfBadgeText}>Bindings</Text>
+                              </View>
+                            )}
+                          {comp.visibleWhen && (
+                            <View style={styles.wfBadge}>
+                              <Text style={styles.wfBadgeText}>Visibility</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Feather
+                        name={isExpanded ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color="#333"
+                      />
+                    </Pressable>
+
+                    {isExpanded && (
+                      <View style={styles.expandedSection}>
+                        <Text style={styles.explanationText}>
+                          {generateExplanation(comp, slate)}
+                        </Text>
+                        <Text style={styles.pseudoHeader}>LOGIC</Text>
+                        {pseudocode.map((line, i) => (
+                          <Text key={i} style={styles.pseudoLine}>
+                            {line}
+                          </Text>
+                        ))}
+                        {showAdvancedCode && (
+                          <>
+                            <Text style={styles.pseudoHeader}>CODE</Text>
+                            <View style={styles.codeBlock}>
+                              <Text style={styles.codeText}>
+                                {JSON.stringify(
+                                  {
+                                    actions: comp.actions,
+                                    bindings: comp.bindings,
+                                    visibleWhen: comp.visibleWhen,
+                                  },
+                                  null,
+                                  2,
+                                )}
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                        <View style={styles.expandedActions}>
+                          {onEditWorkflow && (
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.expandedActionBtn,
+                                styles.expandedAiBtn,
+                                pressed && styles.expandedAiBtnPressed,
+                              ]}
+                              onPress={() => onEditWorkflow(comp)}
+                            >
+                              <MaterialIcons name="auto-awesome" size={14} color="#f59e0b" />
+                              <Text style={styles.expandedAiBtnText}>Modify with AI</Text>
+                            </Pressable>
+                          )}
+                          {onDeleteComponent && (
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.expandedActionBtn,
+                                styles.expandedDeleteBtn,
+                                pressed && styles.expandedDeleteBtnPressed,
+                              ]}
+                              onPress={() => onDeleteComponent(comp.id)}
+                            >
+                              <Feather name="trash-2" size={14} color="#ef4444" />
+                              <Text style={styles.expandedDeleteBtnText}>Delete</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </>
+          )}
+
+          {onNavigateToAgent && (
+            <Pressable
+              style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
+              onPress={onNavigateToAgent}
+            >
+              <Feather name="cpu" size={16} color="#fff" />
+              <View style={styles.aiCtaTextCol}>
+                <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
+                <Text style={styles.aiCtaHint}>
+                  Describe the logic you want and an agent will wire it up for you.
+                </Text>
               </View>
-            )}
-          </View>
-        );
-
-        return onDeleteComponent ? (
-          <SwipeToDelete key={comp.id} onDelete={() => onDeleteComponent(comp.id)}>
-            {row}
-          </SwipeToDelete>
-        ) : row;
-      })}
-
-      {onNavigateToAgent && (
-        <Pressable
-          style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
-          onPress={onNavigateToAgent}
-        >
-          <Feather name="cpu" size={16} color="#fff" />
-          <View style={styles.aiCtaTextCol}>
-            <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
-            <Text style={styles.aiCtaHint}>
-              Describe the logic you want and an agent will wire it up for you.
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={16} color="#444" />
-        </Pressable>
+              <Feather name="chevron-right" size={16} color="#444" />
+            </Pressable>
+          )}
+        </>
       )}
     </View>
   );
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function generateExplanation(comp: Component, slate: AppSlate): string {
+  const parts: string[] = [];
+  if (comp.visibleWhen) {
+    parts.push(`only shown when a condition is met`);
+  }
+  if (comp.bindings && Object.keys(comp.bindings).length > 0) {
+    const props = Object.keys(comp.bindings);
+    parts.push(`displays ${props.join(", ")} from variable data`);
+  }
+  if (comp.actions) {
+    for (const [event, actions] of Object.entries(comp.actions)) {
+      if (!actions || actions.length === 0) continue;
+      const summaries: string[] = [];
+      for (const action of actions) {
+        switch (action.type) {
+          case "SET_VARIABLE": summaries.push(`sets a variable`); break;
+          case "TOGGLE_VARIABLE": summaries.push(`toggles a variable`); break;
+          case "NAVIGATE": {
+            const screen = slate.screens[action.target];
+            summaries.push(`navigates to ${screen?.name ?? "another screen"}`);
+            break;
+          }
+          case "OPEN_URL": summaries.push(`opens a URL`); break;
+          case "RESET_CANVAS": summaries.push(`resets the canvas`); break;
+          case "CONDITIONAL": summaries.push(`runs conditional logic`); break;
+        }
+      }
+      parts.push(`on ${event}, ${summaries.join(" and ")}`);
+    }
+  }
+  if (parts.length === 0) return "No logic configured for this component.";
+  return parts.join(". ") + ".";
+}
 
 function generatePseudocode(comp: Component, slate: AppSlate): string[] {
   const lines: string[] = [];
@@ -594,13 +632,23 @@ function describeAction(action: Action, slate: AppSlate, indent: string): string
 
 const styles = StyleSheet.create({
   page: { paddingTop: 4 },
-  sectionHeader: sharedMenuStyles.sectionHeader,
-  sectionHeaderRow: {
+  collapsibleHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingRight: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#1a1a1a",
   },
+  collapsibleHeaderText: {
+    color: "#444",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 2.5,
+    flex: 1,
+  },
+  sectionHeader: sharedMenuStyles.sectionHeader,
   sectionHint: {
     color: "#333",
     fontSize: 10,
@@ -724,7 +772,7 @@ const styles = StyleSheet.create({
     marginVertical: 12,
   },
   emptyContainer: {
-    paddingVertical: 40,
+    paddingVertical: 24,
     alignItems: "center",
     gap: 8,
   },
@@ -822,6 +870,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: "#0a0a0a",
   },
+  explanationText: {
+    color: "#888",
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 6,
+  },
   pseudoHeader: {
     color: "#444",
     fontSize: 10,
@@ -882,11 +936,43 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 16,
   },
-  starBtn: {
-    padding: 6,
-    borderRadius: 6,
+  expandedActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
   },
-  starBtnPressed: {
-    backgroundColor: "rgba(245,158,11,0.15)",
+  expandedActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  expandedAiBtn: {
+    borderColor: "rgba(245,158,11,0.3)",
+    backgroundColor: "rgba(245,158,11,0.08)",
+  },
+  expandedAiBtnPressed: {
+    backgroundColor: "rgba(245,158,11,0.2)",
+  },
+  expandedAiBtnText: {
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  expandedDeleteBtn: {
+    borderColor: "rgba(239,68,68,0.3)",
+    backgroundColor: "rgba(239,68,68,0.08)",
+  },
+  expandedDeleteBtnPressed: {
+    backgroundColor: "rgba(239,68,68,0.2)",
+  },
+  expandedDeleteBtnText: {
+    color: "#ef4444",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

@@ -9,15 +9,10 @@ import {
   useWindowDimensions,
 } from "react-native";
 import type { TextStyle } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  runOnJS,
-} from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { ColorPickerModal } from "./ColorPickerModal";
+import { SliderModal } from "./SliderModal";
 import type { Theme } from "../types";
 
 export interface TextEditingState {
@@ -376,7 +371,7 @@ const COLORS = [
   "#85C1E2",
 ];
 
-type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | "textSizes" | null;
+type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | null;
 
 const BUBBLE_WIDTH = 100;
 const BUBBLE_GAP = 12;
@@ -420,70 +415,16 @@ export function TextEditorToolbar({
       { label: "2XL", value: String(fs.xxl), size: fs.xxl },
     ];
   }, [theme?.fontSizes]);
-  const { height: screenHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
 
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"color" | "highlight">("color");
+  const [sizeModalVisible, setSizeModalVisible] = useState(false);
 
   const togglePanel = useCallback((panel: PanelType) => {
     setActivePanel((current) => (current === panel ? null : panel));
   }, []);
-
-  // Custom Vertical Slider
-  const minFontSize = 12;
-  const maxFontSize = 120;
-  const thumbSize = 40;
-  const [trackHeight, setTrackHeight] = useState(screenHeight * 0.25);
-  const maxOffset = Math.max(0, trackHeight - thumbSize);
-
-  const sliderOffset = useSharedValue(
-    (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset
-  );
-  const isDraggingSlider = useRef(false);
-
-  useEffect(() => {
-    if (isDraggingSlider.current) return;
-    sliderOffset.value =
-      (1 - (state.fontSize - minFontSize) / (maxFontSize - minFontSize)) * maxOffset;
-  }, [state.fontSize, maxOffset, sliderOffset, minFontSize, maxFontSize]);
-
-  const onTrackLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
-    setTrackHeight(e.nativeEvent.layout.height);
-  }, []);
-
-  const updateFontSize = useCallback((offset: number) => {
-    const trackRange = Math.max(1, trackHeight - thumbSize);
-    const normalized = 1 - Math.max(0, Math.min(offset / trackRange, 1));
-    const newSize = minFontSize + normalized * (maxFontSize - minFontSize);
-    onStateChange({ fontSize: Math.round(newSize) });
-  }, [trackHeight, onStateChange, minFontSize, maxFontSize]);
-
-  const setDragging = useCallback((v: boolean) => { isDraggingSlider.current = v; }, []);
-
-  const startOffset = useSharedValue(0);
-
-  const panGesture = useMemo(() =>
-    Gesture.Pan()
-      .onStart(() => {
-        runOnJS(setDragging)(true);
-        startOffset.value = sliderOffset.value;
-      })
-      .onUpdate((e) => {
-        const newOffset = Math.max(0, Math.min(maxOffset, startOffset.value + e.translationY));
-        sliderOffset.value = newOffset;
-        runOnJS(updateFontSize)(newOffset);
-      })
-      .onFinalize(() => {
-        runOnJS(setDragging)(false);
-      }),
-    [maxOffset, updateFontSize, setDragging, startOffset, sliderOffset]
-  );
-
-  const sliderThumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sliderOffset.value }],
-  }));
 
   const isBold = state.fontWeight === "bold";
   const isItalic = state.fontStyle === "italic";
@@ -491,32 +432,6 @@ export function TextEditorToolbar({
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-        {/* Size Slider - Left Side */}
-        <View style={[styles.sizeSliderContainer, keyboardHeight > 0 && { bottom: keyboardHeight + 80 }]}>
-          <View style={styles.sliderTrack} onLayout={onTrackLayout}>
-            <View style={styles.sliderTrackLine} />
-            <GestureDetector gesture={panGesture}>
-              <Animated.View style={[styles.sliderThumb, sliderThumbStyle]}>
-                <View style={styles.sliderThumbInner} />
-              </Animated.View>
-            </GestureDetector>
-          </View>
-          <TextInput
-            style={styles.fontSizeInput}
-            value={String(state.fontSize)}
-            onChangeText={(val) => {
-              const num = parseInt(val, 10);
-              if (!isNaN(num) && num >= 1 && num <= 999) {
-                onStateChange({ fontSize: num });
-              } else if (val === "") {
-                onStateChange({ fontSize: 12 });
-              }
-            }}
-            keyboardType="number-pad"
-            selectTextOnFocus
-          />
-        </View>
-
         {/* Top Bar */}
         <View style={styles.topBar}>
           <View />
@@ -607,18 +522,6 @@ export function TextEditorToolbar({
             />
           )}
 
-          {/* Font Size Presets */}
-          {activePanel === "textSizes" && (
-            <BubbleRow
-              options={themeFontSizes.map((f) => ({
-                label: `${f.label} (${f.size})`,
-                value: f.value,
-              }))}
-              activeValue={String(state.fontSize)}
-              onSelect={(v) => onStateChange({ fontSize: parseInt(v, 10) })}
-            />
-          )}
-
           {/* Icon Toolbar */}
           <View style={styles.iconToolbar}>
             {onAIChat && (
@@ -695,8 +598,8 @@ export function TextEditorToolbar({
             </Pressable>
 
             <Pressable
-              style={[styles.iconButton, activePanel === "textSizes" && styles.iconButtonActive]}
-              onPress={() => togglePanel("textSizes")}
+              style={[styles.iconButton, sizeModalVisible && styles.iconButtonActive]}
+              onPress={() => setSizeModalVisible(true)}
             >
               <Text style={styles.iconText}>T</Text>
               <Text style={styles.iconSubText}>px</Text>
@@ -723,6 +626,17 @@ export function TextEditorToolbar({
           }
           onClose={() => setPickerVisible(false)}
         />
+
+        <SliderModal
+          visible={sizeModalVisible}
+          title="Font Size"
+          initialValue={state.fontSize}
+          min={8}
+          max={120}
+          presets={themeFontSizes.map((f) => ({ label: f.label, value: f.size }))}
+          onSelect={(val) => onStateChange({ fontSize: val })}
+          onClose={() => setSizeModalVisible(false)}
+        />
     </View>
   );
 }
@@ -731,61 +645,6 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 300,
-  },
-  sizeSliderContainer: {
-    position: "absolute",
-    left: 20,
-    top: "20%",
-    bottom: "15%",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-  fontSizeInput: {
-    width: 44,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    padding: 0,
-  },
-  sliderTrack: {
-    flex: 1,
-    width: 40,
-    justifyContent: "flex-start",
-    alignItems: "center",
-    position: "relative",
-  },
-  sliderTrackLine: {
-    width: 4,
-    height: "100%",
-    backgroundColor: "#333",
-    borderRadius: 2,
-    position: "absolute",
-  },
-  sliderThumb: {
-    position: "absolute",
-    top: 0,
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sliderThumbInner: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
   topBar: {
     position: "absolute",

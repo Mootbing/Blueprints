@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Pressable, Text, StyleSheet, Platform } from "react-native";
+import { View, Pressable, Text, ScrollView, StyleSheet, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { Component } from "../../types";
 import { uuid } from "../../utils/uuid";
@@ -372,7 +372,11 @@ export function ComponentsPage({
   return (
     <View style={[styles.page, { width }]}>
       {/* Undo / Redo / History Row */}
-      <View style={styles.undoRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.undoRow}
+      >
         <Pressable
           style={({ pressed }) => [styles.undoBtn, pressed && canUndo && styles.undoBtnPressed]}
           onPress={onUndo}
@@ -404,7 +408,7 @@ export function ComponentsPage({
           <Feather name="clock" size={18} color="#fff" />
           <Text style={styles.undoLabel}>History</Text>
         </Pressable>
-      </View>
+      </ScrollView>
 
       <View style={styles.sectionDivider} />
 
@@ -436,10 +440,10 @@ const styles = StyleSheet.create({
   },
   undoRow: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
     gap: 12,
     paddingVertical: 10,
+    paddingHorizontal: 20,
   },
   undoBtn: {
     flexDirection: "row",

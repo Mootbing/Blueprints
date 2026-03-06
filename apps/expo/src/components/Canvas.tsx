@@ -9,6 +9,7 @@ import {
   Animated,
   Keyboard,
   PanResponder,
+  Vibration,
 } from "react-native";
 import { crossAlert } from "../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -31,6 +32,7 @@ import { findComponent, deepCloneComponent } from "../utils/componentTree";
 import { ContextMenu } from "./ContextMenu";
 import { VersionHistoryModal } from "./menu/VersionHistoryModal";
 import { AIChatSheet } from "./ai/AIChatSheet";
+import { AgentPagerModal } from "./ai/AgentPagerModal";
 import { tidyLayout } from "../ai/tidyLayout";
 import { useChatLog } from "../ai/useChatLog";
 import { useAgentRunner } from "../ai/useAgentRunner";
@@ -87,8 +89,8 @@ function LongPressRing({
   );
 }
 
-/* Draggable floating action sphere – opens the edit menu */
-const LONG_PRESS_DURATION = 500;
+/* Draggable floating sphere – tap to switch modes, long-press to open menu */
+const LONG_PRESS_DURATION = 300;
 
 function AddSphere({
   onPress,
@@ -127,7 +129,7 @@ function AddSphere({
         }).start();
         longPressTimer.current = setTimeout(() => {
           didLongPress.current = true;
-          onToggleRef.current();
+          onPressRef.current();
         }, LONG_PRESS_DURATION);
       },
       onPanResponderMove: (_, g) => {
@@ -153,7 +155,7 @@ function AddSphere({
         longPressProgress.setValue(0);
         pan.flattenOffset();
         if (!moved.current && !didLongPress.current) {
-          onPressRef.current();
+          onToggleRef.current();
         }
       },
     })
@@ -298,6 +300,8 @@ export function Canvas({
   const [contextMenu, setContextMenu] = useState<{ componentId: string | null; x: number; y: number } | null>(null);
   const clipboardRef = useRef<Component | null>(null);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [agentPagerOpen, setAgentPagerOpen] = useState(false);
+  const [agentPagerSessionId, setAgentPagerSessionId] = useState<string | null>(null);
 
   // Chat log for agent context
   const { chatLog, logInteraction } = useChatLog(slateId);
@@ -962,13 +966,6 @@ export function Canvas({
         />
       )}
 
-      {/* Back button in preview mode */}
-      {!isEditMode && navStack && navStack.length > 0 && onNavigateBack && (
-        <Pressable style={styles.backButton} onPress={onNavigateBack}>
-          <Feather name="chevron-left" size={22} color="#ffffff" />
-          <Text style={styles.backButtonText}>Back</Text>
-        </Pressable>
-      )}
 
       {/* Trash pill - appears at bottom when dragging */}
       {isEditMode && draggingId && (
@@ -1048,19 +1045,14 @@ export function Canvas({
         />
       )}
 
-      {/* Floating add sphere – always visible, opens edit menu */}
+      {/* Floating sphere – tap to switch modes, long-press to open menu */}
       {!menuOpen && (
         <AddSphere
           onPress={openMenu}
           isEditMode={isEditMode}
           onToggleEditMode={() => {
             onToggleEditMode();
-            crossAlert(
-              isEditMode ? "Preview Mode" : "Dev Mode",
-              isEditMode
-                ? "You are now in preview mode. Long-hold the sphere to return to dev mode."
-                : "You are now in dev mode.",
-            );
+            Vibration.vibrate(50);
           }}
         />
       )}
@@ -1076,6 +1068,10 @@ export function Canvas({
           onPaste={handlePaste}
           onDuplicate={handleDuplicate}
           onAIChat={apiKey ? handleOpenAIChat : undefined}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -1089,7 +1085,28 @@ export function Canvas({
           restoreToId?.(id);
           setVersionHistoryOpen(false);
         }}
-        onClose={() => setVersionHistoryOpen(false)}
+        onClose={() => {
+          setVersionHistoryOpen(false);
+          openMenu();
+        }}
+      />
+
+      {/* Agent Pager */}
+      <AgentPagerModal
+        visible={agentPagerOpen}
+        onClose={() => {
+          setAgentPagerOpen(false);
+          setAgentPagerSessionId(null);
+          openMenu();
+        }}
+        apiKey={apiKey}
+        agentRunner={agentRunner}
+        historyEntries={entries}
+        currentHistoryId={currentId}
+        onRestoreToId={restoreToId}
+        isEditMode={isEditMode}
+        onToggleEditMode={onToggleEditMode}
+        initialSessionId={agentPagerSessionId}
       />
 
       {/* Tidy loading overlay */}
@@ -1236,6 +1253,11 @@ export function Canvas({
         chatLog={chatLog}
         agentRunner={agentRunner}
         onAIChatComponent={handleAIChatFromLayer}
+        onOpenAgentPager={(sessionId) => {
+          setAgentPagerSessionId(sessionId ?? null);
+          closeMenu();
+          setTimeout(() => setAgentPagerOpen(true), 200);
+        }}
       />
     </View>
   );
@@ -1245,27 +1267,6 @@ const styles = StyleSheet.create({
   editBackdrop: {
     backgroundColor: "rgba(0,0,0,0.6)",
     zIndex: 100,
-  },
-  backButton: {
-    position: "absolute",
-    top: 50,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.85)",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    zIndex: 80,
-  },
-  backButtonText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-    marginLeft: 2,
-    letterSpacing: 0.3,
   },
   trashPillContainer: {
     position: "absolute",

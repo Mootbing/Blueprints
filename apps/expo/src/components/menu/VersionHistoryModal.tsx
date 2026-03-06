@@ -895,9 +895,9 @@ export function VersionHistoryModal({
 
       <SafeAreaView style={s.sheet} pointerEvents="box-none">
         <View style={s.header}>
-          <Text style={s.title}>History</Text>
-          <Pressable style={s.doneBtn} onPress={onClose}>
-            <Text style={s.doneLabel}>Done</Text>
+          <Pressable style={s.backBtn} onPress={onClose}>
+            <Feather name="chevron-left" size={22} color="#fff" />
+            <Text style={s.title}>History</Text>
           </Pressable>
         </View>
 
@@ -969,24 +969,23 @@ const s = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 6,
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: 4,
+    paddingRight: 12,
   },
   title: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "300",
     letterSpacing: 0.5,
-  },
-  doneBtn: { paddingHorizontal: 4 },
-  doneLabel: {
-    color: "#fff",
-    fontSize: 14,
-    letterSpacing: 0.5,
-    fontWeight: "600",
   },
   scrollView: {
     flex: 1,

@@ -10,7 +10,7 @@ import { tidyLayout } from "../../ai/tidyLayout";
 import type { Component, Theme, Screen } from "../../types";
 import { summarizeResponse } from "../../ai/useChatLog";
 import type { ChatLogEntry } from "../../ai/useChatLog";
-import type { ChatMessage } from "../../ai/types";
+import type { ChatMessage, AnthropicMessage } from "../../ai/types";
 
 interface AIPageProps {
   width: number;
@@ -36,7 +36,7 @@ export function AIPage({
   logInteraction,
 }: AIPageProps) {
   const sendFn = useCallback(
-    async (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+    async (messages: AnthropicMessage[]) => {
       if (!apiKey) throw new Error("Please set your API key in Settings first");
       return generateScreenChat(apiKey, messages, theme);
     },

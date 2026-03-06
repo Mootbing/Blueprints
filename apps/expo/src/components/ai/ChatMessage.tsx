@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import { View, Text, Image, StyleSheet, Platform } from "react-native";
 import type { ChatMessage as ChatMessageType } from "../../ai/types";
 
 interface ChatMessageProps {
@@ -14,9 +14,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
     .replace(/<json>[\s\S]*?<\/json>/g, "")
     .trim();
 
+  const images = message.images;
+
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+        {images && images.length > 0 && (
+          <View style={styles.imageRow}>
+            {images.map((uri, i) => (
+              <Image key={i} source={{ uri }} style={styles.attachedImage} resizeMode="cover" />
+            ))}
+          </View>
+        )}
         {displayText.length > 0 && (
           <Text style={[styles.text, isUser ? styles.userText : styles.assistantText]}>
             {displayText}
@@ -82,5 +91,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.5,
+  },
+  imageRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 6,
+  },
+  attachedImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+    backgroundColor: "#1a1a1a",
   },
 });

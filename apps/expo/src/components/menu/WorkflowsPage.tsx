@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { crossAlert } from "../../utils/crossAlert";
 import { Feather } from "@expo/vector-icons";
-import { SwipeToDelete } from "../SwipeToDelete";
 import { ChatView } from "../ai/ChatView";
 import type {
   ChatMessage,
@@ -120,37 +119,36 @@ function AgentListView({
       {filtered.map((session) => {
         const cfg = STATUS_CONFIG[session.status];
         return (
-          <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)}>
-            <View>
-              <View style={s.agentRow}>
-                <Pressable
-                  style={s.agentRowTap}
-                  onPress={() => onSelect(session.id)}
-                >
-                  <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
-                  <View style={s.agentInfo}>
-                    <Text style={s.agentTitle} numberOfLines={1}>
-                      {session.name}
-                    </Text>
-                    <View style={s.agentBadgeRow}>
-                      <View style={[s.agentBadge, { backgroundColor: cfg.bg, borderColor: cfg.color + "30" }]}>
-                        <Text style={[s.agentBadgeText, { color: cfg.color }]}>
-                          {cfg.label}
-                        </Text>
-                      </View>
-                      <View style={s.agentBadge}>
-                        <Text style={s.agentBadgeText}>
-                          {session.messages.length} msgs
-                        </Text>
-                      </View>
+          <View key={session.id}>
+            <View style={s.agentRow}>
+              <Pressable
+                style={s.agentRowTap}
+                onPress={() => onSelect(session.id)}
+              >
+                <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
+                <View style={s.agentInfo}>
+                  <Text style={s.agentTitle} numberOfLines={1}>
+                    {session.name}
+                  </Text>
+                  <View style={s.agentBadgeRow}>
+                    <View style={[s.agentBadge, { backgroundColor: cfg.bg, borderColor: cfg.color + "30" }]}>
+                      <Text style={[s.agentBadgeText, { color: cfg.color }]}>
+                        {cfg.label}
+                      </Text>
+                    </View>
+                    <View style={s.agentBadge}>
+                      <Text style={s.agentBadgeText}>
+                        {session.messages.length} msgs
+                      </Text>
                     </View>
                   </View>
-                </Pressable>
-                <Feather name="chevron-right" size={16} color="#333" />
-              </View>
+                </View>
+              </Pressable>
+              <Feather name="chevron-right" size={16} color="#333" />
+            </View>
 
-              {/* Accept/Reject for awaiting_review */}
-              {session.status === "awaiting_review" && (
+            {/* Accept/Reject for awaiting_review */}
+            {session.status === "awaiting_review" && (
               <View style={s.reviewActions}>
                 <Pressable
                   style={({ pressed }) => [
@@ -180,8 +178,7 @@ function AgentListView({
                 </Pressable>
               </View>
             )}
-            </View>
-          </SwipeToDelete>
+          </View>
         );
       })}
 
@@ -207,6 +204,9 @@ interface AgentPageProps {
   /** When set, auto-creates a new agent and sends this as the first message */
   initialPrompt?: string;
   agentRunner?: ReturnType<typeof import("../../ai/useAgentRunner").useAgentRunner>;
+  isEditMode?: boolean;
+  onToggleEditMode?: () => void;
+  onClose?: () => void;
 }
 
 export function AgentPage({
@@ -218,6 +218,9 @@ export function AgentPage({
   createTrigger,
   initialPrompt,
   agentRunner,
+  isEditMode,
+  onToggleEditMode,
+  onClose,
 }: AgentPageProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -232,9 +235,9 @@ export function AgentPage({
   // ─── Send message ─────────────────────────────────────────────
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, images?: string[]) => {
       if (!activeId) return;
-      agentRunner?.sendMessage(activeId, text);
+      agentRunner?.sendMessage(activeId, text, images);
     },
     [activeId, agentRunner],
   );
@@ -244,8 +247,10 @@ export function AgentPage({
   const handlePreview = useCallback(
     (branchEntryId: string) => {
       onRestoreToId?.(branchEntryId);
+      if (isEditMode) onToggleEditMode?.();
+      onClose?.();
     },
-    [onRestoreToId],
+    [onRestoreToId, isEditMode, onToggleEditMode, onClose],
   );
 
   const handleUndoPreview = useCallback(

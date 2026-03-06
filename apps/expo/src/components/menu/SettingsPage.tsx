@@ -417,12 +417,29 @@ export function SettingsPage({
   const processImport = useCallback(
     async (text: string) => {
       try {
-        const data = JSON.parse(text) as SlateExport;
-        if (!data || typeof data !== "object" || !data.slate) {
+        const data = JSON.parse(text);
+        if (!data || typeof data !== "object") {
+          crossAlert("Import Failed", "Invalid file: not a valid JSON object.");
+          return;
+        }
+
+        // Support both wrapped ({ slate: ... }) and raw AppSlate formats
+        let slateCandidate: unknown;
+        let wrapper: SlateExport | null = null;
+
+        if (data.slate && typeof data.slate === "object") {
+          // Wrapped export format
+          slateCandidate = data.slate;
+          wrapper = data as SlateExport;
+        } else if (data.version !== undefined && data.screens !== undefined) {
+          // Raw AppSlate format (no wrapper)
+          slateCandidate = data;
+        } else {
           crossAlert("Import Failed", "Invalid file: missing slate data.");
           return;
         }
-        const parsed = AppSlateSchema.safeParse(data.slate);
+
+        const parsed = AppSlateSchema.safeParse(slateCandidate);
         if (!parsed.success) {
           crossAlert("Import Failed", "Invalid slate format:\n" + parsed.error.issues.map((i) => i.message).join(", "));
           return;
@@ -430,8 +447,8 @@ export function SettingsPage({
         onSlateChange?.(parsed.data);
 
         // Restore project data if available
-        if (slateId && data._exportType === "project") {
-          const proj = data as SlateExportProject;
+        if (slateId && wrapper && wrapper._exportType === "project") {
+          const proj = wrapper as SlateExportProject;
           const ops: Promise<void>[] = [];
           if (proj.history) {
             ops.push(AsyncStorage.setItem(`undo_history_${slateId}`, JSON.stringify(proj.history)));
@@ -893,9 +910,10 @@ const styles = StyleSheet.create({
   },
   projectRow: {
     backgroundColor: "#0a0a0a",
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
     borderColor: "#1a1a1a",
+    borderRadius: 10,
+    marginHorizontal: 20,
   },
   projectRowPressed: {
     backgroundColor: "#111",
@@ -913,9 +931,10 @@ const styles = StyleSheet.create({
   },
   dangerRow: {
     backgroundColor: "rgba(220,38,38,0.06)",
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
     borderColor: "rgba(220,38,38,0.15)",
+    borderRadius: 10,
+    marginHorizontal: 20,
   },
   dangerRowPressed: {
     backgroundColor: "rgba(220,38,38,0.12)",

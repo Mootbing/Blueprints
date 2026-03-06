@@ -2,7 +2,7 @@ import type { Theme } from "../types";
 import { callClaude } from "./anthropicClient";
 import { generateSystemPrompt } from "./prompts";
 import { parseComponentArray } from "./parseResponse";
-import type { ChatMessage, AnthropicMessage } from "./types";
+import type { AnthropicMessage } from "./types";
 
 /**
  * Generates a screen of components from a chat conversation.

@@ -1,9 +1,9 @@
 import React, { useRef, useState, useCallback } from "react";
-import { View, Text, Pressable, StyleSheet, Platform, PanResponder, Animated } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, PanResponder, Animated, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { Component } from "../../types";
 import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
-import { SwipeToDelete } from "../SwipeToDelete";
+import { usePagerScroll } from "../PagerScrollContext";
 
 const ROW_HEIGHT = 44;
 
@@ -21,19 +21,32 @@ function LockSwipe({
   onSwipeMove: (fi: number, dy: number) => void;
   onSwipeEnd: () => void;
 }) {
+  const { setGestureActive } = usePagerScroll();
   const fiRef = useRef(flatIndex);
   fiRef.current = flatIndex;
   const cbRef = useRef({ onSwipeStart, onSwipeMove, onSwipeEnd });
   cbRef.current = { onSwipeStart, onSwipeMove, onSwipeEnd };
+  const setGestureActiveRef = useRef(setGestureActive);
+  setGestureActiveRef.current = setGestureActive;
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => cbRef.current.onSwipeStart(fiRef.current),
+      onPanResponderGrant: () => {
+        setGestureActiveRef.current(true);
+        cbRef.current.onSwipeStart(fiRef.current);
+      },
       onPanResponderMove: (_, g) => cbRef.current.onSwipeMove(fiRef.current, g.dy),
-      onPanResponderRelease: () => cbRef.current.onSwipeEnd(),
-      onPanResponderTerminate: () => cbRef.current.onSwipeEnd(),
+      onPanResponderRelease: () => {
+        setGestureActiveRef.current(false);
+        cbRef.current.onSwipeEnd();
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        setGestureActiveRef.current(false);
+        cbRef.current.onSwipeEnd();
+      },
     }),
   ).current;
 
@@ -57,22 +70,35 @@ function DragHandle({
 }: {
   flatIndex: number;
   onStart: (fi: number) => void;
-  onMove: (fi: number, dy: number) => void;
+  onMove: (fi: number, dy: number, pageY: number) => void;
   onEnd: (fi: number) => void;
 }) {
+  const { setGestureActive } = usePagerScroll();
   const fiRef = useRef(flatIndex);
   fiRef.current = flatIndex;
   const cbRef = useRef({ onStart, onMove, onEnd });
   cbRef.current = { onStart, onMove, onEnd };
+  const setGestureActiveRef = useRef(setGestureActive);
+  setGestureActiveRef.current = setGestureActive;
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => cbRef.current.onStart(fiRef.current),
-      onPanResponderMove: (_, g) => cbRef.current.onMove(fiRef.current, g.dy),
-      onPanResponderRelease: () => cbRef.current.onEnd(fiRef.current),
-      onPanResponderTerminate: () => cbRef.current.onEnd(fiRef.current),
+      onPanResponderGrant: () => {
+        setGestureActiveRef.current(true);
+        cbRef.current.onStart(fiRef.current);
+      },
+      onPanResponderMove: (_, g) => cbRef.current.onMove(fiRef.current, g.dy, g.moveY),
+      onPanResponderRelease: () => {
+        setGestureActiveRef.current(false);
+        cbRef.current.onEnd(fiRef.current);
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        setGestureActiveRef.current(false);
+        cbRef.current.onEnd(fiRef.current);
+      },
     }),
   ).current;
 
@@ -170,25 +196,46 @@ export function TreeView({
 
   const [dragFlatIndex, setDragFlatIndex] = useState<number | null>(null);
   const [hoverSiblingIdx, setHoverSiblingIdx] = useState<number | null>(null);
+  const [dragOverTrash, setDragOverTrash] = useState(false);
   const dragY = useRef(new Animated.Value(0)).current;
+  const containerRef = useRef<View>(null);
+  const [trashTop, setTrashTop] = useState<number | null>(null);
 
   const onMoveRef = useRef(onMoveComponent);
   onMoveRef.current = onMoveComponent;
+  const onDeleteRef = useRef(onDeleteComponent);
+  onDeleteRef.current = onDeleteComponent;
   const hoverRef = useRef<number | null>(null);
+  const overTrashRef = useRef(false);
 
   const startDrag = useCallback(
     (flatIndex: number) => {
       setDragFlatIndex(flatIndex);
       hoverRef.current = null;
       setHoverSiblingIdx(null);
+      setDragOverTrash(false);
+      overTrashRef.current = false;
       dragY.setValue(0);
+      containerRef.current?.measureInWindow((_x, y) => {
+        const screenH = Dimensions.get("window").height;
+        setTrashTop(screenH - y - 70);
+      });
     },
     [dragY],
   );
 
   const moveDrag = useCallback(
-    (flatIndex: number, dy: number) => {
+    (flatIndex: number, dy: number, pageY: number) => {
       dragY.setValue(dy);
+
+      const screenHeight = Dimensions.get("window").height;
+      const isOverTrash = pageY > screenHeight - 100;
+      if (isOverTrash !== overTrashRef.current) {
+        overTrashRef.current = isOverTrash;
+        setDragOverTrash(isOverTrash);
+      }
+
+      if (isOverTrash) return;
 
       const currentNodes = nodesRef.current;
       const draggedNode = currentNodes[flatIndex];
@@ -222,20 +269,31 @@ export function TreeView({
 
   const endDrag = useCallback(
     (flatIndex: number) => {
-      const currentNodes = nodesRef.current;
-      const draggedNode = currentNodes[flatIndex];
-      const targetIdx = hoverRef.current;
+      if (overTrashRef.current) {
+        const currentNodes = nodesRef.current;
+        const draggedNode = currentNodes[flatIndex];
+        if (draggedNode) {
+          onDeleteRef.current(draggedNode.component.id);
+        }
+      } else {
+        const currentNodes = nodesRef.current;
+        const draggedNode = currentNodes[flatIndex];
+        const targetIdx = hoverRef.current;
 
-      if (
-        draggedNode &&
-        targetIdx !== null &&
-        targetIdx !== draggedNode.indexInParent
-      ) {
-        onMoveRef.current?.(draggedNode.component.id, targetIdx, draggedNode.parentId);
+        if (
+          draggedNode &&
+          targetIdx !== null &&
+          targetIdx !== draggedNode.indexInParent
+        ) {
+          onMoveRef.current?.(draggedNode.component.id, targetIdx, draggedNode.parentId);
+        }
       }
 
       setDragFlatIndex(null);
       setHoverSiblingIdx(null);
+      setDragOverTrash(false);
+      setTrashTop(null);
+      overTrashRef.current = false;
       hoverRef.current = null;
       dragY.setValue(0);
     },
@@ -251,7 +309,14 @@ export function TreeView({
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={containerRef} style={styles.container}>
+      {dragFlatIndex !== null && trashTop !== null && (
+        <View style={[styles.trashZone, { top: trashTop }]}>
+          <View style={[styles.trashPill, dragOverTrash && styles.trashPillActive]}>
+            <Feather name="trash-2" size={18} color={dragOverTrash ? "#fff" : "rgba(255,255,255,0.6)"} />
+          </View>
+        </View>
+      )}
       {nodes.map((node, i) => {
         const isDragged = dragFlatIndex === i;
         const isLocked = lockedIds?.has(node.component.id) ?? false;
@@ -271,82 +336,80 @@ export function TreeView({
         return (
           <React.Fragment key={node.component.id}>
             {showInsertBefore && <View style={styles.insertionLine} />}
-            <SwipeToDelete onDelete={() => onDeleteComponent(node.component.id)}>
-              <Animated.View
-                style={
-                  isDragged
-                    ? {
-                        transform: [{ translateY: dragY }],
-                        zIndex: 100,
-                        backgroundColor: "rgba(255,255,255,0.05)",
-                        borderRadius: 8,
-                      }
-                    : undefined
-                }
-              >
-                <View style={styles.rowOuter}>
-                  {onMoveComponent && (
-                    <DragHandle
-                      flatIndex={i}
-                      onStart={startDrag}
-                      onMove={moveDrag}
-                      onEnd={endDrag}
-                    />
+            <Animated.View
+              style={
+                isDragged
+                  ? {
+                      transform: [{ translateY: dragY }],
+                      zIndex: 100,
+                      backgroundColor: "rgba(255,255,255,0.05)",
+                      borderRadius: 8,
+                    }
+                  : undefined
+              }
+            >
+              <View style={styles.rowOuter}>
+                {onMoveComponent && (
+                  <DragHandle
+                    flatIndex={i}
+                    onStart={startDrag}
+                    onMove={moveDrag}
+                    onEnd={endDrag}
+                  />
+                )}
+                {onToggleLock && (
+                  <LockSwipe
+                    flatIndex={i}
+                    isLocked={isLocked}
+                    onSwipeStart={startLockSwipe}
+                    onSwipeMove={moveLockSwipe}
+                    onSwipeEnd={endLockSwipe}
+                  />
+                )}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.treeRow,
+                    { paddingLeft: !onMoveComponent && !onToggleLock ? 16 + node.depth * 24 : node.depth * 20 },
+                    pressed && styles.treeRowPressed,
+                    isLocked && styles.treeRowLocked,
+                  ]}
+                  onPress={() => onSelectComponent(node.component.id)}
+                >
+                  {node.component.type === "container" && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); toggleCollapse(node.component.id); }}
+                      hitSlop={6}
+                      style={styles.chevronButton}
+                    >
+                      <Feather
+                        name={collapsedIds.has(node.component.id) ? "chevron-right" : "chevron-down"}
+                        size={14}
+                        color="#444"
+                      />
+                    </Pressable>
                   )}
-                  {onToggleLock && (
-                    <LockSwipe
-                      flatIndex={i}
-                      isLocked={isLocked}
-                      onSwipeStart={startLockSwipe}
-                      onSwipeMove={moveLockSwipe}
-                      onSwipeEnd={endLockSwipe}
-                    />
+                  {node.depth > 0 && node.component.type !== "container" && (
+                    <View style={styles.leafIndent} />
                   )}
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.treeRow,
-                      { paddingLeft: !onMoveComponent && !onToggleLock ? 16 + node.depth * 24 : node.depth * 20 },
-                      pressed && styles.treeRowPressed,
-                      isLocked && styles.treeRowLocked,
-                    ]}
-                    onPress={() => onSelectComponent(node.component.id)}
-                  >
-                    {node.component.type === "container" && (
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation(); toggleCollapse(node.component.id); }}
-                        hitSlop={6}
-                        style={styles.chevronButton}
-                      >
-                        <Feather
-                          name={collapsedIds.has(node.component.id) ? "chevron-right" : "chevron-down"}
-                          size={14}
-                          color="#444"
-                        />
-                      </Pressable>
-                    )}
-                    {node.depth > 0 && node.component.type !== "container" && (
-                      <View style={styles.leafIndent} />
-                    )}
-                    <Text style={[styles.label, isLocked && styles.dimmed]} numberOfLines={1}>
-                      {getComponentLabel(node.component)}
-                    </Text>
-                    {node.component.type === "container" && node.component.children && node.component.children.length > 0 && (
-                      <Text style={styles.childCount}>{node.component.children.length}</Text>
-                    )}
-                    <Text style={[styles.typeTag, isLocked && styles.dimmed]}>{node.component.type}</Text>
-                    {onAIChatComponent && (
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation(); onAIChatComponent(node.component.id); }}
-                        hitSlop={6}
-                        style={styles.aiButton}
-                      >
-                        <MaterialCommunityIcons name="creation" size={14} color="#f5c542" />
-                      </Pressable>
-                    )}
-                  </Pressable>
-                </View>
-              </Animated.View>
-            </SwipeToDelete>
+                  <Text style={[styles.label, isLocked && styles.dimmed]} numberOfLines={1}>
+                    {getComponentLabel(node.component)}
+                  </Text>
+                  {node.component.type === "container" && node.component.children && node.component.children.length > 0 && (
+                    <Text style={styles.childCount}>{node.component.children.length}</Text>
+                  )}
+                  <Text style={[styles.typeTag, isLocked && styles.dimmed]}>{node.component.type}</Text>
+                  {onAIChatComponent && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); onAIChatComponent(node.component.id); }}
+                      hitSlop={6}
+                      style={styles.aiButton}
+                    >
+                      <MaterialCommunityIcons name="creation" size={14} color="#f5c542" />
+                    </Pressable>
+                  )}
+                </Pressable>
+              </View>
+            </Animated.View>
           </React.Fragment>
         );
       })}
@@ -440,5 +503,26 @@ const styles = StyleSheet.create({
   },
   aiButton: {
     padding: 4,
+  },
+  trashZone: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 200,
+  },
+  trashPill: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#333",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trashPillActive: {
+    backgroundColor: "#dc2626",
+    borderColor: "#dc2626",
   },
 });

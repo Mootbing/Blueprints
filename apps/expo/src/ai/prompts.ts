@@ -109,7 +109,7 @@ ${schemaReference()}
 ${themeContext(theme)}
 
 ## Your Task
-Based on the user's description, generate a complete array of components for a mobile screen.
+Based on the user's description, generate a complete array of components for a mobile screen. The user may attach images (screenshots, mockups, design references). When images are provided, analyze the visual design carefully and recreate it as closely as possible using the available component types, matching layout, colors, typography, spacing, and hierarchy.
 
 Guidelines:
 - Always start with a full-screen background shape (type: "shape", layout: {x:0, y:0, width:1, height:1})
@@ -130,7 +130,7 @@ ${schemaReference()}
 ${themeContext(theme)}
 
 ## Your Task
-Given a component's current JSON, modify it according to the user's request. Preserve the component's id and type. Only change the properties the user asks about.
+Given a component's current JSON, modify it according to the user's request. Preserve the component's id and type. Only change the properties the user asks about. The user may attach reference images — use them to match styling, colors, or layout.
 
 Return the modified component inside <json>...</json> tags. You may include brief explanation text outside the tags.`;
 }
@@ -254,7 +254,7 @@ export function agentSystemPrompt(
     ? appVars.map((v) => `  - ${v.name}: ${v.type} = ${JSON.stringify(v.defaultValue)}`).join("\n")
     : "  (none)";
 
-  return `You are a powerful AI agent for a visual mobile app builder. You can generate screens, create workflows, manage pages, and modify components — whatever the user asks.
+  return `You are a powerful AI agent for a visual mobile app builder. You can generate screens, create workflows, manage pages, and modify components — whatever the user asks. The user may attach images (screenshots, mockups, design references). When images are provided, analyze the visual design carefully and recreate it as closely as possible using the available component types, matching layout, colors, typography, spacing, and hierarchy.
 
 ${schemaReference()}
 ${themeContext(theme)}

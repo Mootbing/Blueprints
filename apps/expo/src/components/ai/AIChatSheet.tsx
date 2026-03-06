@@ -5,6 +5,7 @@ import {
   TextInput,
   Pressable,
   ScrollView,
+  Image,
   StyleSheet,
   ActivityIndicator,
   Platform,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import * as ImagePicker from "expo-image-picker";
 import { useAIChat } from "../../ai/useAIChat";
 import { modifyComponentChat } from "../../ai/modifyComponent";
 import { containsComponentJson } from "../../ai/parseResponse";
@@ -21,7 +23,7 @@ import { parseSingleComponent } from "../../ai/modifyComponent";
 import { getComponentLabel } from "../../utils/componentTree";
 import type { Component, Theme } from "../../types";
 import { summarizeResponse } from "../../ai/useChatLog";
-import type { ChatMessage } from "../../ai/types";
+import type { ChatMessage, AnthropicMessage } from "../../ai/types";
 
 interface ComponentRect {
   x: number;
@@ -54,13 +56,14 @@ export function AIChatSheet({
   screenId,
 }: AIChatSheetProps) {
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(200)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const appliedRef = useRef(false);
 
   const sendFn = useCallback(
-    async (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+    async (messages: AnthropicMessage[]) => {
       return modifyComponentChat(apiKey, component, messages, theme);
     },
     [apiKey, component, theme],
@@ -131,8 +134,28 @@ export function AIChatSheet({
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
     appliedRef.current = false;
-    sendMessage(input.trim());
+    sendMessage(input.trim(), pendingImages.length > 0 ? pendingImages : undefined);
     setInput("");
+    setPendingImages([]);
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      base64: true,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      const uris = result.assets
+        .filter((a) => a.base64)
+        .map((a) => `data:${a.mimeType ?? "image/jpeg"};base64,${a.base64}`);
+      setPendingImages((prev) => [...prev, ...uris]);
+    }
+  };
+
+  const removePendingImage = (index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleClose = () => {
@@ -223,6 +246,13 @@ export function AIChatSheet({
                     isUser ? styles.glassUser : styles.glassAI,
                   ]}
                 >
+                  {msg.images && msg.images.length > 0 && (
+                    <View style={styles.msgImageRow}>
+                      {msg.images.map((uri, i) => (
+                        <Image key={i} source={{ uri }} style={styles.msgImage} resizeMode="cover" />
+                      ))}
+                    </View>
+                  )}
                   {text.length > 0 && (
                     <Text style={[styles.msgText, isUser && styles.msgTextUser]}>
                       {text}
@@ -271,7 +301,27 @@ export function AIChatSheet({
               <Feather name="x" size={16} color="rgba(255,255,255,0.4)" />
             </Pressable>
           </View>
+          {pendingImages.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingImageRow} contentContainerStyle={styles.pendingImageRowContent}>
+              {pendingImages.map((uri, i) => (
+                <View key={i} style={styles.pendingImageWrap}>
+                  <Image source={{ uri }} style={styles.pendingImage} resizeMode="cover" />
+                  <Pressable style={styles.pendingImageRemove} onPress={() => removePendingImage(i)} hitSlop={8}>
+                    <Feather name="x" size={10} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          )}
           <View style={styles.inputRow}>
+            <Pressable
+              style={({ pressed }) => [styles.attachBtn, pressed && styles.attachBtnPressed]}
+              onPress={handlePickImage}
+              disabled={isLoading}
+              hitSlop={8}
+            >
+              <Feather name="image" size={14} color={isLoading ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.4)"} />
+            </Pressable>
             <TextInput
               style={styles.input}
               value={input}
@@ -409,7 +459,17 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     paddingHorizontal: 12,
     paddingBottom: 10,
-    gap: 8,
+    gap: 6,
+  },
+  attachBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachBtnPressed: {
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   input: {
     flex: 1,
@@ -433,5 +493,45 @@ const styles = StyleSheet.create({
   },
   sendBtnPressed: {
     backgroundColor: "#ccc",
+  },
+  msgImageRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginBottom: 4,
+  },
+  msgImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "#1a1a1a",
+  },
+  pendingImageRow: {
+    marginHorizontal: 12,
+    marginBottom: 6,
+    maxHeight: 52,
+  },
+  pendingImageRowContent: {
+    gap: 6,
+  },
+  pendingImageWrap: {
+    position: "relative",
+  },
+  pendingImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: "#1a1a1a",
+  },
+  pendingImageRemove: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#333",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
