@@ -500,7 +500,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 13,
-    paddingLeft: 32,
     gap: 12,
   },
   presetIcon: {
@@ -515,7 +514,7 @@ const styles = StyleSheet.create({
   rowDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "#111",
-    marginLeft: 56,
+    marginLeft: 48,
   },
 sectionDivider: {
     height: StyleSheet.hairlineWidth,
