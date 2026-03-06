@@ -191,6 +191,23 @@ async function processAgentMessage(
 
   // Set up Realtime channel for streaming thinking
   const channel = sb.channel(`ai-job:${job.id}`);
+  let channelReady = false;
+  try {
+    await new Promise<void>((resolve) => {
+      channel.subscribe((status: string) => {
+        if (status === "SUBSCRIBED") {
+          channelReady = true;
+          resolve();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          resolve(); // proceed without broadcasting
+        }
+      });
+      // Don't block forever if subscribe hangs
+      setTimeout(() => resolve(), 3000);
+    });
+  } catch {
+    console.warn("[process-ai] Failed to subscribe to broadcast channel, proceeding without streaming");
+  }
 
   for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
     let result;
@@ -202,11 +219,13 @@ async function processAgentMessage(
         thinkingBudget,
         (chunk) => {
           // Broadcast thinking chunks via Realtime
-          channel.send({
-            type: "broadcast",
-            event: "thinking",
-            payload: { chunk },
-          });
+          if (channelReady) {
+            channel.send({
+              type: "broadcast",
+              event: "thinking",
+              payload: { chunk },
+            }).catch(() => {});
+          }
         },
         undefined,
         model,
@@ -228,7 +247,7 @@ async function processAgentMessage(
     ];
   }
 
-  await channel.unsubscribe();
+  try { await channel.unsubscribe(); } catch {}
 
   // Apply changes to slate if actionable
   let applied = false;
