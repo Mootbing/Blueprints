@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   selectionOutline: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 2,
-    borderColor: "#818cf8",
+    borderColor: "#fff",
     borderRadius: 4,
     zIndex: 10,
   },

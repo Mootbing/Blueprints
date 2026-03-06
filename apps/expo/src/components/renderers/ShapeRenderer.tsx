@@ -8,7 +8,7 @@ export interface ShapeRendererProps {
 
 export function ShapeRenderer({ component }: ShapeRendererProps) {
   const shapeType = component.shapeType ?? "rounded-rectangle";
-  const backgroundColor = component.backgroundColor ?? "#6366f1";
+  const backgroundColor = component.backgroundColor ?? "#1a1a1a";
   const borderColor = component.borderColor;
   const borderWidth = component.borderWidth ?? 0;
   const borderRadius =

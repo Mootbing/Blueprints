@@ -19,8 +19,8 @@ export {
   ComponentSchema,
   ScreenSchema,
   ThemeSchema,
-  AppBlueprintSchema,
-} from "./schema/blueprint";
+  AppSlateSchema,
+} from "./schema/slate";
 
 export type {
   Layout,
@@ -48,5 +48,5 @@ export type {
   Component,
   Screen,
   Theme,
-  AppBlueprint,
-} from "./schema/blueprint";
+  AppSlate,
+} from "./schema/slate";

@@ -378,11 +378,11 @@ export const ThemeSchema = z.object({
 });
 export type Theme = z.infer<typeof ThemeSchema>;
 
-export const AppBlueprintSchema = z.object({
+export const AppSlateSchema = z.object({
   version: z.literal(1),
   initial_screen_id: z.string().uuid(),
   theme: ThemeSchema.optional(),
   screens: z.record(z.string().uuid(), ScreenSchema),
   variables: z.array(VariableSchema).optional(),
 });
-export type AppBlueprint = z.infer<typeof AppBlueprintSchema>;
+export type AppSlate = z.infer<typeof AppSlateSchema>;

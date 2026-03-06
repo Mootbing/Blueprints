@@ -28,7 +28,7 @@ const PRESETS: { label: string; create: () => Component }[] = [
       type: "container" as const,
       id: uuid(),
       layout: { x: 0.15, y: 0.4, width: 0.7, height: 0.07 },
-      backgroundColor: "#6366f1",
+      backgroundColor: "#fff",
       borderRadius: 12,
       children: [
         {
@@ -96,7 +96,7 @@ const PRESETS: { label: string; create: () => Component }[] = [
           layout: { x: 0.05, y: 0.78, width: 0.9, height: 0.15 },
           content: "Card subtitle goes here",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal" as const,
         },
       ],
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   fabText: {
-    color: "#ffffff",
+    color: "#000",
     fontSize: 18,
     fontWeight: "600",
     lineHeight: 22,

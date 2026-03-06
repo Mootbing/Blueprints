@@ -8,8 +8,8 @@ All storage goes through the `StorageProvider` interface:
 
 ```ts
 interface StorageProvider {
-  loadBlueprint(): Promise<AppBlueprint | null>;
-  saveBlueprint(blueprint: AppBlueprint): Promise<void>;
+  loadSlate(): Promise<AppSlate | null>;
+  saveSlate(slate: AppSlate): Promise<void>;
 }
 ```
 
@@ -24,6 +24,6 @@ const storage: StorageProvider = new YourDbProvider();
 
 ## Notes
 
-- Loaded data is validated against the Zod `AppBlueprintSchema`. Invalid/corrupt data returns `null`, falling back to the default blueprint.
+- Loaded data is validated against the Zod `AppSlateSchema`. Invalid/corrupt data returns `null`, falling back to the default slate.
 - Saves are debounced (500ms) to avoid excessive writes during drag/edit operations.
-- The existing `useBlueprint.ts` hook has a Supabase fetch example that can be referenced when building the DB provider.
+- The existing `useSlate.ts` hook has a Supabase fetch example that can be referenced when building the DB provider.

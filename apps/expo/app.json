@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Blueprints",
-    "slug": "blueprints",
+    "name": "Slate",
+    "slug": "slate",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

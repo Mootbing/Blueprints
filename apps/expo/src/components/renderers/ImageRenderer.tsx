@@ -18,14 +18,14 @@ export function ImageRenderer({ component, onPickImage }: ImageRendererProps) {
           width: "100%",
           height: "100%",
           borderRadius: component.borderRadius ?? 0,
-          backgroundColor: "#e2e8f0",
+          backgroundColor: "#111",
           justifyContent: "center",
           alignItems: "center",
         }}
         onPress={onPickImage}
         disabled={!onPickImage}
       >
-        <Text style={{ color: "#94a3b8", fontSize: 12 }}>
+        <Text style={{ color: "#555", fontSize: 12 }}>
           {onPickImage ? "Tap to choose image" : "Image failed to load"}
         </Text>
       </Pressable>

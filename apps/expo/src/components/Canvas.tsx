@@ -13,8 +13,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
+import Svg, { Circle } from "react-native-svg";
 import { useSharedValue } from "react-native-reanimated";
-import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen } from "../types";
+import type { AppSlate, Layout, Component, ComponentStyleUpdates, Screen } from "../types";
 import { ComponentSchema } from "../types";
 import { SDUIComponent } from "./SDUIComponent";
 import { SnapGuides } from "./SnapGuides";
@@ -25,11 +26,64 @@ import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { GroupBreadcrumb } from "./GroupBreadcrumb";
 import { CanvasMenu } from "./menu/CanvasMenu";
 import { PRESETS } from "./menu/ComponentsPage";
-import { BACKGROUND_ID } from "./BlueprintEditor";
+import { BACKGROUND_ID } from "./SlateEditor";
 import { findComponent, deepCloneComponent } from "../utils/componentTree";
 import { ContextMenu } from "./ContextMenu";
 import { VersionHistoryModal } from "./menu/VersionHistoryModal";
+import { AIChatSheet } from "./ai/AIChatSheet";
+import { tidyLayout } from "../ai/tidyLayout";
 import type { HistoryEntry } from "../hooks/useUndoHistory";
+
+/* Circular progress ring for long-press feedback (SVG) */
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function LongPressRing({
+  progress,
+  size,
+  strokeWidth,
+  color,
+}: {
+  progress: Animated.Value;
+  size: number;
+  strokeWidth: number;
+  color: string;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [circumference, 0],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        position: "absolute",
+        top: (48 - size) / 2,
+        left: (48 - size) / 2,
+        transform: [{ rotate: "-90deg" }],
+      }}
+      pointerEvents="none"
+    >
+      <Svg width={size} height={size}>
+        <AnimatedCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+        />
+      </Svg>
+    </View>
+  );
+}
 
 /* Draggable floating action sphere – opens the edit menu */
 const LONG_PRESS_DURATION = 500;
@@ -51,6 +105,7 @@ function AddSphere({
   const onToggleRef = useRef(onToggleEditMode);
   onPressRef.current = onPress;
   onToggleRef.current = onToggleEditMode;
+  const longPressProgress = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -62,6 +117,12 @@ function AddSphere({
         didLongPress.current = false;
         pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
         pan.setValue({ x: 0, y: 0 });
+        longPressProgress.setValue(0);
+        Animated.timing(longPressProgress, {
+          toValue: 1,
+          duration: LONG_PRESS_DURATION,
+          useNativeDriver: false,
+        }).start();
         longPressTimer.current = setTimeout(() => {
           didLongPress.current = true;
           onToggleRef.current();
@@ -73,6 +134,8 @@ function AddSphere({
           if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
+            longPressProgress.stopAnimation();
+            longPressProgress.setValue(0);
           }
         }
         Animated.event([null, { dx: pan.x, dy: pan.y }], {
@@ -84,6 +147,8 @@ function AddSphere({
           clearTimeout(longPressTimer.current);
           longPressTimer.current = null;
         }
+        longPressProgress.stopAnimation();
+        longPressProgress.setValue(0);
         pan.flattenOffset();
         if (!moved.current && !didLongPress.current) {
           onPressRef.current();
@@ -101,7 +166,13 @@ function AddSphere({
       ]}
       {...panResponder.panHandlers}
     >
-      <Feather name={isEditMode ? "code" : "eye"} size={22} color="#ffffff" />
+      <LongPressRing
+        progress={longPressProgress}
+        size={54}
+        strokeWidth={3}
+        color={isEditMode ? "#007AFF" : "#5AC8FA"}
+      />
+      <Feather name={isEditMode ? "code" : "eye"} size={22} color={isEditMode ? "#000" : "#fff"} />
     </Animated.View>
   );
 }
@@ -115,7 +186,7 @@ export interface ScreenActions {
 }
 
 interface CanvasProps {
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   screenId: string;
   isEditMode: boolean;
   onToggleEditMode: () => void;
@@ -123,8 +194,8 @@ interface CanvasProps {
   onContentChange?: (id: string, content: string) => void;
   onStyleChange?: (id: string, updates: ComponentStyleUpdates) => void;
   onAddComponent: (component: Component) => void;
-  onCloseBlueprint?: () => void;
-  onDeleteBlueprint?: () => void;
+  onCloseSlate?: () => void;
+  onDeleteSlate?: () => void;
   onResetAndBuild?: () => void;
   onNavigate?: (screenId: string) => void;
   onNavigateBack?: () => void;
@@ -133,7 +204,7 @@ interface CanvasProps {
   onDeleteComponent?: (id: string) => void;
   onComponentReplace?: (id: string, replacement: Component) => void;
   onAddChildComponent?: (parentId: string, child: Component) => void;
-  onBlueprintChange?: (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
   currentScreenId?: string;
   initialScreenId?: string;
   screenActions?: ScreenActions;
@@ -144,12 +215,17 @@ interface CanvasProps {
   entries?: HistoryEntry[];
   currentId?: string;
   restoreToId?: (id: string) => void;
+  createBranch?: (branchSlate: AppSlate, description: string) => string;
   startBatch?: (description: string) => void;
   endBatch?: () => void;
+  // AI props
+  apiKey: string;
+  onApiKeyChange: (key: string) => void;
+  slateId: string;
 }
 
 export function Canvas({
-  blueprint,
+  slate,
   screenId,
   isEditMode,
   onToggleEditMode,
@@ -157,8 +233,8 @@ export function Canvas({
   onContentChange,
   onStyleChange,
   onAddComponent,
-  onCloseBlueprint,
-  onDeleteBlueprint,
+  onCloseSlate,
+  onDeleteSlate,
   onResetAndBuild,
   onNavigate,
   onNavigateBack,
@@ -167,7 +243,7 @@ export function Canvas({
   onDeleteComponent,
   onComponentReplace,
   onAddChildComponent,
-  onBlueprintChange,
+  onSlateChange,
   currentScreenId,
   initialScreenId,
   screenActions,
@@ -178,8 +254,12 @@ export function Canvas({
   entries,
   currentId,
   restoreToId,
+  createBranch,
   startBatch,
   endBatch,
+  apiKey,
+  onApiKeyChange,
+  slateId,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const [canvasDimensions, setCanvasDimensions] = useState({
@@ -210,6 +290,22 @@ export function Canvas({
   const [contextMenu, setContextMenu] = useState<{ componentId: string | null; x: number; y: number } | null>(null);
   const clipboardRef = useRef<Component | null>(null);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+
+  // AI state
+  const [aiChatTarget, setAiChatTarget] = useState<Component | null>(null);
+  const [isTidying, setIsTidying] = useState(false);
+  const [pendingAIChange, setPendingAIChange] = useState<{
+    componentId: string;
+    original: Component;
+  } | null>(null);
+  const [showAdvancedCode, setShowAdvancedCode] = useState(false);
+
+  // Load advanced code setting
+  useEffect(() => {
+    AsyncStorage.getItem("settings_advancedCode").then((val) => {
+      if (val !== null) setShowAdvancedCode(val === "true");
+    });
+  }, []);
 
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
   const [editingInfo, setEditingInfo] = useState<
@@ -263,7 +359,7 @@ export function Canvas({
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const screen = blueprint.screens[screenId];
+  const screen = slate.screens[screenId];
 
   const currentContainerComp = isDrilledIn && currentContainerId && screen
     ? findComponent(screen.components, currentContainerId)
@@ -341,7 +437,7 @@ export function Canvas({
 
   const handleMoveComponent = useCallback(
     (componentId: string, toIndex: number, parentId: string | null) => {
-      onBlueprintChange?.((prev) => {
+      onSlateChange?.((prev) => {
         const scr = prev.screens[screenId];
         if (!scr) return prev;
 
@@ -374,7 +470,7 @@ export function Canvas({
         };
       });
     },
-    [onBlueprintChange, screenId],
+    [onSlateChange, screenId],
   );
 
   const clearGuides = useCallback(() => setActiveGuides([]), []);
@@ -421,8 +517,8 @@ export function Canvas({
       const textState: TextEditingState = {
         text: isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
         fontSize: comp.fontSize ?? 16,
-        color: isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#1a1a1a"),
-        backgroundColor: isButton ? (comp.backgroundColor ?? "#6366f1") : (comp.backgroundColor ?? "transparent"),
+        color: isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#ccc"),
+        backgroundColor: isButton ? (comp.backgroundColor ?? "#1a1a1a") : (comp.backgroundColor ?? "transparent"),
         fontFamily: comp.fontFamily ?? "System",
         fontWeight: (fw === "normal" || fw === "bold") ? fw : "normal",
         textAlign: comp.textAlign ?? "left",
@@ -521,6 +617,85 @@ export function Canvas({
     setContextMenu(null);
   }, [contextMenu, screen, onAddComponent]);
 
+  // --- AI handlers ---
+  const handleTidy = useCallback(async () => {
+    if (!apiKey || isTidying || !screen) return;
+    setIsTidying(true);
+    try {
+      startBatch?.("AI Tidy Layout");
+      const tidied = await tidyLayout(apiKey, screen.components, slate.theme);
+      onSlateChange?.((prev: any) => {
+        const scr = prev.screens[screenId];
+        if (!scr) return prev;
+        return {
+          ...prev,
+          screens: { ...prev.screens, [screenId]: { ...scr, components: tidied } },
+        };
+      });
+      endBatch?.();
+    } catch (err) {
+      endBatch?.();
+      Alert.alert("Tidy Error", err instanceof Error ? err.message : "Failed to tidy layout");
+    } finally {
+      setIsTidying(false);
+    }
+  }, [apiKey, isTidying, screen, slate.theme, screenId, onSlateChange, startBatch, endBatch]);
+
+  const handleOpenAIChat = useCallback(() => {
+    if (!contextMenu?.componentId || !screen) return;
+    const comp = findComponent(screen.components, contextMenu.componentId);
+    if (comp) setAiChatTarget(comp);
+    setContextMenu(null);
+  }, [contextMenu, screen]);
+
+  const handleOpenAIChatFromToolbar = useCallback(() => {
+    if (!screen) return;
+    const compId = editingInfo?.componentId ?? selectedComponentId;
+    if (!compId) return;
+    const comp = findComponent(screen.components, compId);
+    if (comp) {
+      setEditingInfo(null);
+      setAiChatTarget(comp);
+    }
+  }, [screen, editingInfo, selectedComponentId]);
+
+  const handleAIChatApply = useCallback((component: Component) => {
+    // Save original before applying so we can revert
+    if (aiChatTarget) {
+      setPendingAIChange({ componentId: component.id, original: aiChatTarget });
+    }
+    startBatch?.("AI Modified Component");
+    onComponentReplace?.(component.id, component);
+    endBatch?.();
+    setAiChatTarget(null);
+  }, [onComponentReplace, startBatch, endBatch, aiChatTarget]);
+
+  const handleKeepAIChange = useCallback(() => {
+    setPendingAIChange(null);
+  }, []);
+
+  const handleDiscardAIChange = useCallback(() => {
+    if (!pendingAIChange) return;
+    startBatch?.("Discard AI Change");
+    onComponentReplace?.(pendingAIChange.componentId, pendingAIChange.original);
+    endBatch?.();
+    setPendingAIChange(null);
+  }, [pendingAIChange, onComponentReplace, startBatch, endBatch]);
+
+  const handleApplyComponents = useCallback((components: Component[], mode: "replace" | "add") => {
+    startBatch?.("AI Generated Screen");
+    onSlateChange?.((prev: any) => {
+      const scr = prev.screens[screenId];
+      if (!scr) return prev;
+      const newComponents = mode === "replace" ? components : [...scr.components, ...components];
+      return {
+        ...prev,
+        screens: { ...prev.screens, [screenId]: { ...scr, components: newComponents } },
+      };
+    });
+    endBatch?.();
+  }, [screenId, onSlateChange, startBatch, endBatch]);
+
   // --- Inline editing handlers ---
   const handleEditStart = useCallback((componentId: string, initialState: TextEditingState) => {
     if (lockedIds.has(componentId)) return;
@@ -577,7 +752,7 @@ export function Canvas({
       onStyleChange?.(componentId, {
         label: state.text,
         textColor: state.color,
-        backgroundColor: state.backgroundColor === "transparent" ? "#6366f1" : state.backgroundColor,
+        backgroundColor: state.backgroundColor === "transparent" ? "#1a1a1a" : state.backgroundColor,
         fontSize: state.fontSize,
         fontFamily: state.fontFamily,
         fontWeight: state.fontWeight,
@@ -824,7 +999,8 @@ export function Canvas({
           onStateChange={handleEditStateChange}
           onUndo={handleEditCancel}
           onInspect={inspectorEnabled ? openInspector : undefined}
-          theme={blueprint.theme}
+          onAIChat={apiKey ? handleOpenAIChatFromToolbar : undefined}
+          theme={slate.theme}
         />
       )}
       {editingInfo?.mode === "style" && !inspectorOpen && (
@@ -833,7 +1009,8 @@ export function Canvas({
           onStateChange={handleStyleStateChange}
           onUndo={handleEditCancel}
           onInspect={inspectorEnabled ? openInspector : undefined}
-          theme={blueprint.theme}
+          onAIChat={apiKey ? handleOpenAIChatFromToolbar : undefined}
+          theme={slate.theme}
         />
       )}
 
@@ -864,6 +1041,7 @@ export function Canvas({
           onCopy={handleCopy}
           onPaste={handlePaste}
           onDuplicate={handleDuplicate}
+          onAIChat={apiKey ? handleOpenAIChat : undefined}
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -880,37 +1058,143 @@ export function Canvas({
         onClose={() => setVersionHistoryOpen(false)}
       />
 
+      {/* Tidy loading overlay */}
+      {isTidying && (
+        <View style={styles.tidyOverlay} pointerEvents="none">
+          <View style={styles.tidyPill}>
+            <Text style={styles.tidyText}>Tidying...</Text>
+          </View>
+        </View>
+      )}
+
+      {/* AI spotlight + Keep/Discard buttons */}
+      {pendingAIChange && !aiChatTarget && screen && (() => {
+        const comp = findComponent(screen.components, pendingAIChange.componentId);
+        if (!comp) return null;
+        const cw = canvasDimensions.width;
+        const ch = canvasDimensions.height;
+        const compX = comp.layout.x * cw;
+        const compY = comp.layout.y * ch;
+        const compW = comp.layout.width * cw;
+        const compH = comp.layout.height * ch;
+        const pxBottom = compY + compH;
+        const pxCenterX = compX + compW / 2;
+        const btnTop = Math.min(pxBottom + 10, ch - 44);
+        const pad = 6;
+        return (
+          <>
+            {/* Dim overlay — 4 rects around the component cutout */}
+            <View style={[styles.aiDimRect, { top: 0, left: 0, right: 0, height: Math.max(0, compY - pad) }]} pointerEvents="none" />
+            <View style={[styles.aiDimRect, { top: compY - pad, left: 0, width: Math.max(0, compX - pad), height: compH + pad * 2 }]} pointerEvents="none" />
+            <View style={[styles.aiDimRect, { top: compY - pad, left: compX + compW + pad, right: 0, height: compH + pad * 2 }]} pointerEvents="none" />
+            <View style={[styles.aiDimRect, { top: compY + compH + pad, left: 0, right: 0, bottom: 0 }]} pointerEvents="none" />
+            {/* Glow border around component */}
+            <View
+              style={[
+                styles.aiSpotlightBorder,
+                {
+                  top: compY - pad,
+                  left: compX - pad,
+                  width: compW + pad * 2,
+                  height: compH + pad * 2,
+                },
+              ]}
+              pointerEvents="none"
+            />
+            {/* Buttons */}
+            <View
+              style={[
+                styles.aiConfirmRow,
+                { top: btnTop, left: pxCenterX, transform: [{ translateX: -72 }] },
+              ]}
+            >
+              <Pressable
+                style={({ pressed }) => [styles.aiConfirmBtn, styles.aiDiscardBtn, pressed && styles.aiDiscardBtnPressed]}
+                onPress={handleDiscardAIChange}
+              >
+                <Feather name="x" size={14} color="#fff" />
+                <Text style={styles.aiConfirmText}>Discard</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.aiConfirmBtn, styles.aiKeepBtn, pressed && styles.aiKeepBtnPressed]}
+                onPress={handleKeepAIChange}
+              >
+                <Feather name="check" size={14} color="#fff" />
+                <Text style={styles.aiConfirmText}>Keep</Text>
+              </Pressable>
+            </View>
+          </>
+        );
+      })()}
+
+      {/* AI Component Chat */}
+      {aiChatTarget && (
+        <AIChatSheet
+          visible={true}
+          component={aiChatTarget}
+          apiKey={apiKey}
+          theme={slate.theme}
+          componentRect={
+            canvasDimensions.width > 0
+              ? {
+                  x: aiChatTarget.layout.x * canvasDimensions.width,
+                  y: aiChatTarget.layout.y * canvasDimensions.height,
+                  width: aiChatTarget.layout.width * canvasDimensions.width,
+                  height: aiChatTarget.layout.height * canvasDimensions.height,
+                }
+              : undefined
+          }
+          onApply={handleAIChatApply}
+          onClose={() => setAiChatTarget(null)}
+        />
+      )}
+
       {/* Swipeable menu */}
       <CanvasMenu
         visible={menuOpen}
         fadeAnim={fadeAnim}
         screen={screen}
-        blueprint={blueprint}
+        slate={slate}
         isEditMode={isEditMode}
         snappingEnabled={snappingEnabled}
         inspectorEnabled={inspectorEnabled}
+        showAdvancedCode={showAdvancedCode}
         onClose={closeMenu}
         onAddComponent={handleAdd}
         onToggleEditMode={onToggleEditMode}
         onToggleSnapping={() => setSnappingEnabled(v => !v)}
         onToggleInspector={() => setInspectorEnabled(v => !v)}
-        onCloseBlueprint={() => onCloseBlueprint?.()}
-        onDeleteBlueprint={() => onDeleteBlueprint?.()}
+        onToggleAdvancedCode={() => {
+          setShowAdvancedCode(v => {
+            AsyncStorage.setItem("settings_advancedCode", String(!v));
+            return !v;
+          });
+        }}
+        onCloseSlate={() => onCloseSlate?.()}
+        onDeleteSlate={() => onDeleteSlate?.()}
         onScreenUpdate={(s) => onScreenUpdate?.(s)}
         onDeleteComponent={(id) => onDeleteComponent?.(id)}
         onTreeSelect={handleTreeSelect}
-        onBlueprintChange={onBlueprintChange}
+        onSlateChange={onSlateChange}
         lockedIds={lockedIds}
         onToggleLock={toggleLock}
         onMoveComponent={handleMoveComponent}
         currentScreenId={currentScreenId ?? screenId}
-        initialScreenId={initialScreenId ?? blueprint.initial_screen_id}
+        initialScreenId={initialScreenId ?? slate.initial_screen_id}
         screenActions={screenActions}
         onUndo={onUndo}
         onRedo={onRedo}
         canUndo={canUndo}
         canRedo={canRedo}
         onOpenVersionHistory={() => setVersionHistoryOpen(true)}
+        apiKey={apiKey}
+        onApiKeyChange={onApiKeyChange}
+        onApplyComponents={handleApplyComponents}
+        historyEntries={entries}
+        currentHistoryId={currentId}
+        onCreateBranch={createBranch}
+        onRestoreToId={restoreToId}
+        slateId={slateId}
       />
     </View>
   );
@@ -918,7 +1202,7 @@ export function Canvas({
 
 const styles = StyleSheet.create({
   editBackdrop: {
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     zIndex: 100,
   },
   backButton: {
@@ -927,17 +1211,20 @@ const styles = StyleSheet.create({
     left: 12,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(15,23,42,0.9)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     zIndex: 80,
   },
   backButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
+    color: "#fff",
+    fontSize: 13,
     fontWeight: "600",
     marginLeft: 2,
+    letterSpacing: 0.3,
   },
   trashPillContainer: {
     position: "absolute",
@@ -952,14 +1239,14 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    borderColor: "#333",
+    backgroundColor: "rgba(0,0,0,0.7)",
     alignItems: "center",
     justifyContent: "center",
   },
   trashPillActive: {
-    backgroundColor: "#ef4444",
-    borderColor: "#ef4444",
+    backgroundColor: "#dc2626",
+    borderColor: "#dc2626",
   },
   inspectorPanel: {
     position: "absolute",
@@ -967,9 +1254,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 200,
-    backgroundColor: "rgba(15,23,42,0.95)",
+    backgroundColor: "rgba(0,0,0,0.95)",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderColor: "#1a1a1a",
     padding: 16,
     maxHeight: "60%",
   },
@@ -980,16 +1269,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inspectorTitle: {
-    color: "#e2e8f0",
-    fontSize: 16,
+    color: "#ccc",
+    fontSize: 15,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   inspectorInput: {
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "#0a0a0a",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "#1a1a1a",
     borderRadius: 8,
-    color: "#e2e8f0",
+    color: "#ccc",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: 11,
     padding: 12,
@@ -997,25 +1287,25 @@ const styles = StyleSheet.create({
     maxHeight: 300,
   },
   inspectorError: {
-    color: "#fca5a5",
+    color: "#dc2626",
     fontSize: 12,
     marginTop: 6,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   jsonApplyBtn: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: "center" as const,
     marginTop: 8,
   },
   jsonApplyBtnPressed: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#ccc",
   },
   jsonApplyLabel: {
-    color: "#ffffff",
+    color: "#000",
     fontSize: 14,
-    fontWeight: "600" as const,
+    fontWeight: "700" as const,
   },
   devSphere: {
     position: "absolute",
@@ -1028,11 +1318,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 999,
     borderWidth: 1.5,
+    overflow: "visible",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.5,
         shadowRadius: 8,
       },
       android: { elevation: 8 },
@@ -1040,11 +1331,78 @@ const styles = StyleSheet.create({
     }),
   },
   devSphereEdit: {
-    backgroundColor: "rgba(99,102,241,0.85)",
-    borderColor: "rgba(165,180,252,0.6)",
+    backgroundColor: "#fff",
+    borderColor: "rgba(255,255,255,0.6)",
   },
   devSpherePreview: {
-    backgroundColor: "rgba(34,197,94,0.85)",
-    borderColor: "rgba(134,239,172,0.6)",
+    backgroundColor: "#333",
+    borderColor: "#555",
+  },
+  tidyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 500,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  tidyPill: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+  },
+  tidyText: {
+    color: "#ccc",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  aiDimRect: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    zIndex: 899,
+  },
+  aiSpotlightBorder: {
+    position: "absolute",
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.25)",
+    zIndex: 899,
+  },
+  aiConfirmRow: {
+    position: "absolute",
+    zIndex: 900,
+    flexDirection: "row",
+    gap: 8,
+  },
+  aiConfirmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  aiKeepBtn: {
+    backgroundColor: "rgba(34,197,94,0.2)",
+    borderColor: "rgba(34,197,94,0.4)",
+  },
+  aiKeepBtnPressed: {
+    backgroundColor: "rgba(34,197,94,0.4)",
+  },
+  aiDiscardBtn: {
+    backgroundColor: "rgba(239,68,68,0.2)",
+    borderColor: "rgba(239,68,68,0.4)",
+  },
+  aiDiscardBtnPressed: {
+    backgroundColor: "rgba(239,68,68,0.4)",
+  },
+  aiConfirmText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

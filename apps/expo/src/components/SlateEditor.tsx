@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Canvas } from "./Canvas";
 import { AsyncStorageProvider } from "../storage";
 import type { StorageProvider } from "../storage";
-import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen, Variable } from "../types";
+import type { AppSlate, Layout, Component, ComponentStyleUpdates, Screen, Variable } from "../types";
 import { useRuntimeStore } from "../runtime";
 import { uuid } from "../utils/uuid";
 import { deepUpdateComponent, deepDeleteComponent } from "../utils/componentTree";
@@ -18,7 +18,7 @@ const RANDOM_SCREEN_ID = "00000000-0000-0000-0000-000000000004";
 
 export const BACKGROUND_ID = "00000000-0000-0000-0000-00000000000b";
 
-export function makeBackgroundShape(color = "#ffffff"): Component {
+export function makeBackgroundShape(color = "#000000"): Component {
   return {
     type: "shape" as const,
     id: BACKGROUND_ID,
@@ -29,11 +29,11 @@ export function makeBackgroundShape(color = "#ffffff"): Component {
   };
 }
 
-function bg(id: string, color = "#0f172a"): Component {
+function bg(id: string, color = "#000000"): Component {
   return { type: "shape", id, layout: { x: 0, y: 0, width: 1, height: 1 }, shapeType: "rectangle", backgroundColor: color, opacity: 1 };
 }
 
-export const defaultBlueprint: AppBlueprint = {
+export const defaultSlate: AppSlate = {
   version: 1,
   initial_screen_id: SCREEN_ID,
   screens: {
@@ -48,8 +48,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000010",
           layout: { x: 0.06, y: 0.06, width: 0.8, height: 0.03 },
           content: "DESIGN  \u2022  BUILD  \u2022  PREVIEW",
-          fontSize: 12,
-          color: "#818cf8",
+          fontSize: 11,
+          color: "#444",
           fontWeight: "600",
           textAlign: "left",
         },
@@ -57,10 +57,10 @@ export const defaultBlueprint: AppBlueprint = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000011",
           layout: { x: 0.06, y: 0.10, width: 0.88, height: 0.05 },
-          content: "Welcome to Blueprints",
+          content: "Welcome to Slate",
           fontSize: 36,
           color: "#ffffff",
-          fontWeight: "bold",
+          fontWeight: "200",
           textAlign: "left",
         },
         {
@@ -69,7 +69,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.17, width: 0.88, height: 0.05 },
           content: "Build beautiful app interfaces visually. Drag, drop, and customize components to bring your ideas to life.",
           fontSize: 15,
-          color: "#94a3b8",
+          color: "#666",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -79,8 +79,8 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.25, width: 0.88, height: 0.03 },
           content: "Demos",
           fontSize: 20,
-          color: "#e2e8f0",
-          fontWeight: "bold",
+          color: "#ccc",
+          fontWeight: "300",
           textAlign: "left",
         },
         {
@@ -88,7 +88,7 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000040",
           layout: { x: 0.06, y: 0.30, width: 0.88, height: 0.065 },
           label: "Timer",
-          backgroundColor: "#6366f1",
+          backgroundColor: "#1a1a1a",
           textColor: "#ffffff",
           fontSize: 16,
           fontWeight: "600",
@@ -101,7 +101,7 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000041",
           layout: { x: 0.06, y: 0.38, width: 0.88, height: 0.065 },
           label: "Counter",
-          backgroundColor: "#8b5cf6",
+          backgroundColor: "#1a1a1a",
           textColor: "#ffffff",
           fontSize: 16,
           fontWeight: "600",
@@ -114,7 +114,7 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000042",
           layout: { x: 0.06, y: 0.46, width: 0.88, height: 0.065 },
           label: "Random Number",
-          backgroundColor: "#ec4899",
+          backgroundColor: "#1a1a1a",
           textColor: "#ffffff",
           fontSize: 16,
           fontWeight: "600",
@@ -128,8 +128,8 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.56, width: 0.88, height: 0.03 },
           content: "Quick Start",
           fontSize: 20,
-          color: "#e2e8f0",
-          fontWeight: "bold",
+          color: "#ccc",
+          fontWeight: "300",
           textAlign: "left",
         },
         {
@@ -138,7 +138,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.61, width: 0.88, height: 0.03 },
           content: "1. Long-press the canvas to open the menu",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -148,7 +148,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.65, width: 0.88, height: 0.03 },
           content: "2. Toggle Edit Mode on, then add components",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -158,7 +158,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.69, width: 0.88, height: 0.03 },
           content: "3. Drag to move, pinch to resize, tap to edit",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -168,7 +168,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.06, y: 0.73, width: 0.88, height: 0.03 },
           content: "4. Toggle Edit Mode off to preview your app",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -177,8 +177,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000020",
           layout: { x: 0.06, y: 0.80, width: 0.88, height: 0.065 },
           label: "Start Building",
-          backgroundColor: "#22c55e",
-          textColor: "#ffffff",
+          backgroundColor: "#ffffff",
+          textColor: "#000000",
           fontSize: 16,
           fontWeight: "600",
           textAlign: "center",
@@ -189,9 +189,9 @@ export const defaultBlueprint: AppBlueprint = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000015",
           layout: { x: 0.06, y: 0.89, width: 0.88, height: 0.03 },
-          content: "v1.0  \u2022  Made with Blueprints",
+          content: "v1.0  \u2022  Made with Slate",
           fontSize: 11,
-          color: "#475569",
+          color: "#333",
           fontWeight: "normal",
           textAlign: "left",
         },
@@ -224,7 +224,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
           content: "0",
           fontSize: 72,
-          color: "#818cf8",
+          color: "#ffffff",
           fontWeight: "bold",
           textAlign: "center",
           bindings: { content: "seconds" },
@@ -235,7 +235,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.2, y: 0.42, width: 0.6, height: 0.03 },
           content: "seconds",
           fontSize: 16,
-          color: "#64748b",
+          color: "#444",
           fontWeight: "normal",
           textAlign: "center",
         },
@@ -244,8 +244,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000204",
           layout: { x: 0.1, y: 0.52, width: 0.8, height: 0.07 },
           label: "Start / Stop",
-          backgroundColor: "#6366f1",
-          textColor: "#ffffff",
+          backgroundColor: "#ffffff",
+          textColor: "#000000",
           fontSize: 18,
           fontWeight: "bold",
           textAlign: "center",
@@ -257,8 +257,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000205",
           layout: { x: 0.1, y: 0.62, width: 0.8, height: 0.07 },
           label: "Reset",
-          backgroundColor: "#334155",
-          textColor: "#e2e8f0",
+          backgroundColor: "#1a1a1a",
+          textColor: "#ccc",
           fontSize: 18,
           fontWeight: "600",
           textAlign: "center",
@@ -276,7 +276,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.75, width: 0.8, height: 0.05 },
           content: "Tap Start/Stop to toggle. Uses variables to track state.",
           fontSize: 13,
-          color: "#64748b",
+          color: "#444",
           fontWeight: "normal",
           textAlign: "center",
         },
@@ -306,7 +306,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
           content: "0",
           fontSize: 80,
-          color: "#8b5cf6",
+          color: "#ffffff",
           fontWeight: "bold",
           textAlign: "center",
           bindings: { content: "count" },
@@ -316,8 +316,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000303",
           layout: { x: 0.06, y: 0.48, width: 0.42, height: 0.08 },
           label: "- 1",
-          backgroundColor: "#ef4444",
-          textColor: "#ffffff",
+          backgroundColor: "#1a1a1a",
+          textColor: "#ccc",
           fontSize: 24,
           fontWeight: "bold",
           textAlign: "center",
@@ -329,8 +329,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000304",
           layout: { x: 0.52, y: 0.48, width: 0.42, height: 0.08 },
           label: "+ 1",
-          backgroundColor: "#22c55e",
-          textColor: "#ffffff",
+          backgroundColor: "#ffffff",
+          textColor: "#000000",
           fontSize: 24,
           fontWeight: "bold",
           textAlign: "center",
@@ -342,8 +342,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000305",
           layout: { x: 0.2, y: 0.60, width: 0.6, height: 0.065 },
           label: "Reset",
-          backgroundColor: "#334155",
-          textColor: "#e2e8f0",
+          backgroundColor: "#111",
+          textColor: "#666",
           fontSize: 16,
           fontWeight: "600",
           textAlign: "center",
@@ -356,7 +356,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.75, width: 0.8, height: 0.05 },
           content: "A simple counter using SET_VARIABLE expressions.",
           fontSize: 13,
-          color: "#64748b",
+          color: "#444",
           fontWeight: "normal",
           textAlign: "center",
         },
@@ -386,7 +386,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
           content: "?",
           fontSize: 80,
-          color: "#ec4899",
+          color: "#ffffff",
           fontWeight: "bold",
           textAlign: "center",
           bindings: { content: "result" },
@@ -396,8 +396,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000403",
           layout: { x: 0.1, y: 0.48, width: 0.8, height: 0.08 },
           label: "Generate (1-100)",
-          backgroundColor: "#ec4899",
-          textColor: "#ffffff",
+          backgroundColor: "#ffffff",
+          textColor: "#000000",
           fontSize: 20,
           fontWeight: "bold",
           textAlign: "center",
@@ -409,7 +409,7 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000404",
           layout: { x: 0.1, y: 0.59, width: 0.38, height: 0.065 },
           label: "1-10",
-          backgroundColor: "#7c3aed",
+          backgroundColor: "#1a1a1a",
           textColor: "#ffffff",
           fontSize: 16,
           fontWeight: "600",
@@ -422,7 +422,7 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000405",
           layout: { x: 0.52, y: 0.59, width: 0.38, height: 0.065 },
           label: "1-1000",
-          backgroundColor: "#7c3aed",
+          backgroundColor: "#1a1a1a",
           textColor: "#ffffff",
           fontSize: 16,
           fontWeight: "600",
@@ -435,8 +435,8 @@ export const defaultBlueprint: AppBlueprint = {
           id: "00000000-0000-0000-0000-000000000406",
           layout: { x: 0.2, y: 0.68, width: 0.6, height: 0.065 },
           label: "Reset",
-          backgroundColor: "#334155",
-          textColor: "#e2e8f0",
+          backgroundColor: "#111",
+          textColor: "#666",
           fontSize: 16,
           fontWeight: "600",
           textAlign: "center",
@@ -449,7 +449,7 @@ export const defaultBlueprint: AppBlueprint = {
           layout: { x: 0.1, y: 0.80, width: 0.8, height: 0.05 },
           content: "Uses random() and floor() in variable expressions.",
           fontSize: 13,
-          color: "#64748b",
+          color: "#444",
           fontWeight: "normal",
           textAlign: "center",
         },
@@ -468,21 +468,21 @@ function collectPersistedVarNames(appVars: Variable[], screenVars: Variable[]): 
   return names;
 }
 
-interface BlueprintEditorProps {
-  blueprintId: string;
-  onCloseBlueprint: () => void;
-  onDeleteBlueprint: () => void;
+interface SlateEditorProps {
+  slateId: string;
+  onCloseSlate: () => void;
+  onDeleteSlate: () => void;
 }
 
-export function BlueprintEditor({
-  blueprintId,
-  onCloseBlueprint,
-  onDeleteBlueprint,
-}: BlueprintEditorProps) {
+export function SlateEditor({
+  slateId,
+  onCloseSlate,
+  onDeleteSlate,
+}: SlateEditorProps) {
   const {
-    blueprint,
-    setBlueprint,
-    setBlueprintRaw,
+    slate,
+    setSlate,
+    setSlateRaw,
     undo,
     redo,
     canUndo,
@@ -492,9 +492,14 @@ export function BlueprintEditor({
     restoreToId,
     startBatch,
     endBatch,
-  } = useUndoHistory(defaultBlueprint);
+    historyVersion,
+    loadHistory,
+    getRedoMap,
+    createBranch,
+  } = useUndoHistory(defaultSlate);
   const [isEditMode, setIsEditMode] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [apiKey, setApiKey] = useState(process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "");
   const [currentScreenId, setCurrentScreenId] = useState(SCREEN_ID);
   const currentScreenIdRef = useRef(currentScreenId);
   currentScreenIdRef.current = currentScreenId;
@@ -502,24 +507,34 @@ export function BlueprintEditor({
   const isEditModeLoaded = useRef(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blueprintRef = useRef(blueprint);
-  blueprintRef.current = blueprint;
-  const initFromBlueprint = useRuntimeStore((s) => s.initFromBlueprint);
+  const historySaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slateRef = useRef(slate);
+  slateRef.current = slate;
+  const initFromSlate = useRuntimeStore((s) => s.initFromSlate);
   const navigateToScreen = useRuntimeStore((s) => s.navigateToScreen);
   const runtimeVariables = useRuntimeStore((s) => s.variables);
 
-  // Load blueprint and settings on mount
+  // Load slate and settings on mount
   useEffect(() => {
     (async () => {
       try {
-        const [bp, editMode, persistedJson] = await Promise.all([
-          storage.loadBlueprint(blueprintId),
+        const [bp, editMode, persistedJson, savedApiKey, savedHistory] = await Promise.all([
+          storage.loadSlate(slateId),
           AsyncStorage.getItem("settings_editMode"),
-          AsyncStorage.getItem(`runtime_persisted_variables_${blueprintId}`),
+          AsyncStorage.getItem(`runtime_persisted_variables_${slateId}`),
+          AsyncStorage.getItem("settings_anthropic_api_key"),
+          storage.loadHistory(slateId),
         ]);
+        if (savedApiKey) setApiKey(savedApiKey);
 
-        const loadedBp = bp ?? defaultBlueprint;
-        setBlueprintRaw(loadedBp);
+        const loadedBp = bp ?? defaultSlate;
+
+        // Restore history if available, otherwise just set the raw slate
+        if (savedHistory && savedHistory.entries.length > 0) {
+          loadHistory(savedHistory.entries, savedHistory.currentId, savedHistory.redoMap);
+        } else {
+          setSlateRaw(loadedBp);
+        }
         setCurrentScreenId(loadedBp.initial_screen_id);
 
         // Always start in edit mode
@@ -531,7 +546,7 @@ export function BlueprintEditor({
         const appVars = loadedBp.variables ?? [];
         const screenVars = screen?.variables ?? [];
         const persisted = persistedJson ? JSON.parse(persistedJson) : {};
-        initFromBlueprint(appVars, screenVars, persisted);
+        initFromSlate(appVars, screenVars, persisted);
 
         setLoaded(true);
       } catch {
@@ -543,25 +558,44 @@ export function BlueprintEditor({
     return () => {
       if (saveTimeout.current) {
         clearTimeout(saveTimeout.current);
-        storage.saveBlueprint(blueprintId, blueprintRef.current);
+        storage.saveSlate(slateId, slateRef.current);
       }
       if (persistTimeout.current) {
         clearTimeout(persistTimeout.current);
       }
+      if (historySaveTimeout.current) {
+        clearTimeout(historySaveTimeout.current);
+      }
     };
-  }, [blueprintId]);
+  }, [slateId]);
 
-  // Debounced save on blueprint change
+  // Debounced save on slate change
   useEffect(() => {
     if (!loaded) return;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
-      storage.saveBlueprint(blueprintId, blueprint);
+      storage.saveSlate(slateId, slate);
     }, 500);
     return () => {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
     };
-  }, [blueprint, loaded, blueprintId]);
+  }, [slate, loaded, slateId]);
+
+  // Debounced save of undo history
+  useEffect(() => {
+    if (!loaded) return;
+    if (historySaveTimeout.current) clearTimeout(historySaveTimeout.current);
+    historySaveTimeout.current = setTimeout(() => {
+      storage.saveHistory(slateId, {
+        entries,
+        currentId,
+        redoMap: getRedoMap(),
+      });
+    }, 1000);
+    return () => {
+      if (historySaveTimeout.current) clearTimeout(historySaveTimeout.current);
+    };
+  }, [historyVersion, loaded, slateId]);
 
   // Persist edit mode
   useEffect(() => {
@@ -569,23 +603,23 @@ export function BlueprintEditor({
     AsyncStorage.setItem("settings_editMode", String(isEditMode));
   }, [isEditMode]);
 
-  // Re-initialize runtime store when blueprint variables change
+  // Re-initialize runtime store when slate variables change
   useEffect(() => {
     if (!loaded) return;
-    const screen = blueprint.screens[currentScreenId];
-    const appVars = blueprint.variables ?? [];
+    const screen = slate.screens[currentScreenId];
+    const appVars = slate.variables ?? [];
     const screenVars = screen?.variables ?? [];
-    initFromBlueprint(appVars, screenVars, {});
-  }, [blueprint.variables, currentScreenId, blueprint.screens[currentScreenId]?.variables]);
+    initFromSlate(appVars, screenVars, {});
+  }, [slate.variables, currentScreenId, slate.screens[currentScreenId]?.variables]);
 
   // Debounced persist of runtime variables
   useEffect(() => {
     if (!loaded) return;
     if (persistTimeout.current) clearTimeout(persistTimeout.current);
     persistTimeout.current = setTimeout(() => {
-      const screen = blueprint.screens[currentScreenIdRef.current];
+      const screen = slate.screens[currentScreenIdRef.current];
       const persistedNames = collectPersistedVarNames(
-        blueprint.variables ?? [],
+        slate.variables ?? [],
         screen?.variables ?? []
       );
       if (persistedNames.size === 0) return;
@@ -596,28 +630,37 @@ export function BlueprintEditor({
         }
       }
       AsyncStorage.setItem(
-        `runtime_persisted_variables_${blueprintId}`,
+        `runtime_persisted_variables_${slateId}`,
         JSON.stringify(toSave)
       );
     }, 1000);
     return () => {
       if (persistTimeout.current) clearTimeout(persistTimeout.current);
     };
-  }, [runtimeVariables, loaded, blueprintId]);
+  }, [runtimeVariables, loaded, slateId]);
 
-  const handleCloseBlueprint = useCallback(async () => {
-    // Flush pending save
+  const handleCloseSlate = useCallback(async () => {
+    // Flush pending saves
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
       saveTimeout.current = null;
-      await storage.saveBlueprint(blueprintId, blueprintRef.current);
+      await storage.saveSlate(slateId, slateRef.current);
     }
-    onCloseBlueprint();
-  }, [blueprintId, onCloseBlueprint]);
+    if (historySaveTimeout.current) {
+      clearTimeout(historySaveTimeout.current);
+      historySaveTimeout.current = null;
+    }
+    await storage.saveHistory(slateId, {
+      entries,
+      currentId,
+      redoMap: getRedoMap(),
+    });
+    onCloseSlate();
+  }, [slateId, onCloseSlate, entries, currentId, getRedoMap]);
 
   const updateScreenComponents = useCallback(
     (fn: (components: Component[]) => Component[], description = "Updated components") => {
-      setBlueprint((prev) => {
+      setSlate((prev) => {
         const sid = currentScreenIdRef.current;
         const screen = prev.screens[sid];
         if (!screen) return prev;
@@ -630,7 +673,7 @@ export function BlueprintEditor({
         };
       }, description);
     },
-    [setBlueprint]
+    [setSlate]
   );
 
   const handleAddComponent = useCallback(
@@ -704,7 +747,7 @@ export function BlueprintEditor({
 
   const handleScreenUpdate = useCallback(
     (updatedScreen: Screen) => {
-      setBlueprint((prev) => {
+      setSlate((prev) => {
         const sid = currentScreenIdRef.current;
         return {
           ...prev,
@@ -715,28 +758,28 @@ export function BlueprintEditor({
         };
       }, "Updated screen");
     },
-    [setBlueprint]
+    [setSlate]
   );
 
   const handleResetAndBuild = useCallback(() => {
-    setBlueprint((prev) => {
+    setSlate((prev) => {
       const sid = currentScreenIdRef.current;
       return {
         ...prev,
         screens: {
           ...prev.screens,
-          [sid]: { ...prev.screens[sid], components: [makeBackgroundShape("#ffffff")] },
+          [sid]: { ...prev.screens[sid], components: [makeBackgroundShape()] },
         },
       };
     }, "Reset canvas");
     setIsEditMode(true);
-  }, [setBlueprint]);
+  }, [setSlate]);
 
   // --- Screen navigation (preview mode) ---
   const handleNavigate = useCallback((targetScreenId: string) => {
     setNavStack((prev) => [...prev, currentScreenIdRef.current]);
     setCurrentScreenId(targetScreenId);
-    const bp = blueprintRef.current;
+    const bp = slateRef.current;
     const targetScreen = bp.screens[targetScreenId];
     navigateToScreen(bp.variables ?? [], targetScreen?.variables ?? []);
   }, [navigateToScreen]);
@@ -747,7 +790,7 @@ export function BlueprintEditor({
       const next = [...prev];
       const previousId = next.pop()!;
       setCurrentScreenId(previousId);
-      const bp = blueprintRef.current;
+      const bp = slateRef.current;
       const prevScreen = bp.screens[previousId];
       navigateToScreen(bp.variables ?? [], prevScreen?.variables ?? []);
       return next;
@@ -764,19 +807,19 @@ export function BlueprintEditor({
     const newId = uuid();
     const newScreen: Screen = {
       id: newId,
-      name: `Screen ${Object.keys(blueprintRef.current.screens).length + 1}`,
-      components: [makeBackgroundShape("#ffffff")],
+      name: `Screen ${Object.keys(slateRef.current.screens).length + 1}`,
+      components: [makeBackgroundShape()],
     };
-    setBlueprint((prev) => ({
+    setSlate((prev) => ({
       ...prev,
       screens: { ...prev.screens, [newId]: newScreen },
     }), "Added screen");
     setCurrentScreenId(newId);
     setNavStack([]);
-  }, [setBlueprint]);
+  }, [setSlate]);
 
   const handleDeleteScreen = useCallback((screenId: string) => {
-    setBlueprint((prev) => {
+    setSlate((prev) => {
       const ids = Object.keys(prev.screens);
       if (ids.length <= 1) return prev;
       const { [screenId]: _, ...rest } = prev.screens;
@@ -787,15 +830,15 @@ export function BlueprintEditor({
       return { ...prev, screens: rest, initial_screen_id: newInitial };
     }, "Deleted screen");
     if (currentScreenIdRef.current === screenId) {
-      const bp = blueprintRef.current;
+      const bp = slateRef.current;
       const ids = Object.keys(bp.screens).filter((id) => id !== screenId);
       setCurrentScreenId(ids[0] ?? bp.initial_screen_id);
     }
     setNavStack([]);
-  }, [setBlueprint]);
+  }, [setSlate]);
 
   const handleRenameScreen = useCallback((screenId: string, name: string) => {
-    setBlueprint((prev) => {
+    setSlate((prev) => {
       const screen = prev.screens[screenId];
       if (!screen) return prev;
       return {
@@ -803,11 +846,16 @@ export function BlueprintEditor({
         screens: { ...prev.screens, [screenId]: { ...screen, name } },
       };
     }, "Renamed screen");
-  }, [setBlueprint]);
+  }, [setSlate]);
 
   const handleSetInitialScreen = useCallback((screenId: string) => {
-    setBlueprint((prev) => ({ ...prev, initial_screen_id: screenId }), "Set initial screen");
-  }, [setBlueprint]);
+    setSlate((prev) => ({ ...prev, initial_screen_id: screenId }), "Set initial screen");
+  }, [setSlate]);
+
+  const handleApiKeyChange = useCallback((key: string) => {
+    setApiKey(key);
+    AsyncStorage.setItem("settings_anthropic_api_key", key);
+  }, []);
 
   if (!loaded) return null;
 
@@ -815,7 +863,7 @@ export function BlueprintEditor({
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar barStyle="dark-content" />
       <Canvas
-        blueprint={blueprint}
+        slate={slate}
         screenId={currentScreenId}
         isEditMode={isEditMode}
         onToggleEditMode={() => setIsEditMode((v) => !v)}
@@ -823,8 +871,8 @@ export function BlueprintEditor({
         onContentChange={handleContentChange}
         onStyleChange={handleStyleChange}
         onAddComponent={handleAddComponent}
-        onCloseBlueprint={handleCloseBlueprint}
-        onDeleteBlueprint={onDeleteBlueprint}
+        onCloseSlate={handleCloseSlate}
+        onDeleteSlate={onDeleteSlate}
         onResetAndBuild={handleResetAndBuild}
         onNavigate={handleNavigate}
         onNavigateBack={handleNavigateBack}
@@ -833,10 +881,10 @@ export function BlueprintEditor({
         onDeleteComponent={handleDeleteComponent}
         onComponentReplace={handleComponentReplace}
         onAddChildComponent={handleAddChildComponent}
-        onBlueprintChange={(updater) => {
-          setBlueprint(
+        onSlateChange={(updater) => {
+          setSlate(
             typeof updater === "function" ? updater : () => updater,
-            "Updated blueprint"
+            "Updated slate"
           );
         }}
         currentScreenId={currentScreenId}
@@ -847,9 +895,10 @@ export function BlueprintEditor({
         entries={entries}
         currentId={currentId}
         restoreToId={restoreToId}
+        createBranch={createBranch}
         startBatch={startBatch}
         endBatch={endBatch}
-        initialScreenId={blueprint.initial_screen_id}
+        initialScreenId={slate.initial_screen_id}
         screenActions={{
           onSwitchScreen: handleSwitchScreen,
           onAddScreen: handleAddScreen,
@@ -857,6 +906,9 @@ export function BlueprintEditor({
           onRenameScreen: handleRenameScreen,
           onSetInitialScreen: handleSetInitialScreen,
         }}
+        apiKey={apiKey}
+        onApiKeyChange={handleApiKeyChange}
+        slateId={slateId}
       />
     </GestureHandlerRootView>
   );

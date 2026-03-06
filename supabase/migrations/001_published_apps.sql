@@ -3,13 +3,13 @@ CREATE TABLE published_apps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   creator_id UUID NOT NULL REFERENCES auth.users(id),
   app_name TEXT NOT NULL,
-  app_blueprint JSONB NOT NULL DEFAULT '{}'::jsonb,
+  app_slate JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- GIN index on app_blueprint for JSONB query performance
-CREATE INDEX idx_published_apps_blueprint ON published_apps USING GIN (app_blueprint);
+-- GIN index on app_slate for JSONB query performance
+CREATE INDEX idx_published_apps_slate ON published_apps USING GIN (app_slate);
 
 -- Enable Row Level Security
 ALTER TABLE published_apps ENABLE ROW LEVEL SECURITY;

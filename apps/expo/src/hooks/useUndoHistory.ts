@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback } from "react";
-import type { AppBlueprint } from "../types";
+import type { AppSlate } from "../types";
 
 export const ROOT_ID = "__root__";
 
 export interface HistoryEntry {
   id: string;
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   timestamp: number;
   description: string;
   parentId: string;
@@ -16,15 +16,15 @@ function historyId(): string {
   return `h_${Date.now()}_${++_idCounter}`;
 }
 
-export function useUndoHistory(initialBlueprint: AppBlueprint) {
-  const [blueprint, setBlueprintState] = useState(initialBlueprint);
+export function useUndoHistory(initialSlate: AppSlate) {
+  const [slate, setSlateState] = useState(initialSlate);
   const [historyVersion, setHistoryVersion] = useState(0);
 
   // All entries stored flat — tree structure is implicit via parentId
   const entriesRef = useRef<HistoryEntry[]>([
     {
       id: ROOT_ID,
-      blueprint: initialBlueprint,
+      slate: initialSlate,
       timestamp: Date.now(),
       description: "Initial state",
       parentId: "",
@@ -38,9 +38,9 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
   const redoMapRef = useRef<Map<string, string>>(new Map());
 
   const isUndoRedoRef = useRef(false);
-  const batchRef = useRef<{ description: string; snapshot: AppBlueprint } | null>(null);
-  const blueprintRef = useRef(blueprint);
-  blueprintRef.current = blueprint;
+  const batchRef = useRef<{ description: string; snapshot: AppSlate } | null>(null);
+  const slateRef = useRef(slate);
+  slateRef.current = slate;
 
   const bump = useCallback(() => setHistoryVersion((v) => v + 1), []);
 
@@ -48,22 +48,22 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
     return entriesRef.current.find((e) => e.id === id);
   }, []);
 
-  const setBlueprint = useCallback(
+  const setSlate = useCallback(
     (
-      updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint),
-      description = "Updated blueprint"
+      updater: AppSlate | ((prev: AppSlate) => AppSlate),
+      description = "Updated slate"
     ) => {
       const shouldRecord = !isUndoRedoRef.current && !batchRef.current;
       const newId = shouldRecord ? historyId() : "";
 
-      setBlueprintState((prev) => {
+      setSlateState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         if (shouldRecord && !entriesRef.current.some((e) => e.id === newId)) {
           entriesRef.current = [
             ...entriesRef.current,
             {
               id: newId,
-              blueprint: next,
+              slate: next,
               timestamp: Date.now(),
               description,
               parentId: currentIdRef.current,
@@ -71,7 +71,7 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
           ];
           currentIdRef.current = newId;
         }
-        blueprintRef.current = next;
+        slateRef.current = next;
         return next;
       });
       if (shouldRecord) bump();
@@ -79,14 +79,14 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
     [bump]
   );
 
-  const setBlueprintRaw = useCallback(
-    (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => {
-      setBlueprintState((prev) => {
+  const setSlateRaw = useCallback(
+    (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => {
+      setSlateState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
-        blueprintRef.current = next;
-        // Update root entry to reflect loaded blueprint
+        slateRef.current = next;
+        // Update root entry to reflect loaded slate
         entriesRef.current = entriesRef.current.map((e) =>
-          e.id === ROOT_ID ? { ...e, blueprint: next } : e
+          e.id === ROOT_ID ? { ...e, slate: next } : e
         );
         return next;
       });
@@ -106,8 +106,8 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
 
     currentIdRef.current = parent.id;
     isUndoRedoRef.current = true;
-    setBlueprintState(parent.blueprint);
-    blueprintRef.current = parent.blueprint;
+    setSlateState(parent.slate);
+    slateRef.current = parent.slate;
     isUndoRedoRef.current = false;
     bump();
   }, [findEntry, bump]);
@@ -121,8 +121,8 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
 
     currentIdRef.current = child.id;
     isUndoRedoRef.current = true;
-    setBlueprintState(child.blueprint);
-    blueprintRef.current = child.blueprint;
+    setSlateState(child.slate);
+    slateRef.current = child.slate;
     isUndoRedoRef.current = false;
     bump();
   }, [findEntry, bump]);
@@ -153,8 +153,8 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
 
       currentIdRef.current = id;
       isUndoRedoRef.current = true;
-      setBlueprintState(entry.blueprint);
-      blueprintRef.current = entry.blueprint;
+      setSlateState(entry.slate);
+      slateRef.current = entry.slate;
       isUndoRedoRef.current = false;
       bump();
     },
@@ -162,21 +162,21 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
   );
 
   const startBatch = useCallback((description: string) => {
-    batchRef.current = { description, snapshot: blueprintRef.current };
+    batchRef.current = { description, snapshot: slateRef.current };
   }, []);
 
   const endBatch = useCallback(() => {
     if (!batchRef.current) return;
     const { description, snapshot } = batchRef.current;
     batchRef.current = null;
-    // Only record if blueprint actually changed
-    if (snapshot !== blueprintRef.current) {
+    // Only record if slate actually changed
+    if (snapshot !== slateRef.current) {
       const newId = historyId();
       entriesRef.current = [
         ...entriesRef.current,
         {
           id: newId,
-          blueprint: blueprintRef.current,
+          slate: slateRef.current,
           timestamp: Date.now(),
           description,
           parentId: currentIdRef.current,
@@ -187,10 +187,54 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
     }
   }, [bump]);
 
+  const loadHistory = useCallback(
+    (loadedEntries: HistoryEntry[], loadedCurrentId: string, loadedRedoMap: [string, string][]) => {
+      entriesRef.current = loadedEntries;
+      currentIdRef.current = loadedCurrentId;
+      redoMapRef.current = new Map(loadedRedoMap);
+      // Set slate to match the current entry
+      const current = loadedEntries.find((e) => e.id === loadedCurrentId);
+      if (current) {
+        setSlateState(current.slate);
+        slateRef.current = current.slate;
+      }
+      bump();
+    },
+    [bump]
+  );
+
+  const getRedoMap = useCallback(() => {
+    return Array.from(redoMapRef.current.entries()) as [string, string][];
+  }, []);
+
+  const createBranch = useCallback(
+    (branchSlate: AppSlate, description: string): string => {
+      const newId = historyId();
+      entriesRef.current = [
+        ...entriesRef.current,
+        {
+          id: newId,
+          slate: branchSlate,
+          timestamp: Date.now(),
+          description,
+          parentId: currentIdRef.current,
+        },
+      ];
+      currentIdRef.current = newId;
+      isUndoRedoRef.current = true;
+      setSlateState(branchSlate);
+      slateRef.current = branchSlate;
+      isUndoRedoRef.current = false;
+      bump();
+      return newId;
+    },
+    [bump]
+  );
+
   return {
-    blueprint,
-    setBlueprint,
-    setBlueprintRaw,
+    slate,
+    setSlate,
+    setSlateRaw,
     undo,
     redo,
     canUndo,
@@ -198,8 +242,11 @@ export function useUndoHistory(initialBlueprint: AppBlueprint) {
     entries,
     currentId,
     restoreToId,
+    createBranch,
     startBatch,
     endBatch,
     historyVersion,
+    loadHistory,
+    getRedoMap,
   };
 }

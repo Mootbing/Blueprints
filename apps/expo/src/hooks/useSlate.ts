@@ -1,34 +1,34 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { AppBlueprintSchema } from "@shared/schema";
-import type { AppBlueprint } from "../types";
+import { AppSlateSchema } from "@shared/schema";
+import type { AppSlate } from "../types";
 
 const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-interface UseBlueprintResult {
-  blueprint: AppBlueprint | null;
+interface UseSlateResult {
+  slate: AppSlate | null;
   loading: boolean;
   error: Error | null;
 }
 
-export function useBlueprint(appId: string): UseBlueprintResult {
-  const [blueprint, setBlueprint] = useState<AppBlueprint | null>(null);
+export function useSlate(appId: string): UseSlateResult {
+  const [slate, setSlate] = useState<AppSlate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchBlueprint() {
+    async function fetchSlate() {
       setLoading(true);
       setError(null);
 
       const { data, error: fetchError } = await supabase
         .from("published_apps")
-        .select("app_blueprint")
+        .select("app_slate")
         .eq("id", appId)
         .single();
 
@@ -41,20 +41,20 @@ export function useBlueprint(appId: string): UseBlueprintResult {
       }
 
       try {
-        const parsed = AppBlueprintSchema.parse(data.app_blueprint);
-        setBlueprint(parsed);
+        const parsed = AppSlateSchema.parse(data.app_slate);
+        setSlate(parsed);
       } catch (e) {
-        setError(e instanceof Error ? e : new Error("Invalid blueprint"));
+        setError(e instanceof Error ? e : new Error("Invalid slate"));
       }
 
       setLoading(false);
     }
 
-    fetchBlueprint();
+    fetchSlate();
     return () => {
       cancelled = true;
     };
   }, [appId]);
 
-  return { blueprint, loading, error };
+  return { slate, loading, error };
 }

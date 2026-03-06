@@ -41,7 +41,7 @@ export function JsonEditorView({ screen, onScreenUpdate }: JsonEditorViewProps) 
         spellCheck={false}
         textAlignVertical="top"
         placeholder="Screen JSON..."
-        placeholderTextColor="rgba(255,255,255,0.2)"
+        placeholderTextColor="#333"
       />
       {jsonError && <Text style={styles.jsonError}>{jsonError}</Text>}
       <Pressable
@@ -64,28 +64,28 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     minHeight: 200,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "#1a1a1a",
     borderRadius: 8,
-    color: "#e2e8f0",
+    color: "#ccc",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: 11,
     padding: 12,
   },
   jsonError: {
-    color: "#fca5a5",
+    color: "#dc2626",
     fontSize: 12,
     marginTop: 6,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   applyBtn: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: "center" as const,
     marginTop: 8,
   },
   applyBtnPressed: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#ccc",
   },
   applyLabel: {
     color: "#ffffff",

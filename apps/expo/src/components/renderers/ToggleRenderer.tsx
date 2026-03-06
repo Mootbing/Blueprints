@@ -8,8 +8,8 @@ export interface ToggleRendererProps {
 }
 
 export function ToggleRenderer({ component, isEditMode }: ToggleRendererProps) {
-  const activeColor = component.activeColor ?? "#6366f1";
-  const inactiveColor = component.inactiveColor ?? "#e0e0e0";
+  const activeColor = component.activeColor ?? "#ffffff";
+  const inactiveColor = component.inactiveColor ?? "#333";
   const thumbColor = component.thumbColor ?? "#ffffff";
 
   const [value, setValue] = useState(component.defaultValue ?? false);

@@ -13,6 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import type { HistoryEntry } from "../../hooks/useUndoHistory";
 import { ROOT_ID } from "../../hooks/useUndoHistory";
 import type { Component } from "../../types";
+import { rendererRegistry } from "../renderers";
 
 // ─── Diff helpers ────────────────────────────────────────────────
 
@@ -53,15 +54,6 @@ function computeDiff(before: Component[], after: Component[]): DiffResult {
     if (!afterMap.has(id)) removed.push(comp);
   }
   return { added, removed, changed, unchanged };
-}
-
-function getComponentLabel(comp: Component): string {
-  if (comp.type === "text" && "content" in comp) {
-    const t = (comp as any).content as string;
-    return t.length > 18 ? t.slice(0, 18) + "..." : t;
-  }
-  if (comp.type === "button" && "label" in comp) return (comp as any).label;
-  return comp.type;
 }
 
 // ─── Display list builder ────────────────────────────────────────
@@ -170,53 +162,104 @@ function formatTime(ts: number): string {
   return `${h}:${m} ${d.getHours() >= 12 ? "PM" : "AM"}`;
 }
 
+// ─── Preview component renderer ──────────────────────────────────
+
+function PreviewComponent({
+  component,
+  canvasWidth,
+  canvasHeight,
+  highlight,
+}: {
+  component: Component;
+  canvasWidth: number;
+  canvasHeight: number;
+  highlight?: "added" | "removed" | "changed-old" | "changed-new";
+}) {
+  const Renderer = rendererRegistry[component.type];
+  if (!Renderer) return null;
+
+  const left = component.layout.x * canvasWidth;
+  const top = component.layout.y * canvasHeight;
+  const width = component.layout.width * canvasWidth;
+  const height = component.layout.height * canvasHeight;
+  const rotation = component.layout.rotation ?? 0;
+
+  const borderColor = highlight === "removed" || highlight === "changed-old"
+    ? "#ef4444"
+    : highlight === "added" || highlight === "changed-new"
+    ? "#22c55e"
+    : "transparent";
+  const borderWidth = highlight ? 2 : 0;
+  const bgOverlay = highlight === "removed" || highlight === "changed-old"
+    ? "rgba(239,68,68,0.1)"
+    : highlight === "added" || highlight === "changed-new"
+    ? "rgba(34,197,94,0.1)"
+    : "transparent";
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        left,
+        top,
+        width,
+        height,
+        transform: rotation ? [{ rotate: `${rotation}rad` }] : [],
+        borderWidth,
+        borderColor,
+        borderRadius: 4,
+        backgroundColor: bgOverlay,
+        opacity: highlight === "removed" || highlight === "changed-old" ? 0.6 : 1,
+      }}
+      pointerEvents="none"
+    >
+      <Renderer component={component} isEditMode={false} />
+      {highlight && (
+        <View style={{
+          position: "absolute",
+          top: -10,
+          right: -2,
+          backgroundColor: borderColor,
+          borderRadius: 3,
+          paddingHorizontal: 4,
+          paddingVertical: 1,
+        }}>
+          <Text style={{ color: "#fff", fontSize: 7, fontWeight: "800" }}>
+            {highlight === "removed" ? "OLD" : highlight === "added" ? "NEW" : highlight === "changed-old" ? "OLD" : "NEW"}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── Detail panel (bottom sheet with diff) ───────────────────────
 
 function DetailPanel({
   entry,
-  parentEntry,
+  currentEntry,
   screenId,
   onRestore,
   onClose,
   isHead,
 }: {
   entry: HistoryEntry;
-  parentEntry?: HistoryEntry;
+  currentEntry: HistoryEntry;
   screenId: string;
   onRestore: () => void;
   onClose: () => void;
   isHead: boolean;
 }) {
-  const sw = Dimensions.get("window").width - 48;
-  const ch = 220;
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const screenWidth = Dimensions.get("window").width;
 
-  const beforeScreen = parentEntry?.blueprint.screens[screenId];
-  const afterScreen = entry.blueprint.screens[screenId];
+  // Compare current HEAD state to the selected entry (what would change on restore)
+  const currentScreen = currentEntry.slate.screens[screenId];
+  const selectedScreen = entry.slate.screens[screenId];
   const diff = useMemo(() => {
-    if (!beforeScreen || !afterScreen) return null;
-    return computeDiff(beforeScreen.components, afterScreen.components);
-  }, [beforeScreen, afterScreen]);
-
-  const renderBox = (comp: Component, color: string, opacity: number) => {
-    const l = comp.layout;
-    return (
-      <View
-        key={comp.id + color}
-        style={{
-          position: "absolute",
-          left: l.x * sw,
-          top: l.y * ch,
-          width: Math.max(l.width * sw, 2),
-          height: Math.max(l.height * ch, 2),
-          backgroundColor: color,
-          opacity,
-          borderRadius: 3,
-          borderWidth: 1,
-          borderColor: color,
-        }}
-      />
-    );
-  };
+    if (!currentScreen || !selectedScreen) return null;
+    return computeDiff(currentScreen.components, selectedScreen.components);
+  }, [currentScreen, selectedScreen]);
 
   const isRoot = entry.id === ROOT_ID;
   const d = new Date(entry.timestamp);
@@ -227,6 +270,137 @@ function DetailPanel({
     .getSeconds()
     .toString()
     .padStart(2, "0")} ${d.getHours() >= 12 ? "PM" : "AM"}`;
+
+  // Preview canvas dimensions (scaled to fit with padding)
+  const previewPadding = 16;
+  const previewWidth = screenWidth - previewPadding * 2;
+  const previewAspect = 1.6; // approximate phone aspect ratio
+  const previewHeight = previewWidth * previewAspect;
+
+  if (previewOpen && diff && selectedScreen) {
+    // Full-screen preview mode
+    return (
+      <View style={[StyleSheet.absoluteFill, dp.previewOverlay]}>
+        <SafeAreaView style={{ flex: 1 }}>
+          {/* Preview header */}
+          <View style={dp.previewHeader}>
+            <Text style={dp.previewTitle}>
+              {isRoot ? "Initial state" : entry.description}
+            </Text>
+            <Pressable onPress={() => setPreviewOpen(false)} hitSlop={12}>
+              <Feather name="x" size={20} color="#fff" />
+            </Pressable>
+          </View>
+
+          {/* Diff summary */}
+          <View style={dp.previewChips}>
+            {diff.added.length > 0 && (
+              <View style={[dp.previewChip, { backgroundColor: "rgba(34,197,94,0.15)" }]}>
+                <Text style={[dp.previewChipText, { color: "#22c55e" }]}>
+                  +{diff.added.length} added
+                </Text>
+              </View>
+            )}
+            {diff.removed.length > 0 && (
+              <View style={[dp.previewChip, { backgroundColor: "rgba(239,68,68,0.15)" }]}>
+                <Text style={[dp.previewChipText, { color: "#ef4444" }]}>
+                  -{diff.removed.length} removed
+                </Text>
+              </View>
+            )}
+            {diff.changed.length > 0 && (
+              <View style={[dp.previewChip, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
+                <Text style={[dp.previewChipText, { color: "#f59e0b" }]}>
+                  ~{diff.changed.length} changed
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Legend */}
+          <View style={dp.previewLegend}>
+            <View style={dp.legendItem}>
+              <View style={[dp.legendDot, { backgroundColor: "#ef4444" }]} />
+              <Text style={dp.legendLabel}>Old / Removed</Text>
+            </View>
+            <View style={dp.legendItem}>
+              <View style={[dp.legendDot, { backgroundColor: "#22c55e" }]} />
+              <Text style={dp.legendLabel}>New / Added</Text>
+            </View>
+          </View>
+
+          {/* Preview canvas */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ alignItems: "center", paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[dp.previewCanvas, { width: previewWidth, height: previewHeight }]}>
+              {/* Render unchanged components normally */}
+              {diff.unchanged.map((comp) => (
+                <PreviewComponent
+                  key={comp.id}
+                  component={comp}
+                  canvasWidth={previewWidth}
+                  canvasHeight={previewHeight}
+                />
+              ))}
+              {/* Render removed components with red highlight */}
+              {diff.removed.map((comp) => (
+                <PreviewComponent
+                  key={comp.id + "_removed"}
+                  component={comp}
+                  canvasWidth={previewWidth}
+                  canvasHeight={previewHeight}
+                  highlight="removed"
+                />
+              ))}
+              {/* Render added components with green highlight */}
+              {diff.added.map((comp) => (
+                <PreviewComponent
+                  key={comp.id + "_added"}
+                  component={comp}
+                  canvasWidth={previewWidth}
+                  canvasHeight={previewHeight}
+                  highlight="added"
+                />
+              ))}
+              {/* Render changed: old (red) and new (green) side by side */}
+              {diff.changed.map(({ before, after }) => (
+                <React.Fragment key={before.id + "_changed"}>
+                  <PreviewComponent
+                    component={before}
+                    canvasWidth={previewWidth}
+                    canvasHeight={previewHeight}
+                    highlight="changed-old"
+                  />
+                  <PreviewComponent
+                    component={after}
+                    canvasWidth={previewWidth}
+                    canvasHeight={previewHeight}
+                    highlight="changed-new"
+                  />
+                </React.Fragment>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* Restore button at bottom */}
+          {!isHead && (
+            <View style={dp.previewFooter}>
+              <Pressable
+                style={({ pressed }) => [dp.restoreBtn, pressed && dp.restoreBtnPressed]}
+                onPress={onRestore}
+              >
+                <Feather name="rotate-ccw" size={16} color="#fff" />
+                <Text style={dp.restoreBtnText}>Restore to this point</Text>
+              </Pressable>
+            </View>
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={dp.container}>
@@ -241,12 +415,14 @@ function DetailPanel({
           </Text>
           <Text style={dp.subtitle}>{fullTime}</Text>
         </View>
-        <Pressable onPress={onClose} hitSlop={12}>
-          <Feather name="x" size={18} color="rgba(255,255,255,0.5)" />
-        </Pressable>
+        <View style={dp.headerActions}>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Feather name="x" size={18} color="rgba(255,255,255,0.5)" />
+          </Pressable>
+        </View>
       </View>
 
-      {/* Diff chips */}
+      {/* Diff summary */}
       {diff && (
         <View style={dp.chips}>
           {diff.added.length > 0 && (
@@ -278,40 +454,15 @@ function DetailPanel({
         </View>
       )}
 
-      {/* Onion-skin canvas */}
-      {diff && (
-        <View style={[dp.canvas, { width: sw, height: ch }]}>
-          {diff.unchanged.map((c) =>
-            renderBox(c, "rgba(255,255,255,0.06)", 0.5)
-          )}
-          {diff.removed.map((c) =>
-            renderBox(c, "rgba(239,68,68,0.35)", 0.9)
-          )}
-          {diff.added.map((c) =>
-            renderBox(c, "rgba(34,197,94,0.35)", 0.9)
-          )}
-          {diff.changed.map(({ before, after }) => (
-            <React.Fragment key={before.id + "_d"}>
-              {renderBox(before, "rgba(239,68,68,0.25)", 0.7)}
-              {renderBox(after, "rgba(34,197,94,0.3)", 0.7)}
-            </React.Fragment>
-          ))}
-          {/* Legend overlay */}
-          <View style={dp.legendRow}>
-            <View style={dp.legendItem}>
-              <View
-                style={[dp.legendDot, { backgroundColor: "#ef4444" }]}
-              />
-              <Text style={dp.legendLabel}>Before</Text>
-            </View>
-            <View style={dp.legendItem}>
-              <View
-                style={[dp.legendDot, { backgroundColor: "#22c55e" }]}
-              />
-              <Text style={dp.legendLabel}>After</Text>
-            </View>
-          </View>
-        </View>
+      {/* Preview changes button */}
+      {diff && (diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0) && (
+        <Pressable
+          style={({ pressed }) => [dp.previewBtn, pressed && dp.previewBtnPressed]}
+          onPress={() => setPreviewOpen(true)}
+        >
+          <Feather name="eye" size={16} color="#ccc" />
+          <Text style={dp.previewBtnText}>Preview changes</Text>
+        </Pressable>
       )}
 
       {/* Restore button */}
@@ -326,7 +477,7 @@ function DetailPanel({
       )}
       {isHead && (
         <View style={dp.currentBadge}>
-          <Feather name="check-circle" size={14} color="#818cf8" />
+          <Feather name="check-circle" size={14} color="#555" />
           <Text style={dp.currentBadgeText}>This is the current state</Text>
         </View>
       )}
@@ -340,18 +491,20 @@ const dp = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(15,23,42,0.97)",
+    backgroundColor: "rgba(0,0,0,0.97)",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
     paddingBottom: 36,
     zIndex: 10,
+    borderTopWidth: 1,
+    borderColor: "#1a1a1a",
   },
   handleBar: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "#333",
     alignSelf: "center",
     marginTop: 10,
     marginBottom: 14,
@@ -363,9 +516,10 @@ const dp = StyleSheet.create({
     marginBottom: 12,
   },
   headerLeft: { flex: 1, marginRight: 12 },
-  title: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  title: { color: "#fff", fontSize: 17, fontWeight: "300", letterSpacing: 0.5 },
   subtitle: {
-    color: "rgba(255,255,255,0.4)",
+    color: "#444",
     fontSize: 12,
     marginTop: 2,
   },
@@ -382,39 +536,30 @@ const dp = StyleSheet.create({
     paddingVertical: 3,
   },
   chipText: { fontSize: 12, fontWeight: "600" },
-  noChanges: { color: "rgba(255,255,255,0.3)", fontSize: 12 },
-  canvas: {
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderRadius: 10,
-    overflow: "hidden",
-    position: "relative",
-    marginBottom: 14,
-  },
-  legendRow: {
-    position: "absolute",
-    bottom: 6,
-    right: 8,
+  noChanges: { color: "#333", fontSize: 12 },
+  previewBtn: {
     flexDirection: "row",
-    gap: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginBottom: 8,
   },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 3 },
-  legendDot: { width: 6, height: 6, borderRadius: 3 },
-  legendLabel: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 9,
-    fontWeight: "600",
-  },
+  previewBtnPressed: { backgroundColor: "#333" },
+  previewBtnText: { color: "#ccc", fontSize: 15, fontWeight: "700" },
   restoreBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
     borderRadius: 12,
     paddingVertical: 14,
   },
-  restoreBtnPressed: { backgroundColor: "#4f46e5" },
-  restoreBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  restoreBtnPressed: { backgroundColor: "#ccc" },
+  restoreBtnText: { color: "#000", fontSize: 15, fontWeight: "700" },
   currentBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -423,9 +568,65 @@ const dp = StyleSheet.create({
     paddingVertical: 12,
   },
   currentBadgeText: {
-    color: "#818cf8",
+    color: "#555",
     fontSize: 13,
     fontWeight: "600",
+  },
+  // Preview mode styles
+  previewOverlay: {
+    backgroundColor: "rgba(0,0,0,0.98)",
+    zIndex: 20,
+  },
+  previewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  previewTitle: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 12,
+  },
+  previewChips: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
+  previewChip: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  previewChipText: { fontSize: 11, fontWeight: "600" },
+  previewLegend: {
+    flexDirection: "row",
+    gap: 16,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: {
+    color: "#444",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  previewCanvas: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+  },
+  previewFooter: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 12,
   },
 });
 
@@ -448,14 +649,14 @@ function TimelineRow({
   // Dot style
   const dotSize = isHead ? 14 : isBranch ? 8 : 10;
   const dotColor = isHead
-    ? "#818cf8"
+    ? "#fff"
     : isFuture
-    ? "rgba(255,255,255,0.15)"
+    ? "#1a1a1a"
     : isBranch
     ? "#f59e0b"
     : isSelected
-    ? "#818cf8"
-    : "rgba(255,255,255,0.35)";
+    ? "#fff"
+    : "#333";
   const dotBorder =
     isFuture || isRoot
       ? { borderWidth: 2, borderColor: dotColor, backgroundColor: "transparent" }
@@ -463,10 +664,10 @@ function TimelineRow({
 
   // Line color
   const lineColor = isFuture
-    ? "rgba(255,255,255,0.08)"
+    ? "#111"
     : isBranch
     ? "rgba(245,158,11,0.2)"
-    : "rgba(255,255,255,0.12)";
+    : "#1a1a1a";
 
   return (
     <Pressable
@@ -547,10 +748,10 @@ const tl = StyleSheet.create({
     minHeight: 48,
   },
   rowSelected: {
-    backgroundColor: "rgba(129,140,248,0.08)",
+    backgroundColor: "#0a0a0a",
   },
   rowPressed: {
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "#0a0a0a",
   },
   gutter: {
     width: 32,
@@ -589,23 +790,23 @@ const tl = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: "#e2e8f0",
+    color: "#ccc",
     fontSize: 14,
     fontWeight: "500",
     flexShrink: 1,
   },
-  labelFuture: { color: "rgba(255,255,255,0.3)" },
-  labelBranch: { color: "rgba(255,255,255,0.45)" },
+  labelFuture: { color: "#333" },
+  labelBranch: { color: "#444" },
   labelHead: { color: "#fff", fontWeight: "700" },
-  labelSelected: { color: "#c7d2fe" },
+  labelSelected: { color: "#fff" },
   headBadge: {
-    backgroundColor: "rgba(129,140,248,0.2)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 1,
   },
   headBadgeText: {
-    color: "#818cf8",
+    color: "#fff",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -625,12 +826,13 @@ const tl = StyleSheet.create({
     fontWeight: "700",
   },
   time: {
-    color: "rgba(255,255,255,0.3)",
+    color: "#333",
     fontSize: 11,
     marginTop: 1,
+    fontVariant: ["tabular-nums"],
   },
-  timeFuture: { color: "rgba(255,255,255,0.15)" },
-  timeBranch: { color: "rgba(255,255,255,0.2)" },
+  timeFuture: { color: "#222" },
+  timeBranch: { color: "#333" },
   selectBar: {
     position: "absolute",
     right: 0,
@@ -638,7 +840,7 @@ const tl = StyleSheet.create({
     bottom: 8,
     width: 3,
     borderRadius: 1.5,
-    backgroundColor: "#818cf8",
+    backgroundColor: "#fff",
   },
 });
 
@@ -670,9 +872,7 @@ export function VersionHistoryModal({
     ? entries.find((e) => e.id === selectedId)
     : null;
 
-  const parentOfSelected = selectedEntry?.parentId
-    ? entries.find((e) => e.id === selectedEntry.parentId)
-    : undefined;
+  const currentEntry = entries.find((e) => e.id === currentId);
 
   const handleRestore = useCallback(() => {
     if (!selectedId) return;
@@ -738,11 +938,11 @@ export function VersionHistoryModal({
         )}
 
         {/* Detail panel */}
-        {selectedEntry && (
+        {selectedEntry && currentEntry && (
           <DetailPanel
             entry={selectedEntry}
-            parentEntry={parentOfSelected}
-            screenId={selectedEntry.blueprint.initial_screen_id}
+            currentEntry={currentEntry}
+            screenId={selectedEntry.slate.initial_screen_id}
             onRestore={handleRestore}
             onClose={() => setSelectedId(null)}
             isHead={selectedId === currentId}
@@ -776,14 +976,16 @@ const s = StyleSheet.create({
     paddingBottom: 6,
   },
   title: {
-    color: "#ffffff",
+    color: "#fff",
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "300",
+    letterSpacing: 0.5,
   },
   doneBtn: { paddingHorizontal: 4 },
   doneLabel: {
-    color: "#818cf8",
-    fontSize: 16,
+    color: "#fff",
+    fontSize: 14,
+    letterSpacing: 0.5,
     fontWeight: "600",
   },
   scrollView: {
@@ -797,13 +999,13 @@ const s = StyleSheet.create({
     paddingBottom: 80,
   },
   emptyTitle: {
-    color: "rgba(255,255,255,0.4)",
+    color: "#444",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "500",
     marginTop: 4,
   },
   emptySubtitle: {
-    color: "rgba(255,255,255,0.2)",
+    color: "#333",
     fontSize: 13,
   },
 });

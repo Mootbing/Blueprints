@@ -25,7 +25,7 @@ export type {
   Component,
   Screen,
   Theme,
-  AppBlueprint,
+  AppSlate,
 } from "@shared/schema";
 
 export {
@@ -49,12 +49,12 @@ export {
   ComponentSchema,
   ScreenSchema,
   ThemeSchema,
-  AppBlueprintSchema,
+  AppSlateSchema,
 } from "@shared/schema";
 
 import type { TextComponent, ButtonComponent } from "@shared/schema";
 
-export interface BlueprintMeta {
+export interface SlateMeta {
   id: string;
   name: string;
   createdAt: number;

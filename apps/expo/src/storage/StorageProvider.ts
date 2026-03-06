@@ -1,9 +1,18 @@
-import type { AppBlueprint, BlueprintMeta } from "../types";
+import type { AppSlate, SlateMeta } from "../types";
+import type { HistoryEntry } from "../hooks/useUndoHistory";
+
+export interface PersistedHistory {
+  entries: HistoryEntry[];
+  currentId: string;
+  redoMap: [string, string][];
+}
 
 export interface StorageProvider {
-  listBlueprints(): Promise<BlueprintMeta[]>;
-  saveBlueprintList(blueprints: BlueprintMeta[]): Promise<void>;
-  loadBlueprint(blueprintId: string): Promise<AppBlueprint | null>;
-  saveBlueprint(blueprintId: string, blueprint: AppBlueprint): Promise<void>;
-  deleteBlueprint(blueprintId: string): Promise<void>;
+  listSlates(): Promise<SlateMeta[]>;
+  saveSlateList(slates: SlateMeta[]): Promise<void>;
+  loadSlate(slateId: string): Promise<AppSlate | null>;
+  saveSlate(slateId: string, slate: AppSlate): Promise<void>;
+  deleteSlate(slateId: string): Promise<void>;
+  saveHistory(slateId: string, history: PersistedHistory): Promise<void>;
+  loadHistory(slateId: string): Promise<PersistedHistory | null>;
 }

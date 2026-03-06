@@ -2,42 +2,42 @@ import React, { useState, useCallback, useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeScreen } from "./src/components/HomeScreen";
-import { BlueprintEditor, defaultBlueprint } from "./src/components/BlueprintEditor";
+import { SlateEditor, defaultSlate } from "./src/components/SlateEditor";
 import { AsyncStorageProvider } from "./src/storage";
 import type { StorageProvider } from "./src/storage";
-import type { BlueprintMeta } from "./src/types";
+import type { SlateMeta } from "./src/types";
 import { uuid } from "./src/utils/uuid";
 
 const storage: StorageProvider = new AsyncStorageProvider();
 
 type Route =
   | { screen: "home" }
-  | { screen: "editor"; blueprintId: string };
+  | { screen: "editor"; slateId: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ screen: "home" });
-  const [blueprintList, setBlueprintList] = useState<BlueprintMeta[]>([]);
+  const [slateList, setSlateList] = useState<SlateMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Load blueprint list on startup with legacy migration
+  // Load slate list on startup with legacy migration
   useEffect(() => {
     (async () => {
       try {
-        let bpList = await storage.listBlueprints();
+        let bpList = await storage.listSlates();
 
-        // Legacy migration: old single-blueprint key
+        // Legacy migration: old single-slate key
         if (bpList.length === 0) {
-          const legacyBlueprint = await AsyncStorage.getItem("app_blueprint");
-          if (legacyBlueprint) {
+          const legacySlate = await AsyncStorage.getItem("app_slate");
+          if (legacySlate) {
             const migrationId = uuid();
-            const meta: BlueprintMeta = {
+            const meta: SlateMeta = {
               id: migrationId,
-              name: "My Blueprint",
+              name: "My Slate",
               createdAt: Date.now(),
             };
             await AsyncStorage.setItem(
-              `project_blueprint_${migrationId}`,
-              legacyBlueprint
+              `project_slate_${migrationId}`,
+              legacySlate
             );
             const legacyVars = await AsyncStorage.getItem("runtime_persisted_variables");
             if (legacyVars) {
@@ -48,12 +48,12 @@ export default function App() {
               await AsyncStorage.removeItem("runtime_persisted_variables");
             }
             bpList = [meta];
-            await storage.saveBlueprintList(bpList);
-            await AsyncStorage.removeItem("app_blueprint");
+            await storage.saveSlateList(bpList);
+            await AsyncStorage.removeItem("app_slate");
           }
         }
 
-        setBlueprintList(bpList);
+        setSlateList(bpList);
         setLoaded(true);
       } catch {
         setLoaded(true);
@@ -62,33 +62,33 @@ export default function App() {
   }, []);
 
   const reloadList = useCallback(async () => {
-    const list = await storage.listBlueprints();
-    setBlueprintList(list);
+    const list = await storage.listSlates();
+    setSlateList(list);
   }, []);
 
-  const handleOpenBlueprint = useCallback((id: string) => {
-    setRoute({ screen: "editor", blueprintId: id });
+  const handleOpenSlate = useCallback((id: string) => {
+    setRoute({ screen: "editor", slateId: id });
   }, []);
 
-  const handleCreateBlueprint = useCallback(
+  const handleCreateSlate = useCallback(
     async (name: string) => {
       const id = uuid();
-      const meta: BlueprintMeta = { id, name, createdAt: Date.now() };
-      const newList = [...blueprintList, meta];
-      setBlueprintList(newList);
-      await storage.saveBlueprintList(newList);
-      await storage.saveBlueprint(id, defaultBlueprint);
-      setRoute({ screen: "editor", blueprintId: id });
+      const meta: SlateMeta = { id, name, createdAt: Date.now() };
+      const newList = [...slateList, meta];
+      setSlateList(newList);
+      await storage.saveSlateList(newList);
+      await storage.saveSlate(id, defaultSlate);
+      setRoute({ screen: "editor", slateId: id });
     },
-    [blueprintList]
+    [slateList]
   );
 
-  const handleDeleteBlueprint = useCallback(
+  const handleDeleteSlate = useCallback(
     async (id: string) => {
-      await storage.deleteBlueprint(id);
+      await storage.deleteSlate(id);
       await reloadList();
       setRoute((prev) =>
-        prev.screen === "editor" && prev.blueprintId === id
+        prev.screen === "editor" && prev.slateId === id
           ? { screen: "home" }
           : prev
       );
@@ -96,7 +96,7 @@ export default function App() {
     [reloadList]
   );
 
-  const handleCloseBlueprint = useCallback(async () => {
+  const handleCloseSlate = useCallback(async () => {
     setRoute({ screen: "home" });
     await reloadList();
   }, [reloadList]);
@@ -111,21 +111,21 @@ export default function App() {
 
   if (route.screen === "editor") {
     return (
-      <BlueprintEditor
-        key={route.blueprintId}
-        blueprintId={route.blueprintId}
-        onCloseBlueprint={handleCloseBlueprint}
-        onDeleteBlueprint={() => handleDeleteBlueprint(route.blueprintId)}
+      <SlateEditor
+        key={route.slateId}
+        slateId={route.slateId}
+        onCloseSlate={handleCloseSlate}
+        onDeleteSlate={() => handleDeleteSlate(route.slateId)}
       />
     );
   }
 
   return (
     <HomeScreen
-      blueprints={blueprintList}
-      onOpenBlueprint={handleOpenBlueprint}
-      onCreateBlueprint={handleCreateBlueprint}
-      onDeleteBlueprint={handleDeleteBlueprint}
+      slates={slateList}
+      onOpenSlate={handleOpenSlate}
+      onCreateSlate={handleCreateSlate}
+      onDeleteSlate={handleDeleteSlate}
     />
   );
 }

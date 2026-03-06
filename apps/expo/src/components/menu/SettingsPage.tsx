@@ -1,20 +1,21 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { View, Pressable, Text, TextInput, StyleSheet, Platform, Alert } from "react-native";
-import type { AppBlueprint, Theme } from "../../types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { AppSlate, Theme } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { ColorPickerModal } from "../ColorPickerModal";
 
 const DEFAULT_COLORS = {
-  primary: "#6366f1",
-  secondary: "#8b5cf6",
-  error: "#ef4444",
+  primary: "#ffffff",
+  secondary: "#cccccc",
+  error: "#dc2626",
   success: "#22c55e",
   warning: "#f59e0b",
 };
 
 const DEFAULT_BG_COLORS = {
-  background: "#ffffff",
-  secondaryBackground: "#f3f4f6",
+  background: "#000000",
+  secondaryBackground: "#1a1a1a",
 };
 
 const DEFAULT_BORDER_RADII = { none: 0, sm: 4, md: 8, lg: 12, xl: 16, full: 9999 };
@@ -64,23 +65,13 @@ const SPACING_FIELDS = [
   { key: "xxl" as const, label: "2XL" },
 ];
 
-function ColorRow({ label, value, onChange, onSwatchPress }: { label: string; value: string; onChange: (v: string) => void; onSwatchPress?: () => void }) {
+function ColorRow({ label, value, onSwatchPress }: { label: string; value: string; onSwatchPress?: () => void }) {
   return (
-    <View style={styles.colorRow}>
-      <Pressable onPress={onSwatchPress} hitSlop={4}>
-        <View style={[styles.colorSwatch, { backgroundColor: value }]} />
-      </Pressable>
+    <Pressable style={styles.colorRow} onPress={onSwatchPress}>
+      <View style={[styles.colorSwatch, { backgroundColor: value }]} />
       <Text style={styles.colorLabel}>{label}</Text>
-      <TextInput
-        style={styles.colorInput}
-        value={value}
-        onChangeText={onChange}
-        placeholder="#000000"
-        placeholderTextColor="rgba(255,255,255,0.25)"
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-    </View>
+      <Text style={styles.colorHex}>{value}</Text>
+    </Pressable>
   );
 }
 
@@ -109,14 +100,18 @@ interface SettingsPageProps {
   isEditMode: boolean;
   snappingEnabled: boolean;
   inspectorEnabled: boolean;
+  showAdvancedCode: boolean;
   onToggleEditMode: () => void;
   onToggleSnapping: () => void;
   onToggleInspector: () => void;
-  onCloseBlueprint: () => void;
-  onDeleteBlueprint: () => void;
+  onToggleAdvancedCode: () => void;
+  onCloseSlate: () => void;
+  onDeleteSlate: () => void;
   onClose: () => void;
-  blueprint: AppBlueprint;
-  onBlueprintChange?: (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => void;
+  slate: AppSlate;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
+  apiKey: string;
+  onApiKeyChange: (key: string) => void;
 }
 
 export function SettingsPage({
@@ -124,14 +119,18 @@ export function SettingsPage({
   isEditMode,
   snappingEnabled,
   inspectorEnabled,
+  showAdvancedCode,
   onToggleEditMode,
   onToggleSnapping,
   onToggleInspector,
-  onCloseBlueprint,
-  onDeleteBlueprint,
+  onToggleAdvancedCode,
+  onCloseSlate,
+  onDeleteSlate,
   onClose,
-  blueprint,
-  onBlueprintChange,
+  slate,
+  onSlateChange,
+  apiKey,
+  onApiKeyChange,
 }: SettingsPageProps) {
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [colorPickerTarget, setColorPickerTarget] = useState<{
@@ -139,8 +138,10 @@ export function SettingsPage({
     key: string;
     currentValue: string;
   } | null>(null);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
 
-  const theme = blueprint.theme ?? {};
+  const theme = slate.theme ?? {};
   const colors = theme.colors ?? DEFAULT_COLORS;
   const bgColors = theme.backgroundColors ?? DEFAULT_BG_COLORS;
   const borderRadii = theme.borderRadii ?? DEFAULT_BORDER_RADII;
@@ -149,12 +150,12 @@ export function SettingsPage({
 
   const updateTheme = useCallback(
     (patch: Partial<Theme>) => {
-      onBlueprintChange?.((prev) => ({
+      onSlateChange?.((prev) => ({
         ...prev,
         theme: { ...prev.theme, ...patch },
       }));
     },
-    [onBlueprintChange],
+    [onSlateChange],
   );
 
   const setColor = useCallback(
@@ -194,7 +195,7 @@ export function SettingsPage({
 
   const handleClose = () => {
     onClose();
-    onCloseBlueprint();
+    onCloseSlate();
   };
 
   const handleDelete = () => {
@@ -202,18 +203,18 @@ export function SettingsPage({
     if (Platform.OS === "web") {
       if (
         window.confirm(
-          "Delete Blueprint?\n\nThis will permanently delete this blueprint. This cannot be undone."
+          "Delete Slate?\n\nThis will permanently delete this slate. This cannot be undone."
         )
       ) {
-        onDeleteBlueprint();
+        onDeleteSlate();
       }
     } else {
       Alert.alert(
-        "Delete Blueprint",
-        "This will permanently delete this blueprint. This cannot be undone.",
+        "Delete Slate",
+        "This will permanently delete this slate. This cannot be undone.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive", onPress: onDeleteBlueprint },
+          { text: "Delete", style: "destructive", onPress: onDeleteSlate },
         ]
       );
     }
@@ -230,6 +231,63 @@ export function SettingsPage({
         </View>
       </Pressable>
 
+      <View style={styles.divider} />
+
+      {/* AI */}
+      <Text style={styles.categoryHeader}>AI</Text>
+      <View style={styles.aiSection}>
+        <Text style={styles.rowLabel}>Anthropic API Key</Text>
+        {apiKey && !showKeyInput ? (
+          <View style={styles.keyDisplayRow}>
+            <Text style={styles.keyMask}>
+              {"*".repeat(8)}...{apiKey.slice(-4)}
+            </Text>
+            <Pressable
+              style={styles.keyChangeBtn}
+              onPress={() => { setShowKeyInput(true); setKeyDraft(""); }}
+            >
+              <Text style={styles.keyChangeBtnText}>Change</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.keyInputRow}>
+            <TextInput
+              style={styles.keyInput}
+              value={keyDraft}
+              onChangeText={setKeyDraft}
+              placeholder="sk-ant-..."
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <Pressable
+              style={[styles.keySaveBtn, !keyDraft.trim() && styles.keySaveBtnDisabled]}
+              onPress={() => {
+                if (keyDraft.trim()) {
+                  onApiKeyChange(keyDraft.trim());
+                  setShowKeyInput(false);
+                  setKeyDraft("");
+                }
+              }}
+              disabled={!keyDraft.trim()}
+            >
+              <Text style={styles.keySaveBtnText}>Save</Text>
+            </Pressable>
+            {apiKey && (
+              <Pressable style={styles.keyCancelBtn} onPress={() => setShowKeyInput(false)}>
+                <Text style={styles.keyCancelBtnText}>Cancel</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.divider} />
+
+      {/* Design */}
+      <Text style={styles.categoryHeader}>DESIGN</Text>
+
       {isEditMode && (
         <Pressable style={styles.row} onPress={onToggleSnapping}>
           <Text style={styles.rowLabel}>Snap to Style Guides</Text>
@@ -239,10 +297,6 @@ export function SettingsPage({
         </Pressable>
       )}
 
-      <View style={styles.divider} />
-
-      {/* Style Guide */}
-      <Text style={styles.categoryHeader}>DESIGN</Text>
       <Pressable
         style={({ pressed }) => [styles.row, styles.styleGuideRow, pressed && styles.styleGuideRowPressed]}
         onPress={() => setStyleGuideOpen((v) => !v)}
@@ -259,7 +313,6 @@ export function SettingsPage({
               key={f.key}
               label={f.label}
               value={colors[f.key]}
-              onChange={(v) => setColor(f.key, v)}
               onSwatchPress={() => setColorPickerTarget({ type: "color", key: f.key, currentValue: colors[f.key] })}
             />
           ))}
@@ -272,7 +325,6 @@ export function SettingsPage({
               key={f.key}
               label={f.label}
               value={bgColors[f.key]}
-              onChange={(v) => setBgColor(f.key, v)}
               onSwatchPress={() => setColorPickerTarget({ type: "bgColor", key: f.key, currentValue: bgColors[f.key] })}
             />
           ))}
@@ -316,16 +368,22 @@ export function SettingsPage({
           <View style={[styles.toggleThumb, inspectorEnabled && styles.toggleThumbOn]} />
         </View>
       </Pressable>
+      <Pressable style={styles.row} onPress={onToggleAdvancedCode}>
+        <Text style={styles.rowLabel}>Show Workflow Code</Text>
+        <View style={[styles.toggleTrack, showAdvancedCode && styles.toggleTrackOn]}>
+          <View style={[styles.toggleThumb, showAdvancedCode && styles.toggleThumbOn]} />
+        </View>
+      </Pressable>
 
       <View style={styles.divider} />
 
-      {/* Blueprint */}
-      <Text style={styles.categoryHeader}>BLUEPRINT</Text>
+      {/* Slate */}
+      <Text style={styles.categoryHeader}>SLATE</Text>
       <Pressable
         style={({ pressed }) => [styles.row, styles.projectRow, pressed && styles.projectRowPressed]}
         onPress={handleClose}
       >
-        <Text style={styles.projectLabel}>Close Blueprint</Text>
+        <Text style={styles.projectLabel}>Close & Save Slate</Text>
       </Pressable>
 
       <View style={styles.divider} />
@@ -336,7 +394,7 @@ export function SettingsPage({
         style={({ pressed }) => [styles.row, styles.dangerRow, pressed && styles.dangerRowPressed]}
         onPress={handleDelete}
       >
-        <Text style={styles.dangerLabel}>Delete Blueprint</Text>
+        <Text style={styles.dangerLabel}>Delete Slate</Text>
       </Pressable>
 
       <ColorPickerModal
@@ -370,8 +428,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowLabel: {
-    color: "#ffffff",
-    fontSize: 16,
+    color: "#ccc",
+    fontSize: 15,
     fontWeight: "500",
     flex: 1,
   },
@@ -380,50 +438,61 @@ const styles = StyleSheet.create({
   toggleThumb: sharedMenuStyles.toggleThumb,
   toggleThumbOn: sharedMenuStyles.toggleThumbOn,
   styleGuideRow: {
-    backgroundColor: "rgba(99,102,241,0.08)",
+    backgroundColor: "#0a0a0a",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#1a1a1a",
   },
   styleGuideRowPressed: {
-    backgroundColor: "rgba(99,102,241,0.2)",
+    backgroundColor: "#111",
   },
   styleGuideLabel: {
-    color: "#a5b4fc",
-    fontSize: 16,
+    color: "#ccc",
+    fontSize: 15,
     fontWeight: "600",
     flex: 1,
+    letterSpacing: 0.3,
   },
   chevron: {
-    color: "rgba(255,255,255,0.4)",
+    color: "#444",
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "300",
   },
   styleGuideContent: {
     paddingBottom: 4,
   },
   projectRow: {
-    backgroundColor: "rgba(99,102,241,0.08)",
+    backgroundColor: "#0a0a0a",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#1a1a1a",
   },
   projectRowPressed: {
-    backgroundColor: "rgba(99,102,241,0.2)",
+    backgroundColor: "#111",
   },
   projectLabel: {
-    color: "#a5b4fc",
-    fontSize: 16,
+    color: "#ccc",
+    fontSize: 15,
     fontWeight: "600",
     textAlign: "center",
     flex: 1,
+    letterSpacing: 0.3,
   },
   dangerHeader: {
-    color: "rgba(239,68,68,0.6)",
+    color: "#dc2626",
   },
   dangerRow: {
-    backgroundColor: "rgba(239,68,68,0.08)",
+    backgroundColor: "rgba(220,38,38,0.06)",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(220,38,38,0.15)",
   },
   dangerRowPressed: {
-    backgroundColor: "rgba(239,68,68,0.2)",
+    backgroundColor: "rgba(220,38,38,0.12)",
   },
   dangerLabel: {
-    color: "#fca5a5",
-    fontSize: 16,
+    color: "#dc2626",
+    fontSize: 15,
     fontWeight: "600",
     textAlign: "center",
     flex: 1,
@@ -441,24 +510,19 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "#1a1a1a",
   },
   colorLabel: {
-    color: "#ffffff",
-    fontSize: 15,
+    color: "#ccc",
+    fontSize: 14,
     fontWeight: "500",
     flex: 1,
   },
-  colorInput: {
-    color: "#ffffff",
-    fontSize: 14,
+  colorHex: {
+    color: "#888",
+    fontSize: 13,
     fontFamily: "monospace",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    width: 100,
-    textAlign: "center",
+    letterSpacing: 0.5,
   },
   gridContainer: {
     flexDirection: "row",
@@ -469,27 +533,104 @@ const styles = StyleSheet.create({
   numberRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "#0a0a0a",
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 6,
   },
   numberLabel: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 12,
-    fontWeight: "700",
+    color: "#555",
+    fontSize: 11,
+    fontWeight: "600",
     width: 28,
+    letterSpacing: 0.5,
   },
   numberInput: {
-    color: "#ffffff",
-    fontSize: 15,
+    color: "#fff",
+    fontSize: 14,
     fontFamily: "monospace",
     width: 36,
     textAlign: "center",
   },
   unitLabel: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 12,
+    color: "#333",
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  // AI section
+  aiSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  keyDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  keyMask: {
+    color: "#555",
+    fontSize: 13,
+    fontFamily: "monospace",
+    flex: 1,
+    letterSpacing: 0.5,
+  },
+  keyChangeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+  },
+  keyChangeBtnText: {
+    color: "#ccc",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  keyInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  keyInput: {
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: "#000",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderRadius: 8,
+    color: "#fff",
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  keySaveBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+  },
+  keySaveBtnDisabled: {
+    opacity: 0.3,
+  },
+  keySaveBtnText: {
+    color: "#000",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  keyCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  keyCancelBtnText: {
+    color: "#555",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

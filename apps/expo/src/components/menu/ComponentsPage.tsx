@@ -1,9 +1,8 @@
-import React, { useState, useRef } from "react";
-import { View, Pressable, Text, StyleSheet, Platform, Animated as RNAnimated } from "react-native";
+import React from "react";
+import { View, Pressable, Text, StyleSheet, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { Component } from "../../types";
 import { uuid } from "../../utils/uuid";
-import { TreeView } from "./TreeView";
 
 export const PRESETS: { label: string; icon: string; create: (x: number, y: number) => Component }[] = [
   {
@@ -15,7 +14,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       layout: { x, y, width: 0.5, height: 0.06 },
       content: "Text",
       fontSize: 20,
-      color: "#1a1a1a",
+      color: "#ccc",
       fontWeight: "600" as const,
     }),
   },
@@ -26,7 +25,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       type: "container" as const,
       id: uuid(),
       layout: { x, y, width: 0.7, height: 0.07 },
-      backgroundColor: "#6366f1",
+      backgroundColor: "#1a1a1a",
       borderRadius: 12,
       children: [
         {
@@ -69,8 +68,8 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       type: "container" as const,
       id: uuid(),
       layout: { x, y, width: 0.7, height: 0.06 },
-      backgroundColor: "#ffffff",
-      borderColor: "#cccccc",
+      backgroundColor: "#111",
+      borderColor: "#333",
       borderWidth: 1,
       borderRadius: 8,
       children: [
@@ -100,7 +99,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           layout: { x: 0.0, y: 0.0, width: 0.6, height: 1.0 },
           content: "Toggle",
           fontSize: 16,
-          color: "#1a1a1a",
+          color: "#ccc",
           fontWeight: "500" as const,
         },
         {
@@ -108,7 +107,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           id: uuid(),
           layout: { x: 0.65, y: 0.0, width: 0.35, height: 1.0 },
           defaultValue: false,
-          activeColor: "#6366f1",
+          activeColor: "#ffffff",
         },
       ],
     }),
@@ -122,7 +121,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       layout: { x, y, width: 0.8, height: 0.01 },
       direction: "horizontal" as const,
       thickness: 1,
-      color: "#e0e0e0",
+      color: "#1a1a1a",
       lineStyle: "solid" as const,
     }),
   },
@@ -134,7 +133,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       id: uuid(),
       layout: { x, y, width: 0.4, height: 0.15 },
       shapeType: "rounded-rectangle" as const,
-      backgroundColor: "#6366f1",
+      backgroundColor: "#1a1a1a",
       borderRadius: 12,
       opacity: 1,
     }),
@@ -149,7 +148,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       name: "star",
       library: "material" as const,
       size: 32,
-      color: "#1a1a1a",
+      color: "#ccc",
     }),
   },
   {
@@ -159,9 +158,10 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       type: "container" as const,
       id: uuid(),
       layout: { x, y, width: 0.9, height: 0.3 },
-      backgroundColor: "#ffffff",
+      backgroundColor: "#0a0a0a",
       borderRadius: 12,
-      shadowEnabled: true,
+      borderWidth: 1,
+      borderColor: "#1a1a1a",
       children: [
         {
           type: "container" as const,
@@ -176,7 +176,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
               content: "Item 1",
               fontSize: 16,
-              color: "#1a1a1a",
+              color: "#ccc",
               fontWeight: "500" as const,
             },
             {
@@ -185,7 +185,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
               content: "Description",
               fontSize: 13,
-              color: "#94a3b8",
+              color: "#555",
               fontWeight: "normal" as const,
             },
           ],
@@ -194,7 +194,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           type: "divider" as const,
           id: uuid(),
           layout: { x: 0.05, y: 0.33, width: 0.9, height: 0.005 },
-          color: "#e5e7eb",
+          color: "#1a1a1a",
           thickness: 1,
         },
         {
@@ -210,7 +210,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
               content: "Item 2",
               fontSize: 16,
-              color: "#1a1a1a",
+              color: "#ccc",
               fontWeight: "500" as const,
             },
             {
@@ -219,7 +219,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
               content: "Description",
               fontSize: 13,
-              color: "#94a3b8",
+              color: "#555",
               fontWeight: "normal" as const,
             },
           ],
@@ -228,7 +228,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           type: "divider" as const,
           id: uuid(),
           layout: { x: 0.05, y: 0.67, width: 0.9, height: 0.005 },
-          color: "#e5e7eb",
+          color: "#1a1a1a",
           thickness: 1,
         },
         {
@@ -244,7 +244,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
               content: "Item 3",
               fontSize: 16,
-              color: "#1a1a1a",
+              color: "#ccc",
               fontWeight: "500" as const,
             },
             {
@@ -253,7 +253,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
               layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
               content: "Description",
               fontSize: 13,
-              color: "#94a3b8",
+              color: "#555",
               fontWeight: "normal" as const,
             },
           ],
@@ -268,9 +268,10 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       type: "container" as const,
       id: uuid(),
       layout: { x, y, width: 0.85, height: 0.25 },
-      backgroundColor: "#ffffff",
+      backgroundColor: "#0a0a0a",
       borderRadius: 12,
-      shadowEnabled: true,
+      borderWidth: 1,
+      borderColor: "#1a1a1a",
       padding: 0.02,
     }),
   },
@@ -281,9 +282,10 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       type: "container" as const,
       id: uuid(),
       layout: { x, y, width: 0.85, height: 0.35 },
-      backgroundColor: "#ffffff",
+      backgroundColor: "#0a0a0a",
       borderRadius: 16,
-      shadowEnabled: true,
+      borderWidth: 1,
+      borderColor: "#1a1a1a",
       children: [
         {
           type: "image" as const,
@@ -299,7 +301,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           layout: { x: 0.05, y: 0.6, width: 0.9, height: 0.15 },
           content: "Card Title",
           fontSize: 18,
-          color: "#1a1a1a",
+          color: "#fff",
           fontWeight: "bold" as const,
         },
         {
@@ -308,7 +310,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           layout: { x: 0.05, y: 0.78, width: 0.9, height: 0.15 },
           content: "Card subtitle goes here",
           fontSize: 13,
-          color: "#94a3b8",
+          color: "#555",
           fontWeight: "normal" as const,
         },
       ],
@@ -331,7 +333,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           name: "menu",
           library: "feather" as const,
           size: 24,
-          color: "#1a1a1a",
+          color: "#ccc",
         },
         {
           type: "text" as const,
@@ -339,7 +341,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
           layout: { x: 0.15, y: 0.0, width: 0.7, height: 1.0 },
           content: "Page Title",
           fontSize: 18,
-          color: "#1a1a1a",
+          color: "#ccc",
           fontWeight: "600" as const,
           textAlign: "center" as const,
         },
@@ -350,13 +352,7 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
 
 interface ComponentsPageProps {
   width: number;
-  components: Component[];
   onAddComponent: (preset: (typeof PRESETS)[number]) => void;
-  onSelectComponent: (id: string) => void;
-  onDeleteComponent: (id: string) => void;
-  lockedIds?: Set<string>;
-  onToggleLock?: (id: string) => void;
-  onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -366,40 +362,13 @@ interface ComponentsPageProps {
 
 export function ComponentsPage({
   width,
-  components,
   onAddComponent,
-  onSelectComponent,
-  onDeleteComponent,
-  lockedIds,
-  onToggleLock,
-  onMoveComponent,
   onUndo,
   onRedo,
   canUndo,
   canRedo,
   onOpenVersionHistory,
 }: ComponentsPageProps) {
-  const [showComponents, setShowComponents] = useState(true);
-  const fadeAnim = useRef(new RNAnimated.Value(1)).current;
-
-  const toggleComponents = () => {
-    if (showComponents) {
-      RNAnimated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => setShowComponents(false));
-    } else {
-      setShowComponents(true);
-      fadeAnim.setValue(0);
-      RNAnimated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-    }
-  };
-
   return (
     <View style={[styles.page, { width }]}>
       {/* Undo / Redo / History Row */}
@@ -412,7 +381,7 @@ export function ComponentsPage({
           <Feather
             name="corner-up-left"
             size={18}
-            color={canUndo ? "#818cf8" : "rgba(255,255,255,0.2)"}
+            color={canUndo ? "#fff" : "#333"}
           />
           <Text style={[styles.undoLabel, !canUndo && styles.undoLabelDisabled]}>Undo</Text>
         </Pressable>
@@ -424,7 +393,7 @@ export function ComponentsPage({
           <Feather
             name="corner-up-right"
             size={18}
-            color={canRedo ? "#818cf8" : "rgba(255,255,255,0.2)"}
+            color={canRedo ? "#fff" : "#333"}
           />
           <Text style={[styles.undoLabel, !canRedo && styles.undoLabelDisabled]}>Redo</Text>
         </Pressable>
@@ -432,53 +401,31 @@ export function ComponentsPage({
           style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
           onPress={onOpenVersionHistory}
         >
-          <Feather name="clock" size={18} color="#818cf8" />
+          <Feather name="clock" size={18} color="#fff" />
           <Text style={styles.undoLabel}>History</Text>
         </Pressable>
       </View>
 
       <View style={styles.sectionDivider} />
 
-      {/* Add Component Row */}
-      <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={toggleComponents}
-      >
-        <Text style={styles.plusIcon}>+</Text>
-        <Text style={styles.rowLabel}>Add Component</Text>
-        <Text style={styles.chevron}>{showComponents ? "\u2212" : "+"}</Text>
-      </Pressable>
+      {/* Add Component */}
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionHeader}>+ ADD COMPONENTS</Text>
+      </View>
 
-      {/* Fade-in component list */}
-      {showComponents && (
-        <RNAnimated.View style={{ opacity: fadeAnim }}>
-          {PRESETS.map((preset, i) => (
-            <React.Fragment key={preset.label}>
-              <Pressable
-                style={({ pressed }) => [styles.presetRow, pressed && styles.rowPressed]}
-                onPress={() => onAddComponent(preset)}
-              >
-                <Text style={styles.presetIcon}>{preset.icon}</Text>
-                <Text style={styles.rowLabel}>{preset.label}</Text>
-              </Pressable>
-              {i < PRESETS.length - 1 && <View style={styles.rowDivider} />}
-            </React.Fragment>
-          ))}
-        </RNAnimated.View>
-      )}
+      {PRESETS.map((preset, i) => (
+        <React.Fragment key={preset.label}>
+          <Pressable
+            style={({ pressed }) => [styles.presetRow, pressed && styles.rowPressed]}
+            onPress={() => onAddComponent(preset)}
+          >
+            <Text style={styles.presetIcon}>{preset.icon}</Text>
+            <Text style={styles.rowLabel}>{preset.label}</Text>
+          </Pressable>
+          {i < PRESETS.length - 1 && <View style={styles.rowDivider} />}
+        </React.Fragment>
+      ))}
 
-      <View style={styles.sectionDivider} />
-
-      {/* Layers */}
-      <Text style={styles.sectionLabel}>LAYERS (HIGHER IS ABOVE)</Text>
-      <TreeView
-        components={components}
-        onSelectComponent={onSelectComponent}
-        onDeleteComponent={onDeleteComponent}
-        lockedIds={lockedIds}
-        onToggleLock={onToggleLock}
-        onMoveComponent={onMoveComponent}
-      />
     </View>
   );
 }
@@ -489,9 +436,9 @@ const styles = StyleSheet.create({
   },
   undoRow: {
     flexDirection: "row",
-    justifyContent: "space-evenly",
+    justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 16,
+    gap: 12,
     paddingVertical: 10,
   },
   undoBtn: {
@@ -503,15 +450,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   undoBtnPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#111",
   },
   undoLabel: {
-    color: "#818cf8",
-    fontSize: 14,
+    color: "#fff",
+    fontSize: 13,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   undoLabelDisabled: {
-    color: "rgba(255,255,255,0.2)",
+    color: "#333",
   },
   row: {
     flexDirection: "row",
@@ -521,20 +469,27 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#111",
   },
   rowLabel: {
-    color: "#ffffff",
-    fontSize: 16,
+    color: "#ccc",
+    fontSize: 15,
     fontWeight: "500",
     flex: 1,
   },
-  plusIcon: {
-    color: "#818cf8",
-    fontSize: 20,
-    fontWeight: "700",
-    width: 28,
-    textAlign: "center",
+  sectionHeader: {
+    color: "#444",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 2.5,
+    flex: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   presetRow: {
     flexDirection: "row",
@@ -545,35 +500,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   presetIcon: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 13,
-    fontWeight: "700",
+    color: "#555",
+    fontSize: 12,
+    fontWeight: "600",
     width: 28,
     textAlign: "center",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    letterSpacing: 0.5,
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "#111",
     marginLeft: 56,
   },
-  chevron: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  sectionDivider: {
+sectionDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "#1a1a1a",
     marginVertical: 8,
-  },
-  sectionLabel: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 4,
   },
 });

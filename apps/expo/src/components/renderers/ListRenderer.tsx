@@ -10,9 +10,9 @@ export interface ListRendererProps {
 export function ListRenderer({ component }: ListRendererProps) {
   const itemHeight = component.itemHeight ?? 56;
   const showDividers = component.showDividers ?? true;
-  const dividerColor = component.dividerColor ?? "#e0e0e0";
-  const backgroundColor = component.backgroundColor ?? "#ffffff";
-  const titleColor = component.titleColor ?? "#1a1a1a";
+  const dividerColor = component.dividerColor ?? "#1a1a1a";
+  const backgroundColor = component.backgroundColor ?? "#0a0a0a";
+  const titleColor = component.titleColor ?? "#ccc";
   const subtitleColor = component.subtitleColor ?? "#888888";
   const titleFontSize = component.titleFontSize ?? 16;
   const subtitleFontSize = component.subtitleFontSize ?? 13;

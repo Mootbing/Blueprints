@@ -10,6 +10,7 @@ interface ContextMenuProps {
   onCopy: () => void;
   onPaste: () => void;
   onDuplicate: () => void;
+  onAIChat?: () => void;
   onClose: () => void;
 }
 
@@ -24,11 +25,12 @@ export function ContextMenu({
   onCopy,
   onPaste,
   onDuplicate,
+  onAIChat,
   onClose,
 }: ContextMenuProps) {
   const { width: screenW } = Dimensions.get("window");
 
-  const itemCount = hasComponent ? 3 : 1;
+  const itemCount = hasComponent ? (onAIChat ? 4 : 3) : 1;
   const menuHeight = itemCount * ITEM_HEIGHT + (itemCount - 1) * StyleSheet.hairlineWidth;
 
   // Adjust position to stay within screen bounds
@@ -48,7 +50,7 @@ export function ContextMenu({
               style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
               onPress={onCopy}
             >
-              <Feather name="copy" size={18} color="#e2e8f0" />
+              <Feather name="copy" size={18} color="#ccc" />
               <Text style={styles.menuLabel}>Copy</Text>
             </Pressable>
             <View style={styles.divider} />
@@ -66,7 +68,7 @@ export function ContextMenu({
           <Feather
             name="clipboard"
             size={18}
-            color={hasClipboard ? "#e2e8f0" : "rgba(255,255,255,0.2)"}
+            color={hasClipboard ? "#ccc" : "#333"}
           />
           <Text
             style={[
@@ -84,8 +86,20 @@ export function ContextMenu({
               style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
               onPress={onDuplicate}
             >
-              <Feather name="layers" size={18} color="#e2e8f0" />
+              <Feather name="layers" size={18} color="#ccc" />
               <Text style={styles.menuLabel}>Duplicate</Text>
+            </Pressable>
+          </>
+        )}
+        {hasComponent && onAIChat && (
+          <>
+            <View style={styles.divider} />
+            <Pressable
+              style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+              onPress={onAIChat}
+            >
+              <Feather name="zap" size={18} color="#fff" />
+              <Text style={[styles.menuLabel, { color: "#fff" }]}>Change with AI</Text>
             </Pressable>
           </>
         )}
@@ -98,10 +112,12 @@ const styles = StyleSheet.create({
   menu: {
     position: "absolute",
     width: MENU_WIDTH,
-    backgroundColor: "rgba(15,23,42,0.95)",
+    backgroundColor: "rgba(0,0,0,0.95)",
     borderRadius: 12,
     zIndex: 1001,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   menuItem: {
     flexDirection: "row",
@@ -111,22 +127,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   menuItemPressed: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
   },
   menuItemDisabled: {
     opacity: 0.4,
   },
   menuLabel: {
-    color: "#e2e8f0",
+    color: "#ccc",
     fontSize: 15,
     fontWeight: "500",
+    letterSpacing: 0.3,
   },
   menuLabelDisabled: {
-    color: "rgba(255,255,255,0.2)",
+    color: "#333",
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#1a1a1a",
     marginHorizontal: 12,
   },
 });

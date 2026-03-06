@@ -38,6 +38,7 @@ interface TextEditorToolbarProps {
   onStateChange: (updates: Partial<TextEditingState>) => void;
   onUndo: () => void;
   onInspect?: () => void;
+  onAIChat?: () => void;
   theme?: Theme;
 }
 
@@ -393,16 +394,17 @@ export function TextEditorToolbar({
   onStateChange,
   onUndo,
   onInspect,
+  onAIChat,
   theme,
 }: TextEditorToolbarProps) {
   const themeColorValues = useMemo(() => {
-    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    const c = theme?.colors ?? { primary: "#ffffff", secondary: "#cccccc", error: "#dc2626", success: "#22c55e", warning: "#f59e0b" };
     return [c.primary, c.secondary, c.error, c.success, c.warning];
   }, [theme?.colors]);
 
   const highlightColorValues = useMemo(() => {
-    const bg = theme?.backgroundColors ?? { background: "#ffffff", secondaryBackground: "#f3f4f6" };
-    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    const bg = theme?.backgroundColors ?? { background: "#000000", secondaryBackground: "#1a1a1a" };
+    const c = theme?.colors ?? { primary: "#ffffff", secondary: "#cccccc", error: "#dc2626", success: "#22c55e", warning: "#f59e0b" };
     return [bg.background, bg.secondaryBackground, c.primary, c.secondary, c.error, c.success, c.warning];
   }, [theme?.backgroundColors, theme?.colors]);
 
@@ -619,6 +621,15 @@ export function TextEditorToolbar({
 
           {/* Icon Toolbar */}
           <View style={styles.iconToolbar}>
+            {onAIChat && (
+              <Pressable
+                style={[styles.iconButton]}
+                onPress={onAIChat}
+              >
+                <Text style={{ fontSize: 18 }}>✨</Text>
+              </Pressable>
+            )}
+
             <Pressable
               style={[styles.iconButton, activePanel === "fonts" && styles.iconButtonActive]}
               onPress={() => togglePanel("fonts")}
@@ -734,8 +745,10 @@ const styles = StyleSheet.create({
     width: 44,
     height: 32,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    color: "#FFFFFF",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    color: "#fff",
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
@@ -751,7 +764,7 @@ const styles = StyleSheet.create({
   sliderTrackLine: {
     width: 4,
     height: "100%",
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#333",
     borderRadius: 2,
     position: "absolute",
   },
@@ -787,12 +800,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   undoText: {
-    color: "#FFFFFF",
+    color: "#ccc",
     fontSize: 16,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   bottomToolbar: {
     position: "absolute",
@@ -804,7 +820,7 @@ const styles = StyleSheet.create({
   },
   bubblePanel: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "#1a1a1a",
   },
   bubbleScrollContent: {
     paddingVertical: 10,
@@ -817,7 +833,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
+    borderColor: "#333",
     alignItems: "center",
   },
   bubbleDimmed: {
@@ -849,7 +865,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   iconText: {
     color: "#FFFFFF",
@@ -873,7 +891,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
+    borderColor: "#333",
   },
   alignIcon: {
     width: 20,
@@ -890,7 +908,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "#1a1a1a",
   },
   colorScrollContent: {
     gap: COLOR_GAP,
@@ -928,16 +946,16 @@ const styles = StyleSheet.create({
   },
   addCustomButton: {
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.4)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "#333",
+    backgroundColor: "#111",
   },
   iconButtonActive: {
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#1a1a1a",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
+    borderColor: "#333",
   },
   iconSubText: {
-    color: "rgba(255,255,255,0.5)",
+    color: "#444",
     fontSize: 9,
     fontWeight: "700",
     marginTop: -2,
@@ -951,6 +969,6 @@ const styles = StyleSheet.create({
   colorDividerLine: {
     width: 1,
     height: 28,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#333",
   },
 });

@@ -1,8 +1,8 @@
 import React, { useRef, useState, useCallback } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Platform, PanResponder, Animated } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, PanResponder, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { Component } from "../../types";
-import { flattenComponentTree, getComponentLabel, type FlatNode } from "../../utils/componentTree";
+import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
 
 const ROW_HEIGHT = 44;
 
@@ -41,7 +41,7 @@ function LockSwipe({
       <Feather
         name={isLocked ? "lock" : "unlock"}
         size={14}
-        color={isLocked ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)"}
+        color={isLocked ? "#666" : "#333"}
       />
     </View>
   );
@@ -77,7 +77,7 @@ function DragHandle({
 
   return (
     <View {...panResponder.panHandlers} style={styles.dragHandle}>
-      <Feather name="more-vertical" size={14} color="rgba(255,255,255,0.3)" />
+      <Feather name="more-vertical" size={14} color="#333" />
     </View>
   );
 }
@@ -99,7 +99,6 @@ export function TreeView({
   onToggleLock,
   onMoveComponent,
 }: TreeViewProps) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const allNodes = flattenComponentTree(components);
 
@@ -113,25 +112,13 @@ export function TreeView({
   }, []);
 
   // Filter out children of collapsed containers
-  const visibleNodes = allNodes.filter((node) => {
-    // Check if any ancestor is collapsed
+  const nodes = allNodes.filter((node) => {
     const parts = node.path.split("/");
     for (let i = 0; i < parts.length - 1; i++) {
       if (collapsedIds.has(parts[i])) return false;
     }
     return true;
   });
-
-  // Filter nodes by search query (match label or type)
-  const nodes = searchQuery.trim()
-    ? visibleNodes.filter((n) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          getComponentLabel(n.component).toLowerCase().includes(q) ||
-          n.component.type.toLowerCase().includes(q)
-        );
-      })
-    : visibleNodes;
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -262,23 +249,6 @@ export function TreeView({
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Feather name="search" size={14} color="rgba(255,255,255,0.35)" />
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search layers..."
-          placeholderTextColor="rgba(255,255,255,0.25)"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-            <Feather name="x" size={14} color="rgba(255,255,255,0.4)" />
-          </Pressable>
-        )}
-      </View>
       {nodes.map((node, i) => {
         const isDragged = dragFlatIndex === i;
         const isLocked = lockedIds?.has(node.component.id) ?? false;
@@ -304,7 +274,7 @@ export function TreeView({
                   ? {
                       transform: [{ translateY: dragY }],
                       zIndex: 100,
-                      backgroundColor: "rgba(99,102,241,0.2)",
+                      backgroundColor: "rgba(255,255,255,0.05)",
                       borderRadius: 8,
                     }
                   : undefined
@@ -346,7 +316,7 @@ export function TreeView({
                       <Feather
                         name={collapsedIds.has(node.component.id) ? "chevron-right" : "chevron-down"}
                         size={14}
-                        color="rgba(255,255,255,0.5)"
+                        color="#444"
                       />
                     </Pressable>
                   )}
@@ -379,7 +349,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "rgba(255,255,255,0.35)",
+    color: "#333",
     fontSize: 14,
   },
   rowOuter: {
@@ -394,7 +364,7 @@ const styles = StyleSheet.create({
   },
   insertionLine: {
     height: 2,
-    backgroundColor: "#818cf8",
+    backgroundColor: "#fff",
     marginHorizontal: 16,
     borderRadius: 1,
   },
@@ -408,21 +378,22 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   treeRowPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#111",
   },
   treeRowLocked: {
     opacity: 0.5,
   },
   label: {
-    color: "#ffffff",
+    color: "#ccc",
     fontSize: 14,
     fontWeight: "500",
     flex: 1,
   },
   typeTag: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 11,
+    color: "#333",
+    fontSize: 10,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    letterSpacing: 0.5,
   },
   dimmed: {
     opacity: 0.6,
@@ -431,23 +402,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginRight: 4,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 8,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: "#ffffff",
-    fontSize: 14,
-    padding: 0,
   },
   chevronButton: {
     width: 20,
@@ -460,10 +414,10 @@ const styles = StyleSheet.create({
     width: 22,
   },
   childCount: {
-    color: "rgba(255,255,255,0.3)",
+    color: "#444",
     fontSize: 10,
     fontWeight: "600",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#111",
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,

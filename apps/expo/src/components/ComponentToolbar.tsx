@@ -41,6 +41,7 @@ interface StyleEditorToolbarProps {
   onStateChange: (updates: Partial<StyleEditingState>) => void;
   onUndo: () => void;
   onInspect?: () => void;
+  onAIChat?: () => void;
   theme?: Theme;
 }
 
@@ -100,16 +101,17 @@ export function StyleEditorToolbar({
   onStateChange,
   onUndo,
   onInspect,
+  onAIChat,
   theme,
 }: StyleEditorToolbarProps) {
   const themeBorderColors = useMemo(() => {
-    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    const c = theme?.colors ?? { primary: "#ffffff", secondary: "#cccccc", error: "#dc2626", success: "#22c55e", warning: "#f59e0b" };
     return [c.primary, c.secondary, c.error, c.success, c.warning];
   }, [theme?.colors]);
 
   const themeBgColors = useMemo(() => {
-    const bg = theme?.backgroundColors ?? { background: "#ffffff", secondaryBackground: "#f3f4f6" };
-    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    const bg = theme?.backgroundColors ?? { background: "#000000", secondaryBackground: "#1a1a1a" };
+    const c = theme?.colors ?? { primary: "#ffffff", secondary: "#cccccc", error: "#dc2626", success: "#22c55e", warning: "#f59e0b" };
     return [bg.background, bg.secondaryBackground, c.primary, c.secondary, c.error, c.success, c.warning];
   }, [theme?.backgroundColors, theme?.colors]);
   const { height: screenHeight } = useWindowDimensions();
@@ -414,6 +416,15 @@ export function StyleEditorToolbar({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.iconToolbar}
         >
+          {onAIChat && (
+            <Pressable
+              style={[styles.iconButton]}
+              onPress={onAIChat}
+            >
+              <Text style={{ fontSize: 18 }}>✨</Text>
+            </Pressable>
+          )}
+
           {state.hasBorderRadius && (
             <Pressable
               style={[styles.iconButton, sliderTarget === "borderRadius" && styles.iconButtonActive]}
@@ -540,8 +551,10 @@ const styles = StyleSheet.create({
     width: 44,
     height: 32,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    color: "#FFFFFF",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    color: "#fff",
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
@@ -557,7 +570,7 @@ const styles = StyleSheet.create({
   sliderTrackLine: {
     width: 4,
     height: "100%",
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#333",
     borderRadius: 2,
     position: "absolute",
   },
@@ -593,12 +606,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   undoText: {
-    color: "#FFFFFF",
+    color: "#ccc",
     fontSize: 16,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   bottomToolbar: {
     position: "absolute",
@@ -612,7 +628,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "#1a1a1a",
   },
   colorPickerContent: {
     gap: 12,
@@ -656,15 +672,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   iconButtonActive: {
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#1a1a1a",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.5)",
+    borderColor: "#333",
   },
   iconSubLabel: {
-    color: "rgba(255,255,255,0.6)",
+    color: "#555",
     fontSize: 10,
     fontWeight: "700",
   },
@@ -702,8 +720,8 @@ const styles = StyleSheet.create({
   },
   addCustomButton: {
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.4)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "#333",
+    backgroundColor: "#111",
   },
   bgColorIcon: {
     alignItems: "center",
@@ -715,14 +733,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
+    borderColor: "#333",
   },
   flexPanel: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "#1a1a1a",
   },
   flexRow: {
     flexDirection: "row",
@@ -730,7 +748,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   flexLabel: {
-    color: "rgba(255,255,255,0.5)",
+    color: "#444",
     fontSize: 11,
     fontWeight: "700",
     width: 42,
@@ -742,24 +760,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   flexOptionActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
+    borderColor: "#fff",
   },
   flexOptionText: {
-    color: "rgba(255,255,255,0.7)",
+    color: "#555",
     fontSize: 11,
     fontWeight: "600",
   },
   flexOptionTextActive: {
-    color: "#FFFFFF",
+    color: "#000",
   },
   presetsPanel: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "#1a1a1a",
   },
   presetsRow: {
     gap: 8,
@@ -769,24 +790,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     alignItems: "center",
   },
   presetButtonActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
+    borderColor: "#fff",
   },
   presetLabel: {
-    color: "rgba(255,255,255,0.7)",
+    color: "#555",
     fontSize: 12,
     fontWeight: "700",
   },
   presetValue: {
-    color: "rgba(255,255,255,0.4)",
+    color: "#333",
     fontSize: 10,
     fontWeight: "600",
+    fontVariant: ["tabular-nums"],
   },
   presetLabelActive: {
-    color: "#FFFFFF",
+    color: "#000",
   },
   colorDivider: {
     width: 20,
@@ -797,6 +822,6 @@ const styles = StyleSheet.create({
   colorDividerLine: {
     width: 1,
     height: 28,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "#333",
   },
 });

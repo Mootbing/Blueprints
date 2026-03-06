@@ -115,7 +115,7 @@ export function ScreenTabBar({
                 <Feather
                   name="home"
                   size={11}
-                  color={isActive ? "#ffffff" : "rgba(255,255,255,0.5)"}
+                  color={isActive ? "#000" : "#555"}
                   style={styles.homeIcon}
                 />
               )}
@@ -129,7 +129,7 @@ export function ScreenTabBar({
           );
         })}
         <Pressable style={styles.addPill} onPress={onAddScreen}>
-          <Feather name="plus" size={14} color="#818cf8" />
+          <Feather name="plus" size={14} color="#555" />
         </Pressable>
       </ScrollView>
     </View>
@@ -156,22 +156,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: "rgba(15,23,42,0.9)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "#1a1a1a",
   },
   pillActive: {
-    backgroundColor: "#6366f1",
-    borderColor: "#6366f1",
+    backgroundColor: "#fff",
+    borderColor: "#fff",
   },
   pillText: {
-    color: "rgba(255,255,255,0.6)",
+    color: "#555",
     fontSize: 13,
     fontWeight: "600",
     maxWidth: 100,
+    letterSpacing: 0.3,
   },
   pillTextActive: {
-    color: "#ffffff",
+    color: "#000",
   },
   homeIcon: {
     marginRight: 4,
@@ -180,15 +181,15 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "rgba(15,23,42,0.9)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     borderWidth: 1,
-    borderColor: "rgba(99,102,241,0.4)",
+    borderColor: "#1a1a1a",
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
   },
   renameInput: {
-    color: "#ffffff",
+    color: "#000",
     fontSize: 13,
     fontWeight: "600",
     minWidth: 60,

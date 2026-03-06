@@ -301,7 +301,7 @@ export function ColorPickerModal({
               hitSlop={8}
               onPress={() => setShowWheel((v) => !v)}
             >
-              <Feather name="target" size={20} color={showWheel ? "#6366f1" : "#FFF"} />
+              <Feather name="target" size={20} color={showWheel ? "#fff" : "#555"} />
             </Pressable>
           </View>
 
@@ -441,7 +441,7 @@ const s = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#000",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 40,
@@ -455,16 +455,17 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
   cancelText: {
-    color: "rgba(255,255,255,0.6)",
+    color: "#555",
     fontSize: 16,
   },
   title: {
-    color: "#FFF",
+    color: "#fff",
     fontSize: 17,
-    fontWeight: "600",
+    fontWeight: "300",
+    letterSpacing: 0.5,
   },
   doneText: {
-    color: "#6366f1",
+    color: "#fff",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -485,13 +486,15 @@ const s = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     paddingHorizontal: 12,
     height: 40,
   },
   hashText: {
-    color: "rgba(255,255,255,0.5)",
+    color: "#444",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -507,20 +510,23 @@ const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     justifyContent: "center",
     alignItems: "center",
   },
   dropperBtnActive: {
-    backgroundColor: "rgba(99,102,241,0.2)",
+    backgroundColor: "#1a1a1a",
+    borderColor: "#333",
   },
   label: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 12,
+    color: "#444",
+    fontSize: 11,
     fontWeight: "600",
     marginBottom: 8,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 2.5,
   },
   sliderWrap: {
     height: 36,

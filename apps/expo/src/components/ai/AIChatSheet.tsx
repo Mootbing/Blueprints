@@ -1,0 +1,421 @@
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  Animated,
+  Dimensions,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { useAIChat } from "../../ai/useAIChat";
+import { modifyComponentChat } from "../../ai/modifyComponent";
+import { containsComponentJson } from "../../ai/parseResponse";
+import { parseSingleComponent } from "../../ai/modifyComponent";
+import { getComponentLabel } from "../../utils/componentTree";
+import type { Component, Theme } from "../../types";
+import type { ChatMessage } from "../../ai/types";
+
+interface ComponentRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface AIChatSheetProps {
+  visible: boolean;
+  component: Component;
+  apiKey: string;
+  theme?: Theme;
+  componentRect?: ComponentRect;
+  onApply: (component: Component) => void;
+  onClose: () => void;
+}
+
+export function AIChatSheet({
+  visible,
+  component,
+  apiKey,
+  theme,
+  componentRect,
+  onApply,
+  onClose,
+}: AIChatSheetProps) {
+  const [input, setInput] = useState("");
+  const scrollRef = useRef<ScrollView>(null);
+  const slideAnim = useRef(new Animated.Value(200)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const appliedRef = useRef(false);
+
+  const sendFn = useCallback(
+    async (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+      return modifyComponentChat(apiKey, component, messages, theme);
+    },
+    [apiKey, component, theme],
+  );
+
+  const { messages, isLoading, error, sendMessage } = useAIChat({
+    sendFn,
+    hasActionableContent: containsComponentJson,
+  });
+
+  // Auto-apply when AI responds with component JSON
+  useEffect(() => {
+    if (appliedRef.current || isLoading) return;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.hasComponentJson) return;
+    try {
+      const parsed = parseSingleComponent(lastMsg.content);
+      const updated = { ...parsed, id: component.id };
+      appliedRef.current = true;
+      onApply(updated);
+    } catch {}
+  }, [messages, isLoading, component.id, onApply]);
+
+  useEffect(() => {
+    if (visible) {
+      appliedRef.current = false;
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 80,
+          friction: 12,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      slideAnim.setValue(200);
+      fadeAnim.setValue(0);
+    }
+  }, [visible, slideAnim, fadeAnim]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages.length, isLoading]);
+
+  const handleSend = () => {
+    if (!input.trim() || isLoading) return;
+    appliedRef.current = false;
+    sendMessage(input.trim());
+    setInput("");
+  };
+
+  const handleClose = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 200,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => onClose());
+  };
+
+  const handleBlurPress = () => {
+    if (!appliedRef.current) handleClose();
+  };
+
+  const label = useMemo(
+    () => getComponentLabel(component, { includeType: true }),
+    [component],
+  );
+
+  if (!visible) return null;
+
+  const stripJson = (content: string) =>
+    content.replace(/<json>[\s\S]*?<\/json>/g, "").trim();
+
+  const PAD = 8;
+  const r = componentRect;
+
+  return (
+    <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
+      {/* Spotlight cutout: 4 dim rects around the component + glow border */}
+      {r ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Top */}
+          <Pressable
+            style={[styles.dimRect, { top: 0, left: 0, right: 0, height: Math.max(0, r.y - PAD) }]}
+            onPress={handleBlurPress}
+          >
+            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+          {/* Bottom */}
+          <Pressable
+            style={[styles.dimRect, { top: r.y + r.height + PAD, left: 0, right: 0, bottom: 0 }]}
+            onPress={handleBlurPress}
+          >
+            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+          {/* Left */}
+          <Pressable
+            style={[styles.dimRect, { top: Math.max(0, r.y - PAD), left: 0, width: Math.max(0, r.x - PAD), height: r.height + PAD * 2 }]}
+            onPress={handleBlurPress}
+          >
+            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+          {/* Right */}
+          <Pressable
+            style={[styles.dimRect, { top: Math.max(0, r.y - PAD), left: r.x + r.width + PAD, right: 0, height: r.height + PAD * 2 }]}
+            onPress={handleBlurPress}
+          >
+            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleBlurPress} />
+      )}
+
+      {/* Floating messages */}
+      <View style={styles.messagesArea} pointerEvents="box-none">
+        <ScrollView
+          ref={scrollRef}
+          style={styles.messageScroll}
+          contentContainerStyle={styles.messageScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {messages.map((msg) => {
+            const text = stripJson(msg.content);
+            const isUser = msg.role === "user";
+            return (
+              <View
+                key={msg.id}
+                style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAI]}
+              >
+                <View
+                  style={[
+                    styles.glassBubble,
+                    isUser ? styles.glassUser : styles.glassAI,
+                  ]}
+                >
+                  {text.length > 0 && (
+                    <Text style={[styles.msgText, isUser && styles.msgTextUser]}>
+                      {text}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+
+          {isLoading && (
+            <View style={[styles.msgRow, styles.msgRowAI]}>
+              <View style={[styles.glassBubble, styles.glassAI]}>
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+              </View>
+            </View>
+          )}
+
+          {error && (
+            <View style={[styles.msgRow, styles.msgRowAI]}>
+              <View style={[styles.glassBubble, styles.glassError]}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Small input from the bottom */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.inputWrapper}
+      >
+        <Animated.View
+          style={[
+            styles.inputContainer,
+            { transform: [{ translateY: slideAnim }] },
+          ]}
+        >
+          <View style={styles.inputHeader}>
+            <View style={styles.inputHeaderLeft}>
+              <Feather name="zap" size={14} color="#555" />
+              <Text style={styles.inputLabel} numberOfLines={1}>{label}</Text>
+            </View>
+            <Pressable onPress={handleClose} hitSlop={12}>
+              <Feather name="x" size={16} color="rgba(255,255,255,0.4)" />
+            </Pressable>
+          </View>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder="Describe a change..."
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              multiline
+              maxLength={2000}
+              returnKeyType="default"
+              blurOnSubmit={false}
+              editable={!isLoading}
+              autoFocus
+            />
+            <Pressable
+              style={({ pressed }) => [
+                styles.sendBtn,
+                (!input.trim() || isLoading) && styles.sendBtnDisabled,
+                pressed && input.trim() && !isLoading && styles.sendBtnPressed,
+              ]}
+              onPress={handleSend}
+              disabled={!input.trim() || isLoading}
+            >
+              <Feather
+                name="arrow-up"
+                size={16}
+                color={input.trim() && !isLoading ? "#fff" : "rgba(255,255,255,0.2)"}
+              />
+            </Pressable>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 998,
+  },
+  dimRect: {
+    position: "absolute",
+    overflow: "hidden",
+  },
+  messagesArea: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  messageScroll: {
+    maxHeight: Dimensions.get("window").height * 0.5,
+  },
+  messageScrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 40,
+    gap: 8,
+  },
+  msgRow: {
+    flexDirection: "row",
+  },
+  msgRowUser: {
+    justifyContent: "flex-end",
+  },
+  msgRowAI: {
+    justifyContent: "flex-start",
+  },
+  glassBubble: {
+    maxWidth: "80%",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  glassUser: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderColor: "#333",
+  },
+  glassAI: {
+    backgroundColor: "#0a0a0a",
+    borderColor: "#1a1a1a",
+  },
+  glassError: {
+    backgroundColor: "#111",
+    borderColor: "#1a1a1a",
+  },
+  msgText: {
+    color: "#ccc",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  msgTextUser: {
+    color: "#fff",
+  },
+  errorText: {
+    color: "#dc2626",
+    fontSize: 13,
+  },
+  inputWrapper: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  inputContainer: {
+    marginHorizontal: 12,
+    marginBottom: Platform.OS === "ios" ? 34 : 12,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    overflow: "hidden",
+  },
+  inputHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  inputHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  inputLabel: {
+    color: "#444",
+    fontSize: 12,
+    fontWeight: "500",
+    flex: 1,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    color: "#ccc",
+    fontSize: 15,
+    paddingHorizontal: 6,
+    paddingTop: Platform.OS === "ios" ? 6 : 4,
+    paddingBottom: Platform.OS === "ios" ? 6 : 4,
+    maxHeight: 80,
+  },
+  sendBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendBtnDisabled: {
+    backgroundColor: "#111",
+  },
+  sendBtnPressed: {
+    backgroundColor: "#ccc",
+  },
+});

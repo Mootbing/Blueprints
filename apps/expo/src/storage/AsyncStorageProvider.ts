@@ -1,56 +1,75 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppBlueprintSchema } from "../types";
-import type { AppBlueprint, BlueprintMeta } from "../types";
-import type { StorageProvider } from "./StorageProvider";
+import { AppSlateSchema } from "../types";
+import type { AppSlate, SlateMeta } from "../types";
+import type { StorageProvider, PersistedHistory } from "./StorageProvider";
 
 // Storage keys kept unchanged for backward compatibility
-const BLUEPRINT_LIST_KEY = "project_list";
+const SLATE_LIST_KEY = "project_list";
 
-function blueprintKey(blueprintId: string) {
-  return `project_blueprint_${blueprintId}`;
+function slateKey(slateId: string) {
+  return `project_slate_${slateId}`;
 }
 
-function runtimeVarsKey(blueprintId: string) {
-  return `runtime_persisted_variables_${blueprintId}`;
+function runtimeVarsKey(slateId: string) {
+  return `runtime_persisted_variables_${slateId}`;
+}
+
+function historyKey(slateId: string) {
+  return `undo_history_${slateId}`;
 }
 
 export class AsyncStorageProvider implements StorageProvider {
-  async listBlueprints(): Promise<BlueprintMeta[]> {
-    const raw = await AsyncStorage.getItem(BLUEPRINT_LIST_KEY);
+  async listSlates(): Promise<SlateMeta[]> {
+    const raw = await AsyncStorage.getItem(SLATE_LIST_KEY);
     if (!raw) return [];
     try {
-      return JSON.parse(raw) as BlueprintMeta[];
+      return JSON.parse(raw) as SlateMeta[];
     } catch {
       return [];
     }
   }
 
-  async saveBlueprintList(blueprints: BlueprintMeta[]): Promise<void> {
-    await AsyncStorage.setItem(BLUEPRINT_LIST_KEY, JSON.stringify(blueprints));
+  async saveSlateList(slates: SlateMeta[]): Promise<void> {
+    await AsyncStorage.setItem(SLATE_LIST_KEY, JSON.stringify(slates));
   }
 
-  async loadBlueprint(blueprintId: string): Promise<AppBlueprint | null> {
-    const raw = await AsyncStorage.getItem(blueprintKey(blueprintId));
+  async loadSlate(slateId: string): Promise<AppSlate | null> {
+    const raw = await AsyncStorage.getItem(slateKey(slateId));
     if (!raw) return null;
     try {
-      const parsed = AppBlueprintSchema.safeParse(JSON.parse(raw));
+      const parsed = AppSlateSchema.safeParse(JSON.parse(raw));
       return parsed.success ? parsed.data : null;
     } catch {
       return null;
     }
   }
 
-  async saveBlueprint(blueprintId: string, blueprint: AppBlueprint): Promise<void> {
-    await AsyncStorage.setItem(blueprintKey(blueprintId), JSON.stringify(blueprint));
+  async saveSlate(slateId: string, slate: AppSlate): Promise<void> {
+    await AsyncStorage.setItem(slateKey(slateId), JSON.stringify(slate));
   }
 
-  async deleteBlueprint(blueprintId: string): Promise<void> {
+  async deleteSlate(slateId: string): Promise<void> {
     await AsyncStorage.multiRemove([
-      blueprintKey(blueprintId),
-      runtimeVarsKey(blueprintId),
+      slateKey(slateId),
+      runtimeVarsKey(slateId),
+      historyKey(slateId),
     ]);
-    const blueprints = await this.listBlueprints();
-    const updated = blueprints.filter((b) => b.id !== blueprintId);
-    await this.saveBlueprintList(updated);
+    const slates = await this.listSlates();
+    const updated = slates.filter((b) => b.id !== slateId);
+    await this.saveSlateList(updated);
+  }
+
+  async saveHistory(slateId: string, history: PersistedHistory): Promise<void> {
+    await AsyncStorage.setItem(historyKey(slateId), JSON.stringify(history));
+  }
+
+  async loadHistory(slateId: string): Promise<PersistedHistory | null> {
+    const raw = await AsyncStorage.getItem(historyKey(slateId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as PersistedHistory;
+    } catch {
+      return null;
+    }
   }
 }

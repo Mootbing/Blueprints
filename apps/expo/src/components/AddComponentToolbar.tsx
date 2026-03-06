@@ -29,7 +29,7 @@ const COMPONENT_PRESETS: {
       id: uuid(),
       layout: { x: 0.2, y: 0.45, width: 0.6, height: 0.065 },
       label: "Button",
-      backgroundColor: "#6366f1",
+      backgroundColor: "#1a1a1a",
       textColor: "#ffffff",
     }),
   },

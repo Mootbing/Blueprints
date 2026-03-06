@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
-import type { AppBlueprint, Variable, Component, Action, EventHandlers } from "../../types";
+import type { AppSlate, Variable, Component, Action, EventHandlers } from "../../types";
 import { uuid } from "../../utils/uuid";
 import { deepUpdateComponent, flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
 import { sharedMenuStyles } from "./sharedStyles";
@@ -20,12 +20,12 @@ function defaultForType(type: Variable["type"]): unknown {
 const EVENT_NAMES: (keyof NonNullable<EventHandlers>)[] = ["onTap", "onLongPress", "onChange", "onSubmit"];
 const ACTION_TYPES = ["SET_VARIABLE", "TOGGLE_VARIABLE", "NAVIGATE", "OPEN_URL", "CONDITIONAL"] as const;
 
-function describeAction(action: Action, blueprint: AppBlueprint): string {
+function describeAction(action: Action, slate: AppSlate): string {
   switch (action.type) {
     case "SET_VARIABLE": return `Set "${action.key}" to ${action.value}`;
     case "TOGGLE_VARIABLE": return `Toggle "${action.key}"`;
     case "NAVIGATE": {
-      const screen = blueprint.screens[action.target];
+      const screen = slate.screens[action.target];
       return `Navigate to "${screen?.name ?? action.target}"`;
     }
     case "OPEN_URL": return `Open ${action.url}`;
@@ -49,9 +49,9 @@ function getBindableProps(comp: Component): string[] {
   }
 }
 
-function getVariableNames(blueprint: AppBlueprint, screenId: string): string[] {
-  const appVars = (blueprint.variables ?? []).map((v) => v.name);
-  const screenVars = (blueprint.screens[screenId]?.variables ?? []).map((v) => v.name);
+function getVariableNames(slate: AppSlate, screenId: string): string[] {
+  const appVars = (slate.variables ?? []).map((v) => v.name);
+  const screenVars = (slate.screens[screenId]?.variables ?? []).map((v) => v.name);
   return [...appVars, ...screenVars];
 }
 
@@ -66,12 +66,12 @@ function hasLogic(comp: Component): { actions: boolean; bindings: boolean; visib
 
 interface VariablesPageProps {
   width: number;
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   screenId: string;
-  onBlueprintChange?: (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
 }
 
-export function VariablesPage({ width, blueprint, screenId, onBlueprintChange }: VariablesPageProps) {
+export function VariablesPage({ width, slate, screenId, onSlateChange }: VariablesPageProps) {
   const [scope, setScope] = useState<"app" | "screen" | "logic">("app");
 
   return (
@@ -93,16 +93,16 @@ export function VariablesPage({ width, blueprint, screenId, onBlueprintChange }:
 
       {scope === "logic" ? (
         <LogicSection
-          blueprint={blueprint}
+          slate={slate}
           screenId={screenId}
-          onBlueprintChange={onBlueprintChange}
+          onSlateChange={onSlateChange}
         />
       ) : (
         <VariablesSection
-          blueprint={blueprint}
+          slate={slate}
           screenId={screenId}
           scope={scope}
-          onBlueprintChange={onBlueprintChange}
+          onSlateChange={onSlateChange}
         />
       )}
     </View>
@@ -112,12 +112,12 @@ export function VariablesPage({ width, blueprint, screenId, onBlueprintChange }:
 // --- Variables Section (existing logic extracted) ---
 
 function VariablesSection({
-  blueprint, screenId, scope, onBlueprintChange,
+  slate, screenId, scope, onSlateChange,
 }: {
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   screenId: string;
   scope: "app" | "screen";
-  onBlueprintChange?: VariablesPageProps["onBlueprintChange"];
+  onSlateChange?: VariablesPageProps["onSlateChange"];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -125,13 +125,13 @@ function VariablesSection({
   const [editDefault, setEditDefault] = useState("");
   const [editPersist, setEditPersist] = useState(false);
 
-  const appVars = blueprint.variables ?? [];
-  const screenVars = blueprint.screens[screenId]?.variables ?? [];
+  const appVars = slate.variables ?? [];
+  const screenVars = slate.screens[screenId]?.variables ?? [];
   const variables = scope === "app" ? appVars : screenVars;
 
   const updateVariables = useCallback((newVars: Variable[]) => {
-    if (!onBlueprintChange) return;
-    onBlueprintChange((prev: AppBlueprint) => {
+    if (!onSlateChange) return;
+    onSlateChange((prev: AppSlate) => {
       if (scope === "app") {
         return { ...prev, variables: newVars };
       }
@@ -145,7 +145,7 @@ function VariablesSection({
         },
       };
     });
-  }, [onBlueprintChange, scope, screenId]);
+  }, [onSlateChange, scope, screenId]);
 
   const handleAdd = useCallback(() => {
     const newVar: Variable = {
@@ -206,7 +206,7 @@ function VariablesSection({
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="Variable name"
-                placeholderTextColor="rgba(255,255,255,0.3)"
+                placeholderTextColor="#333"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -231,7 +231,7 @@ function VariablesSection({
                 value={editDefault}
                 onChangeText={setEditDefault}
                 placeholder="Default value"
-                placeholderTextColor="rgba(255,255,255,0.3)"
+                placeholderTextColor="#333"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -279,21 +279,21 @@ function VariablesSection({
 // --- Logic Section ---
 
 function LogicSection({
-  blueprint, screenId, onBlueprintChange,
+  slate, screenId, onSlateChange,
 }: {
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   screenId: string;
-  onBlueprintChange?: VariablesPageProps["onBlueprintChange"];
+  onSlateChange?: VariablesPageProps["onSlateChange"];
 }) {
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
 
-  const screen = blueprint.screens[screenId];
+  const screen = slate.screens[screenId];
   const components = screen?.components ?? [];
   const flatComponents = useMemo(() => flattenComponentTree(components, 0, null, "", false), [components]);
 
   const updateComponent = useCallback((id: string, updater: (c: Component) => Component) => {
-    if (!onBlueprintChange) return;
-    onBlueprintChange((prev: AppBlueprint) => {
+    if (!onSlateChange) return;
+    onSlateChange((prev: AppSlate) => {
       const scr = prev.screens[screenId];
       if (!scr) return prev;
       return {
@@ -304,7 +304,7 @@ function LogicSection({
         },
       };
     });
-  }, [onBlueprintChange, screenId]);
+  }, [onSlateChange, screenId]);
 
   if (selectedCompId) {
     const flat = flatComponents.find((f) => f.component.id === selectedCompId);
@@ -315,7 +315,7 @@ function LogicSection({
     return (
       <ComponentLogicDetail
         component={flat.component}
-        blueprint={blueprint}
+        slate={slate}
         screenId={screenId}
         onBack={() => setSelectedCompId(null)}
         updateComponent={(updater) => updateComponent(selectedCompId, updater)}
@@ -359,10 +359,10 @@ function LogicSection({
 // --- Component Logic Detail ---
 
 function ComponentLogicDetail({
-  component, blueprint, screenId, onBack, updateComponent,
+  component, slate, screenId, onBack, updateComponent,
 }: {
   component: Component;
-  blueprint: AppBlueprint;
+  slate: AppSlate;
   screenId: string;
   onBack: () => void;
   updateComponent: (updater: (c: Component) => Component) => void;
@@ -373,10 +373,10 @@ function ComponentLogicDetail({
   const [addingBinding, setAddingBinding] = useState(false);
   const [editingVisibility, setEditingVisibility] = useState(false);
 
-  const varNames = useMemo(() => getVariableNames(blueprint, screenId), [blueprint, screenId]);
+  const varNames = useMemo(() => getVariableNames(slate, screenId), [slate, screenId]);
   const screenNames = useMemo(() =>
-    Object.values(blueprint.screens).map((s) => ({ id: s.id, name: s.name })),
-    [blueprint.screens]
+    Object.values(slate.screens).map((s) => ({ id: s.id, name: s.name })),
+    [slate.screens]
   );
 
   const toggleEvent = (ev: string) =>
@@ -486,7 +486,7 @@ function ComponentLogicDetail({
                         style={styles.actionRow}
                         onPress={() => setEditingAction({ event, index: i })}
                       >
-                        <Text style={styles.actionDesc}>{describeAction(action, blueprint)}</Text>
+                        <Text style={styles.actionDesc}>{describeAction(action, slate)}</Text>
                         <Pressable style={styles.deleteBtn} onPress={() => deleteAction(event, i)}>
                           <Text style={styles.deleteLabel}>X</Text>
                         </Pressable>
@@ -620,7 +620,7 @@ function ActionEditor({
             value={key}
             onChangeText={setKey}
             placeholder="Variable name"
-            placeholderTextColor="rgba(255,255,255,0.3)"
+            placeholderTextColor="#333"
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -639,7 +639,7 @@ function ActionEditor({
               value={value}
               onChangeText={setValue}
               placeholder="Value (expression)"
-              placeholderTextColor="rgba(255,255,255,0.3)"
+              placeholderTextColor="#333"
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -669,7 +669,7 @@ function ActionEditor({
           value={url}
           onChangeText={setUrl}
           placeholder="URL or expression"
-          placeholderTextColor="rgba(255,255,255,0.3)"
+          placeholderTextColor="#333"
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -682,7 +682,7 @@ function ActionEditor({
             value={condition}
             onChangeText={setCondition}
             placeholder="Condition expression"
-            placeholderTextColor="rgba(255,255,255,0.3)"
+            placeholderTextColor="#333"
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -746,7 +746,7 @@ function BindingEditor({
           value={prop}
           onChangeText={setProp}
           placeholder="Property key"
-          placeholderTextColor="rgba(255,255,255,0.3)"
+          placeholderTextColor="#333"
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -757,7 +757,7 @@ function BindingEditor({
         value={expr}
         onChangeText={setExpr}
         placeholder="e.g. variables.myVar"
-        placeholderTextColor="rgba(255,255,255,0.3)"
+        placeholderTextColor="#333"
         autoCapitalize="none"
         autoCorrect={false}
       />
@@ -801,7 +801,7 @@ function VisibilityEditor({
         value={expr}
         onChangeText={setExpr}
         placeholder="e.g. variables.isLoggedIn"
-        placeholderTextColor="rgba(255,255,255,0.3)"
+        placeholderTextColor="#333"
         autoCapitalize="none"
         autoCorrect={false}
       />
@@ -860,14 +860,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
-  scopeBtnActive: { backgroundColor: "#6366f1" },
-  scopeLabel: { color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: "600" },
-  scopeLabelActive: { color: "#ffffff" },
+  scopeBtnActive: { backgroundColor: "#fff", borderColor: "#fff" },
+  scopeLabel: { color: "#555", fontSize: 14, fontWeight: "600" },
+  scopeLabelActive: { color: "#000" },
   sectionHeader: sharedMenuStyles.sectionHeader,
   emptyText: {
-    color: "rgba(255,255,255,0.35)",
+    color: "#444",
     fontSize: 14,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -878,19 +880,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "#1a1a1a",
   },
-  varName: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
-  varMeta: { color: "rgba(255,255,255,0.45)", fontSize: 12, marginTop: 2 },
+  varName: { color: "#ccc", fontSize: 16, fontWeight: "600", letterSpacing: 0.3 },
+  varMeta: { color: "#444", fontSize: 12, marginTop: 2, fontVariant: ["tabular-nums"] },
   deleteBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(239,68,68,0.2)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
     alignItems: "center",
     justifyContent: "center",
   },
-  deleteLabel: { color: "#fca5a5", fontSize: 12, fontWeight: "700" },
+  deleteLabel: { color: "#dc2626", fontSize: 12, fontWeight: "700" },
   editCard: sharedMenuStyles.editCard,
   editInput: sharedMenuStyles.editInput,
   typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -898,17 +902,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
-  typeChipActive: { backgroundColor: "#6366f1" },
-  typeChipText: { color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: "600" },
-  typeChipTextActive: { color: "#ffffff" },
+  typeChipActive: { backgroundColor: "#fff", borderColor: "#fff" },
+  typeChipText: { color: "#555", fontSize: 12, fontWeight: "600" },
+  typeChipTextActive: { color: "#000" },
   persistRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  persistLabel: { color: "rgba(255,255,255,0.7)", fontSize: 14 },
+  persistLabel: { color: "#ccc", fontSize: 14 },
   toggleTrack: sharedMenuStyles.toggleTrack,
   toggleTrackOn: sharedMenuStyles.toggleTrackOn,
   toggleThumb: sharedMenuStyles.toggleThumb,
@@ -924,7 +930,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(99,102,241,0.4)",
+    borderColor: "#1a1a1a",
     borderStyle: "dashed",
     alignItems: "center",
   },
@@ -935,11 +941,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(99,102,241,0.4)",
+    borderColor: "#1a1a1a",
     borderStyle: "dashed",
     alignItems: "center",
   },
-  addLabel: { color: "#818cf8", fontSize: 14, fontWeight: "600" },
+  addLabel: { color: "#555", fontSize: 14, fontWeight: "600", letterSpacing: 0.5 },
 
   // Logic-specific styles
   badgeRow: { flexDirection: "row", gap: 6, marginTop: 4 },
@@ -947,17 +953,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
-    backgroundColor: "rgba(99,102,241,0.25)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
   badgeVis: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
-    backgroundColor: "rgba(251,191,36,0.25)",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
   },
-  badgeText: { color: "#c7d2fe", fontSize: 10, fontWeight: "700" },
-  chevron: { color: "rgba(255,255,255,0.3)", fontSize: 24, fontWeight: "300" },
-  chevronSmall: { color: "rgba(255,255,255,0.4)", fontSize: 14 },
+  badgeText: { color: "#555", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  chevron: { color: "#333", fontSize: 24, fontWeight: "300" },
+  chevronSmall: { color: "#444", fontSize: 14 },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -966,14 +976,15 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     gap: 4,
   },
-  backArrow: { color: "#818cf8", fontSize: 24, fontWeight: "300" },
-  backLabel: { color: "#818cf8", fontSize: 14, fontWeight: "600" },
+  backArrow: { color: "#666", fontSize: 24, fontWeight: "300" },
+  backLabel: { color: "#666", fontSize: 14, fontWeight: "600", letterSpacing: 0.3 },
   detailTitle: {
-    color: "#ffffff",
+    color: "#fff",
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "300",
     paddingHorizontal: 20,
     paddingBottom: 4,
+    letterSpacing: 0.5,
   },
   eventHeader: {
     flexDirection: "row",
@@ -982,12 +993,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "#1a1a1a",
   },
-  eventName: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+  eventName: { color: "#ccc", fontSize: 15, fontWeight: "600", letterSpacing: 0.3 },
   eventRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   countBadge: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#fff",
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -995,7 +1006,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
-  countBadgeText: { color: "#ffffff", fontSize: 11, fontWeight: "700" },
+  countBadgeText: { color: "#000", fontSize: 11, fontWeight: "700" },
   eventBody: { paddingBottom: 8 },
   actionRow: {
     flexDirection: "row",
@@ -1004,11 +1015,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
   },
-  actionDesc: { flex: 1, color: "rgba(255,255,255,0.75)", fontSize: 14 },
-  bindingProp: { color: "#818cf8", fontSize: 14, fontWeight: "600" },
-  bindingExpr: { color: "rgba(255,255,255,0.55)", fontSize: 12, marginTop: 2 },
+  actionDesc: { flex: 1, color: "#999", fontSize: 14 },
+  bindingProp: { color: "#ccc", fontSize: 14, fontWeight: "600", letterSpacing: 0.3 },
+  bindingExpr: { color: "#555", fontSize: 12, marginTop: 2, fontFamily: "monospace" },
   fieldLabel: {
-    color: "rgba(255,255,255,0.5)",
+    color: "#444",
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.5,
@@ -1017,11 +1028,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: "rgba(99,102,241,0.2)",
+    backgroundColor: "#111",
     borderWidth: 1,
-    borderColor: "rgba(99,102,241,0.3)",
+    borderColor: "#1a1a1a",
   },
-  suggestionText: { color: "#a5b4fc", fontSize: 12, fontWeight: "600" },
+  suggestionText: { color: "#666", fontSize: 12, fontWeight: "600" },
   visRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1029,6 +1040,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
   },
-  visExpr: { flex: 1, color: "#818cf8", fontSize: 14, fontWeight: "600" },
-  visAlways: { flex: 1, color: "rgba(255,255,255,0.4)", fontSize: 14, fontStyle: "italic" },
+  visExpr: { flex: 1, color: "#ccc", fontSize: 14, fontWeight: "600", fontFamily: "monospace" },
+  visAlways: { flex: 1, color: "#333", fontSize: 14, fontStyle: "italic" },
 });

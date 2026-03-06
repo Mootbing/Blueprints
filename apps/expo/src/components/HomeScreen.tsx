@@ -13,39 +13,39 @@ import {
   Dimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import type { BlueprintMeta } from "../types";
+import type { SlateMeta } from "../types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface HomeScreenProps {
-  blueprints: BlueprintMeta[];
-  onOpenBlueprint: (id: string) => void;
-  onCreateBlueprint: (name: string) => void;
-  onDeleteBlueprint: (id: string) => void;
+  slates: SlateMeta[];
+  onOpenSlate: (id: string) => void;
+  onCreateSlate: (name: string) => void;
+  onDeleteSlate: (id: string) => void;
 }
 
 export function HomeScreen({
-  blueprints,
-  onOpenBlueprint,
-  onCreateBlueprint,
-  onDeleteBlueprint,
+  slates,
+  onOpenSlate,
+  onCreateSlate,
+  onDeleteSlate,
 }: HomeScreenProps) {
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<BlueprintMeta | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SlateMeta | null>(null);
 
   const handleCreate = () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    onCreateBlueprint(trimmed);
+    onCreateSlate(trimmed);
     setNewName("");
     setNameModalVisible(false);
   };
 
-  const confirmDelete = (bp: BlueprintMeta) => {
+  const confirmDelete = (bp: SlateMeta) => {
     if (Platform.OS === "web") {
       if (window.confirm(`Delete "${bp.name}"?\n\nThis cannot be undone.`)) {
-        onDeleteBlueprint(bp.id);
+        onDeleteSlate(bp.id);
       }
     } else {
       setDeleteTarget(bp);
@@ -61,7 +61,7 @@ export function HomeScreen({
     });
   };
 
-  const sorted = [...blueprints].sort((a, b) => b.createdAt - a.createdAt);
+  const sorted = [...slates].sort((a, b) => b.createdAt - a.createdAt);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -76,21 +76,21 @@ export function HomeScreen({
         <View style={styles.hero}>
           <Text style={styles.heroLabel}>UNTITLED IDE</Text>
           <Text style={styles.heroTitle}>
-            Your{"\n"}Blueprints
+            Your{"\n"}Slates
           </Text>
           <Text style={styles.heroSub}>
             Design, prototype, and build interfaces visually.
           </Text>
         </View>
 
-        {/* New Blueprint Button */}
+        {/* New Slate Button */}
         <Pressable
           style={({ pressed }) => [
             styles.createBtn,
             pressed && styles.createBtnPressed,
           ]}
           onPress={() => {
-            setNewName("my blueprint");
+            setNewName("my slate");
             setNameModalVisible(true);
           }}
         >
@@ -98,12 +98,12 @@ export function HomeScreen({
             <Feather name="plus" size={18} color="#000" />
           </View>
           <View>
-            <Text style={styles.createBtnLabel}>New Blueprint</Text>
+            <Text style={styles.createBtnLabel}>New Slate</Text>
             <Text style={styles.createBtnHint}>Start from scratch</Text>
           </View>
         </Pressable>
 
-        {/* Blueprint List */}
+        {/* Slate List */}
         {sorted.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyDiamond}>
@@ -111,7 +111,7 @@ export function HomeScreen({
             </View>
             <Text style={styles.emptyTitle}>Nothing here yet</Text>
             <Text style={styles.emptySub}>
-              Create your first blueprint to get started
+              Create your first slate to get started
             </Text>
           </View>
         ) : (
@@ -125,7 +125,7 @@ export function HomeScreen({
                     styles.card,
                     pressed && styles.cardPressed,
                   ]}
-                  onPress={() => onOpenBlueprint(bp.id)}
+                  onPress={() => onOpenSlate(bp.id)}
                   onLongPress={() => confirmDelete(bp)}
                 >
                   <View style={styles.cardPreview}>
@@ -172,10 +172,10 @@ export function HomeScreen({
           onPress={() => setNameModalVisible(false)}
         >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>New Blueprint</Text>
+            <Text style={styles.modalTitle}>New Slate</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Blueprint name"
+              placeholder="Slate name"
               placeholderTextColor="#555"
               value={newName}
               onChangeText={setNewName}
@@ -218,7 +218,7 @@ export function HomeScreen({
             onPress={() => setDeleteTarget(null)}
           >
             <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-              <Text style={styles.modalTitle}>Delete Blueprint</Text>
+              <Text style={styles.modalTitle}>Delete Slate</Text>
               <Text style={styles.modalMessage}>
                 Delete "{deleteTarget.name}"? This cannot be undone.
               </Text>
@@ -232,7 +232,7 @@ export function HomeScreen({
                 <Pressable
                   style={styles.modalDeleteBtn}
                   onPress={() => {
-                    onDeleteBlueprint(deleteTarget.id);
+                    onDeleteSlate(deleteTarget.id);
                     setDeleteTarget(null);
                   }}
                 >

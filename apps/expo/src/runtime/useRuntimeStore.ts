@@ -6,7 +6,7 @@ export interface RuntimeStore {
   setVariable: (key: string, value: unknown) => void;
   toggleVariable: (key: string) => void;
   resetVariables: (defaults: Record<string, unknown>) => void;
-  initFromBlueprint: (
+  initFromSlate: (
     appVars: Variable[],
     screenVars: Variable[],
     persisted: Record<string, unknown>
@@ -30,7 +30,7 @@ export const useRuntimeStore = create<RuntimeStore>((set) => ({
   resetVariables: (defaults) =>
     set({ variables: { ...defaults } }),
 
-  initFromBlueprint: (appVars, screenVars, persisted) => {
+  initFromSlate: (appVars, screenVars, persisted) => {
     const defaults: Record<string, unknown> = {};
     for (const v of appVars) {
       defaults[v.name] = v.defaultValue;
