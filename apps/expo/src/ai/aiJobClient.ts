@@ -55,28 +55,22 @@ export async function submitJob(params: SubmitJobParams): Promise<string> {
   const jobId = data.id;
   console.log(`[aiJobClient] Job created: ${jobId}`);
 
-  // Fire-and-forget: invoke edge function, but mark job failed if invocation itself errors
+  // Fire-and-forget: invoke edge function
+  // The edge function handles its own error marking in the DB.
+  // We only mark failed here if the invocation itself couldn't reach the function.
   console.log(`[aiJobClient] Invoking edge function process-ai with jobId=${jobId}...`);
   supabase.functions.invoke("process-ai", {
     body: { jobId },
   }).then((res) => {
     console.log(`[aiJobClient] Edge function response:`, JSON.stringify({ status: res.data?.status, error: res.error?.message }));
-    if (res.error) {
-      console.error("[aiJobClient] Edge function returned error:", res.error.message);
-      // Only mark failed if the edge function didn't already handle it
-      supabase.from("ai_jobs").update({
-        status: "failed",
-        error_message: "Server processing failed. Please try again.",
-        completed_at: new Date().toISOString(),
-      }).eq("id", jobId).in("status", ["pending", "running"]).then(() => {});
-    }
   }).catch((err) => {
-    console.error("[aiJobClient] Edge function invoke failed:", err);
+    // Network-level failure — function was never reached
+    console.error("[aiJobClient] Edge function invoke failed (network):", err);
     supabase.from("ai_jobs").update({
       status: "failed",
-      error_message: "Could not reach server. Please try again.",
+      error_message: "Could not reach server. Please check your connection.",
       completed_at: new Date().toISOString(),
-    }).eq("id", jobId).in("status", ["pending", "running"]).then(() => {});
+    }).eq("id", jobId).in("status", ["pending"]).then(() => {});
   });
 
   return jobId;

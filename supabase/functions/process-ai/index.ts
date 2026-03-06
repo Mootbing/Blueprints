@@ -189,26 +189,6 @@ async function processAgentMessage(
   let thinkingSignature: string | undefined;
   let currentMessages = messages;
 
-  // Set up Realtime channel for streaming thinking
-  const channel = sb.channel(`ai-job:${job.id}`);
-  let channelReady = false;
-  try {
-    await new Promise<void>((resolve) => {
-      channel.subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          channelReady = true;
-          resolve();
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          resolve(); // proceed without broadcasting
-        }
-      });
-      // Don't block forever if subscribe hangs
-      setTimeout(() => resolve(), 3000);
-    });
-  } catch {
-    console.warn("[process-ai] Failed to subscribe to broadcast channel, proceeding without streaming");
-  }
-
   for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
     let result;
     if (i === 0) {
@@ -217,16 +197,7 @@ async function processAgentMessage(
         currentMessages,
         maxTokens,
         thinkingBudget,
-        (chunk) => {
-          // Broadcast thinking chunks via Realtime
-          if (channelReady) {
-            channel.send({
-              type: "broadcast",
-              event: "thinking",
-              payload: { chunk },
-            }).catch(() => {});
-          }
-        },
+        undefined,
         undefined,
         model,
       );
@@ -246,8 +217,6 @@ async function processAgentMessage(
       { role: "user" as const, content: "Continue from where you left off. Output ONLY the remaining JSON, no explanation." },
     ];
   }
-
-  try { await channel.unsubscribe(); } catch {}
 
   // Apply changes to slate if actionable
   let applied = false;
