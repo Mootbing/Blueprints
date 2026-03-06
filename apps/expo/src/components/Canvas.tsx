@@ -23,12 +23,13 @@ import { StyleEditorToolbar, type StyleEditingState } from "./ComponentToolbar";
 import * as ImagePicker from "expo-image-picker";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { GroupBreadcrumb } from "./GroupBreadcrumb";
-import { GroupChildCarousel } from "./GroupChildCarousel";
-import { GroupArrangeView } from "./GroupArrangeView";
 import { CanvasMenu } from "./menu/CanvasMenu";
 import { PRESETS } from "./menu/ComponentsPage";
 import { BACKGROUND_ID } from "./BlueprintEditor";
-import { findComponent } from "../utils/componentTree";
+import { findComponent, deepCloneComponent } from "../utils/componentTree";
+import { ContextMenu } from "./ContextMenu";
+import { VersionHistoryModal } from "./menu/VersionHistoryModal";
+import type { HistoryEntry } from "../hooks/useUndoHistory";
 
 /* Draggable floating action sphere – opens the edit menu */
 const LONG_PRESS_DURATION = 500;
@@ -136,6 +137,15 @@ interface CanvasProps {
   currentScreenId?: string;
   initialScreenId?: string;
   screenActions?: ScreenActions;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  entries?: HistoryEntry[];
+  currentId?: string;
+  restoreToId?: (id: string) => void;
+  startBatch?: (description: string) => void;
+  endBatch?: () => void;
 }
 
 export function Canvas({
@@ -161,6 +171,15 @@ export function Canvas({
   currentScreenId,
   initialScreenId,
   screenActions,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  entries,
+  currentId,
+  restoreToId,
+  startBatch,
+  endBatch,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const [canvasDimensions, setCanvasDimensions] = useState({
@@ -186,6 +205,11 @@ export function Canvas({
     if (!snappingLoaded.current) return;
     AsyncStorage.setItem("settings_snapping", String(snappingEnabled));
   }, [snappingEnabled]);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ componentId: string | null; x: number; y: number } | null>(null);
+  const clipboardRef = useRef<Component | null>(null);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
   const [editingInfo, setEditingInfo] = useState<
@@ -232,7 +256,7 @@ export function Canvas({
   // --- Drill-in navigation ---
   const [drillPath, setDrillPath] = useState<string[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
-  const [drillViewMode, setDrillViewMode] = useState<"arrange" | "carousel">("arrange");
+
 
   const currentContainerId = drillPath.length > 0 ? drillPath[drillPath.length - 1] : null;
   const isDrilledIn = drillPath.length > 0;
@@ -249,7 +273,6 @@ export function Canvas({
     setSelectedChildId(null);
     setSelectedComponentId(null);
     setEditingInfo(null);
-    setDrillViewMode("arrange");
   }, []);
 
   const drillInto = useCallback((containerId: string) => {
@@ -451,16 +474,52 @@ export function Canvas({
   const handleDragStart = useCallback((componentId: string) => {
     if (lockedIds.has(componentId)) return;
     setDraggingId(componentId);
-  }, [lockedIds]);
+    startBatch?.("Moved component");
+  }, [lockedIds, startBatch]);
 
   const handleDragEnd = useCallback(() => {
     setDraggingId(null);
     setDragOverTrash(false);
-  }, []);
+    endBatch?.();
+  }, [endBatch]);
 
   const handleDragOverTrashChange = useCallback((isOver: boolean) => {
     setDragOverTrash(isOver);
   }, []);
+
+  // --- Context menu handlers ---
+  const handleLongPress = useCallback((componentId: string, screenX: number, screenY: number) => {
+    if (lockedIds.has(componentId)) return;
+    setContextMenu({ componentId, x: screenX, y: screenY });
+  }, [lockedIds]);
+
+  const handleCopy = useCallback(() => {
+    if (!contextMenu?.componentId || !screen) return;
+    const comp = findComponent(screen.components, contextMenu.componentId);
+    if (comp) clipboardRef.current = comp;
+    setContextMenu(null);
+  }, [contextMenu, screen]);
+
+  const handlePaste = useCallback(() => {
+    if (!clipboardRef.current || !contextMenu) return;
+    const cloned = deepCloneComponent(clipboardRef.current);
+    // Place near the long-press location
+    const normX = Math.min(Math.max(contextMenu.x / Math.max(canvasDimensions.width, 1), 0), 0.9);
+    const normY = Math.min(Math.max(contextMenu.y / Math.max(canvasDimensions.height, 1), 0), 0.9);
+    cloned.layout = { ...cloned.layout, x: normX, y: normY };
+    onAddComponent(cloned);
+    setContextMenu(null);
+  }, [onAddComponent, contextMenu, canvasDimensions]);
+
+  const handleDuplicate = useCallback(() => {
+    if (!contextMenu?.componentId || !screen) return;
+    const comp = findComponent(screen.components, contextMenu.componentId);
+    if (!comp) return;
+    const cloned = deepCloneComponent(comp);
+    cloned.layout = { ...cloned.layout, x: cloned.layout.x + 0.02, y: cloned.layout.y + 0.02 };
+    onAddComponent(cloned);
+    setContextMenu(null);
+  }, [contextMenu, screen, onAddComponent]);
 
   // --- Inline editing handlers ---
   const handleEditStart = useCallback((componentId: string, initialState: TextEditingState) => {
@@ -618,10 +677,17 @@ export function Canvas({
           else if (isDrilledIn && !editingInfo) drillOut();
           else if (editingInfo) handleEditCancel();
         }}
+        onLongPress={(e) => {
+          if (!isEditMode || menuOpen) return;
+          const { pageX, pageY } = e.nativeEvent;
+          setContextMenu({ componentId: null, x: pageX, y: pageY });
+        }}
+        delayLongPress={400}
       />
       {canvasDimensions.width > 0 &&
         screen.components.map((component, index) => {
-          const isDimmed = isDrilledIn;
+          const isTheDrilledContainer = isDrilledIn && component.id === currentContainerId;
+          const isDimmed = isDrilledIn && !isTheDrilledContainer;
           return (
             <SDUIComponent
               key={component.id}
@@ -642,7 +708,11 @@ export function Canvas({
               onGuidesChange={snappingEnabled ? setActiveGuides : undefined}
               onGuidesEnd={snappingEnabled ? clearGuides : undefined}
               editingComponentId={editingInfo?.componentId ?? null}
-              editState={editingInfo != null && editingInfo.mode === "text" && editingInfo.componentId === component.id ? editingInfo.state : null}
+              editState={
+                editingInfo != null && editingInfo.mode === "text"
+                  ? editingInfo.state
+                  : null
+              }
               onEditStart={handleEditStart}
               onEditStateChange={handleEditStateChange}
               onSelect={handleSelect}
@@ -653,6 +723,16 @@ export function Canvas({
               onPickImage={handlePickImage}
               isDimmed={isDimmed}
               locked={lockedIds.has(component.id)}
+              onLongPress={handleLongPress}
+              isDrilledInto={isTheDrilledContainer}
+              selectedChildId={isTheDrilledContainer ? selectedChildId : undefined}
+              onChildSelect={isTheDrilledContainer ? handleChildSelect : undefined}
+              onChildUpdate={isTheDrilledContainer ? onComponentUpdate : undefined}
+              onChildEditStart={isTheDrilledContainer ? handleEditStart : undefined}
+              onChildEditStateChange={isTheDrilledContainer ? handleEditStateChange : undefined}
+              onDrillInto={isTheDrilledContainer ? drillInto : undefined}
+              onChildStyleSelect={isTheDrilledContainer ? handleChildStyleSelect : undefined}
+              onChildPickImage={isTheDrilledContainer ? handlePickImage : undefined}
             />
           );
         })}
@@ -664,63 +744,12 @@ export function Canvas({
         />
       )}
 
-      {/* Group child view when drilled in */}
-      {isDrilledIn && currentContainerComp?.type === 'container' && (
-        drillViewMode === "arrange" ? (
-          <GroupArrangeView
-            key={`arrange-${currentContainerId!}`}
-            container={currentContainerComp}
-            childComponents={currentContainerComp.children ?? []}
-            canvasWidth={canvasDimensions.width}
-            canvasHeight={canvasDimensions.height}
-            editingComponentId={editingInfo?.componentId ?? null}
-            editState={editingInfo?.mode === 'text' ? editingInfo.state : null}
-            onChildSelect={handleChildSelect}
-            onChildEditStart={handleEditStart}
-            onChildEditStateChange={handleEditStateChange}
-            onDrillInto={drillInto}
-            onChildStyleSelect={handleChildStyleSelect}
-            onChildPickImage={handlePickImage}
-            onEditDone={handleEditDone}
-            onLongPress={() => {
-              setMenuOpen(true);
-              fadeAnim.setValue(0);
-              Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-            }}
-            onChildUpdate={onComponentUpdate}
-          />
-        ) : (
-          <GroupChildCarousel
-            key={`carousel-${currentContainerId!}`}
-            childComponents={currentContainerComp.children ?? []}
-            canvasWidth={canvasDimensions.width}
-            canvasHeight={canvasDimensions.height}
-            editingComponentId={editingInfo?.componentId ?? null}
-            editState={editingInfo?.mode === 'text' ? editingInfo.state : null}
-            onChildSelect={handleChildSelect}
-            onChildEditStart={handleEditStart}
-            onChildEditStateChange={handleEditStateChange}
-            onDrillInto={drillInto}
-            onChildStyleSelect={handleChildStyleSelect}
-            onChildPickImage={handlePickImage}
-            onEditDone={handleEditDone}
-            onLongPress={() => {
-              setMenuOpen(true);
-              fadeAnim.setValue(0);
-              Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-            }}
-          />
-        )
-      )}
-
       {/* Breadcrumb bar when drilled in */}
       {isDrilledIn && isEditMode && (
         <GroupBreadcrumb
           drillPath={drillPath}
           components={screen.components}
           onDrillToLevel={drillToLevel}
-          viewMode={drillViewMode}
-          onViewModeChange={setDrillViewMode}
         />
       )}
 
@@ -825,6 +854,32 @@ export function Canvas({
         />
       )}
 
+      {/* Context menu */}
+      {contextMenu && isEditMode && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          hasClipboard={clipboardRef.current != null}
+          hasComponent={contextMenu.componentId != null}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
+          onDuplicate={handleDuplicate}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Version History */}
+      <VersionHistoryModal
+        visible={versionHistoryOpen}
+        entries={entries ?? []}
+        currentId={currentId ?? "__root__"}
+        onRestore={(id) => {
+          restoreToId?.(id);
+          setVersionHistoryOpen(false);
+        }}
+        onClose={() => setVersionHistoryOpen(false)}
+      />
+
       {/* Swipeable menu */}
       <CanvasMenu
         visible={menuOpen}
@@ -851,6 +906,11 @@ export function Canvas({
         currentScreenId={currentScreenId ?? screenId}
         initialScreenId={initialScreenId ?? blueprint.initial_screen_id}
         screenActions={screenActions}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onOpenVersionHistory={() => setVersionHistoryOpen(true)}
       />
     </View>
   );

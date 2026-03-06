@@ -356,10 +356,10 @@ export function TreeView({
                   <Text style={[styles.label, isLocked && styles.dimmed]} numberOfLines={1}>
                     {getComponentLabel(node.component)}
                   </Text>
-                  <Text style={[styles.typeTag, isLocked && styles.dimmed]}>{node.component.type}</Text>
                   {node.component.type === "container" && node.component.children && node.component.children.length > 0 && (
                     <Text style={styles.childCount}>{node.component.children.length}</Text>
                   )}
+                  <Text style={[styles.typeTag, isLocked && styles.dimmed]}>{node.component.type}</Text>
                 </Pressable>
               </View>
             </Animated.View>

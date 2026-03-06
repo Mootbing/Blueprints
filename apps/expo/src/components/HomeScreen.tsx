@@ -8,12 +8,14 @@ import {
   Modal,
   StyleSheet,
   Platform,
-  Alert,
   SafeAreaView,
   StatusBar,
+  Dimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { BlueprintMeta } from "../types";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface HomeScreenProps {
   blueprints: BlueprintMeta[];
@@ -64,60 +66,24 @@ export function HomeScreen({
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.title}>My Blueprints</Text>
-      </View>
 
-      {sorted.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Feather name="layers" size={48} color="#4b5563" />
-          <Text style={styles.emptyTitle}>Create Your First Blueprint</Text>
-          <Text style={styles.emptySubtitle}>
-            Tap the button below to start building
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section */}
+        <View style={styles.hero}>
+          <Text style={styles.heroLabel}>UNTITLED IDE</Text>
+          <Text style={styles.heroTitle}>
+            Your{"\n"}Blueprints
+          </Text>
+          <Text style={styles.heroSub}>
+            Design, prototype, and build interfaces visually.
           </Text>
         </View>
-      ) : (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {sorted.map((bp) => (
-            <Pressable
-              key={bp.id}
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onOpenBlueprint(bp.id)}
-              onLongPress={() => confirmDelete(bp)}
-            >
-              <View style={styles.cardContent}>
-                <View style={styles.cardIcon}>
-                  <Feather name="box" size={20} color="#818cf8" />
-                </View>
-                <View style={styles.cardText}>
-                  <Text style={styles.cardName} numberOfLines={1}>
-                    # {bp.name}
-                  </Text>
-                  <Text style={styles.cardDate}>
-                    {formatDate(bp.createdAt)}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.cardDeleteBtn}
-                  onPress={() => confirmDelete(bp)}
-                  hitSlop={8}
-                >
-                  <Feather name="trash-2" size={16} color="#6b7280" />
-                </Pressable>
-              </View>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
 
-      <View style={styles.bottomBar}>
+        {/* New Blueprint Button */}
         <Pressable
           style={({ pressed }) => [
             styles.createBtn,
@@ -128,10 +94,71 @@ export function HomeScreen({
             setNameModalVisible(true);
           }}
         >
-          <Feather name="plus" size={20} color="#ffffff" />
-          <Text style={styles.createBtnLabel}>New Blueprint</Text>
+          <View style={styles.createBtnIcon}>
+            <Feather name="plus" size={18} color="#000" />
+          </View>
+          <View>
+            <Text style={styles.createBtnLabel}>New Blueprint</Text>
+            <Text style={styles.createBtnHint}>Start from scratch</Text>
+          </View>
         </Pressable>
-      </View>
+
+        {/* Blueprint List */}
+        {sorted.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyDiamond}>
+              <Feather name="layers" size={28} color="#333" />
+            </View>
+            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptySub}>
+              Create your first blueprint to get started
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.listSection}>
+            <Text style={styles.sectionLabel}>RECENT</Text>
+            <View style={styles.listGrid}>
+              {sorted.map((bp, i) => (
+                <Pressable
+                  key={bp.id}
+                  style={({ pressed }) => [
+                    styles.card,
+                    pressed && styles.cardPressed,
+                  ]}
+                  onPress={() => onOpenBlueprint(bp.id)}
+                  onLongPress={() => confirmDelete(bp)}
+                >
+                  <View style={styles.cardPreview}>
+                    <View style={styles.cardPreviewLines}>
+                      <View style={[styles.previewLine, { width: "60%" }]} />
+                      <View style={[styles.previewLine, { width: "80%" }]} />
+                      <View style={[styles.previewLine, { width: "45%" }]} />
+                      <View style={[styles.previewLine, { width: "70%" }]} />
+                    </View>
+                  </View>
+                  <View style={styles.cardBody}>
+                    <Text style={styles.cardName} numberOfLines={1}>
+                      {bp.name}
+                    </Text>
+                    <View style={styles.cardMeta}>
+                      <Text style={styles.cardDate}>
+                        {formatDate(bp.createdAt)}
+                      </Text>
+                      <Pressable
+                        onPress={() => confirmDelete(bp)}
+                        hitSlop={8}
+                        style={styles.cardDeleteBtn}
+                      >
+                        <Feather name="trash-2" size={13} color="#444" />
+                      </Pressable>
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
 
       {/* Name prompt modal */}
       <Modal
@@ -149,7 +176,7 @@ export function HomeScreen({
             <TextInput
               style={styles.modalInput}
               placeholder="Blueprint name"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor="#555"
               value={newName}
               onChangeText={setNewName}
               autoFocus
@@ -220,138 +247,227 @@ export function HomeScreen({
   );
 }
 
+const CARD_GAP = 12;
+const CARD_WIDTH = (SCREEN_WIDTH - 48 - CARD_GAP) / 2;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#000",
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  title: {
-    color: "#ffffff",
-    fontSize: 28,
-    fontWeight: "bold",
-  },
-  emptyState: {
+  scroll: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    paddingBottom: 100,
   },
-  emptyTitle: {
-    color: "#e2e8f0",
-    fontSize: 20,
+  scrollContent: {
+    paddingBottom: 60,
+  },
+
+  // Hero
+  hero: {
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 36,
+  },
+  heroLabel: {
+    color: "#555",
+    fontSize: 11,
     fontWeight: "600",
-    marginTop: 8,
+    letterSpacing: 3,
+    marginBottom: 16,
   },
-  emptySubtitle: {
-    color: "#64748b",
-    fontSize: 14,
+  heroTitle: {
+    color: "#fff",
+    fontSize: 42,
+    fontWeight: "200",
+    lineHeight: 48,
+    letterSpacing: -1,
   },
-  list: {
-    flex: 1,
+  heroSub: {
+    color: "#666",
+    fontSize: 15,
+    fontWeight: "400",
+    marginTop: 12,
+    letterSpacing: 0.2,
   },
-  listContent: {
-    padding: 16,
-    gap: 10,
-  },
-  card: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  cardPressed: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  cardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    gap: 12,
-  },
-  cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: "rgba(99,102,241,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardText: {
-    flex: 1,
-  },
-  cardName: {
-    color: "#e2e8f0",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  cardDate: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  cardDeleteBtn: {
-    padding: 8,
-  },
-  bottomBar: {
-    padding: 16,
-    paddingBottom: 24,
-  },
+
+  // Create Button
   createBtn: {
     flexDirection: "row",
-    backgroundColor: "#6366f1",
-    borderRadius: 12,
-    paddingVertical: 14,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    marginHorizontal: 24,
+    marginBottom: 32,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    backgroundColor: "#111",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    gap: 14,
   },
   createBtnPressed: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#1a1a1a",
+  },
+  createBtnIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
   },
   createBtnLabel: {
-    color: "#ffffff",
-    fontSize: 16,
+    color: "#fff",
+    fontSize: 15,
     fontWeight: "600",
   },
+  createBtnHint: {
+    color: "#555",
+    fontSize: 12,
+    fontWeight: "400",
+    marginTop: 1,
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 80,
+    gap: 10,
+  },
+  emptyDiamond: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    backgroundColor: "#0a0a0a",
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: "45deg" }],
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: "#444",
+    fontSize: 16,
+    fontWeight: "500",
+    letterSpacing: 0.5,
+  },
+  emptySub: {
+    color: "#333",
+    fontSize: 13,
+    fontWeight: "400",
+  },
+
+  // List Section
+  listSection: {
+    paddingHorizontal: 24,
+  },
+  sectionLabel: {
+    color: "#444",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 2.5,
+    marginBottom: 16,
+  },
+  listGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: CARD_GAP,
+  },
+
+  // Cards
+  card: {
+    width: CARD_WIDTH,
+    backgroundColor: "#0a0a0a",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    overflow: "hidden",
+  },
+  cardPressed: {
+    backgroundColor: "#111",
+    borderColor: "#333",
+  },
+  cardPreview: {
+    height: 80,
+    backgroundColor: "#080808",
+    padding: 14,
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#141414",
+  },
+  cardPreviewLines: {
+    gap: 6,
+  },
+  previewLine: {
+    height: 3,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 2,
+  },
+  cardBody: {
+    padding: 14,
+  },
+  cardName: {
+    color: "#ccc",
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  cardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  cardDate: {
+    color: "#333",
+    fontSize: 11,
+    fontWeight: "500",
+    fontVariant: ["tabular-nums"],
+    letterSpacing: 0.5,
+  },
+  cardDeleteBtn: {
+    padding: 4,
+  },
+
+  // Modals
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
   },
   modalCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: "#111",
     borderRadius: 16,
     padding: 24,
     width: "100%",
     maxWidth: 360,
+    borderWidth: 1,
+    borderColor: "#222",
   },
   modalTitle: {
-    color: "#e2e8f0",
+    color: "#fff",
     fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 16,
+    fontWeight: "300",
+    letterSpacing: 0.5,
+    marginBottom: 20,
   },
   modalMessage: {
-    color: "#94a3b8",
+    color: "#777",
     fontSize: 14,
     marginBottom: 20,
     lineHeight: 20,
   },
   modalInput: {
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "#000",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 8,
-    color: "#e2e8f0",
-    fontSize: 16,
+    borderColor: "#222",
+    borderRadius: 10,
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "400",
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 20,
@@ -363,40 +479,40 @@ const styles = StyleSheet.create({
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    backgroundColor: "#1a1a1a",
     alignItems: "center",
   },
   modalCancelLabel: {
-    color: "#94a3b8",
-    fontSize: 15,
+    color: "#666",
+    fontSize: 14,
     fontWeight: "600",
   },
   modalCreateBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: "#6366f1",
+    borderRadius: 10,
+    backgroundColor: "#fff",
     alignItems: "center",
   },
   modalCreateBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.3,
   },
   modalCreateLabel: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
+    color: "#000",
+    fontSize: 14,
+    fontWeight: "700",
   },
   modalDeleteBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    backgroundColor: "#dc2626",
     alignItems: "center",
   },
   modalDeleteLabel: {
-    color: "#ffffff",
-    fontSize: 15,
+    color: "#fff",
+    fontSize: 14,
     fontWeight: "600",
   },
 });

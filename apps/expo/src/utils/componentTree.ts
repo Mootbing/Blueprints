@@ -1,4 +1,13 @@
 import type { Component } from "../types";
+import { uuid } from "./uuid";
+
+export function deepCloneComponent(comp: Component): Component {
+  const cloned = { ...comp, id: uuid() };
+  if (cloned.type === "container" && cloned.children) {
+    cloned.children = cloned.children.map(deepCloneComponent);
+  }
+  return cloned;
+}
 
 export function deepUpdateComponent(
   components: Component[],

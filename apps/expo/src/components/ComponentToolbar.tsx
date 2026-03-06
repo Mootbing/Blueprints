@@ -409,7 +409,11 @@ export function StyleEditorToolbar({
         )}
 
         {/* Icon Toolbar */}
-        <View style={styles.iconToolbar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.iconToolbar}
+        >
           {state.hasBorderRadius && (
             <Pressable
               style={[styles.iconButton, sliderTarget === "borderRadius" && styles.iconButtonActive]}
@@ -505,7 +509,7 @@ export function StyleEditorToolbar({
               <Feather name="code" size={18} color="#FFFFFF" />
             </Pressable>
           )}
-        </View>
+        </ScrollView>
       </View>
 
       <ColorPickerModal
@@ -641,11 +645,10 @@ const styles = StyleSheet.create({
   },
   iconToolbar: {
     flexDirection: "row",
-    justifyContent: "space-around",
     alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 16,
-    gap: 8,
+    gap: 12,
   },
   iconButton: {
     width: 44,

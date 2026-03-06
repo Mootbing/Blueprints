@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { View, Pressable, Text, StyleSheet, Platform, Animated as RNAnimated } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import type { Component } from "../../types";
 import { uuid } from "../../utils/uuid";
 import { TreeView } from "./TreeView";
@@ -356,6 +357,11 @@ interface ComponentsPageProps {
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onOpenVersionHistory?: () => void;
 }
 
 export function ComponentsPage({
@@ -367,9 +373,14 @@ export function ComponentsPage({
   lockedIds,
   onToggleLock,
   onMoveComponent,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onOpenVersionHistory,
 }: ComponentsPageProps) {
-  const [showComponents, setShowComponents] = useState(false);
-  const fadeAnim = useRef(new RNAnimated.Value(0)).current;
+  const [showComponents, setShowComponents] = useState(true);
+  const fadeAnim = useRef(new RNAnimated.Value(1)).current;
 
   const toggleComponents = () => {
     if (showComponents) {
@@ -391,6 +402,43 @@ export function ComponentsPage({
 
   return (
     <View style={[styles.page, { width }]}>
+      {/* Undo / Redo / History Row */}
+      <View style={styles.undoRow}>
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && canUndo && styles.undoBtnPressed]}
+          onPress={onUndo}
+          disabled={!canUndo}
+        >
+          <Feather
+            name="corner-up-left"
+            size={18}
+            color={canUndo ? "#818cf8" : "rgba(255,255,255,0.2)"}
+          />
+          <Text style={[styles.undoLabel, !canUndo && styles.undoLabelDisabled]}>Undo</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && canRedo && styles.undoBtnPressed]}
+          onPress={onRedo}
+          disabled={!canRedo}
+        >
+          <Feather
+            name="corner-up-right"
+            size={18}
+            color={canRedo ? "#818cf8" : "rgba(255,255,255,0.2)"}
+          />
+          <Text style={[styles.undoLabel, !canRedo && styles.undoLabelDisabled]}>Redo</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+          onPress={onOpenVersionHistory}
+        >
+          <Feather name="clock" size={18} color="#818cf8" />
+          <Text style={styles.undoLabel}>History</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.sectionDivider} />
+
       {/* Add Component Row */}
       <Pressable
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -438,6 +486,32 @@ export function ComponentsPage({
 const styles = StyleSheet.create({
   page: {
     paddingTop: 8,
+  },
+  undoRow: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  undoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  undoBtnPressed: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  undoLabel: {
+    color: "#818cf8",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  undoLabelDisabled: {
+    color: "rgba(255,255,255,0.2)",
   },
   row: {
     flexDirection: "row",

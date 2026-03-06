@@ -46,6 +46,7 @@ interface SDUIComponentProps {
   onDragOverTrashChange?: (isOver: boolean) => void;
   onDeleteComponent?: (componentId: string) => void;
   onPickImage?: (componentId: string) => void;
+  onLongPress?: (id: string, screenX: number, screenY: number) => void;
   isDimmed?: boolean;
   locked?: boolean;
   // Drill-in props (for container components)
@@ -92,6 +93,7 @@ export function SDUIComponent({
   onDragOverTrashChange,
   onDeleteComponent,
   onPickImage,
+  onLongPress,
   isDimmed,
   locked,
   isDrilledInto,
@@ -113,6 +115,10 @@ export function SDUIComponent({
     onInteract?.();
     onSelect?.(component.id);
   }, [onInteract, onSelect, component.id]);
+
+  const fireLongPress = useCallback((absX: number, absY: number) => {
+    onLongPress?.(component.id, absX, absY);
+  }, [onLongPress, component.id]);
 
   const consumeEditTap = useCallback(() => {
     setEditTapFired(false);
@@ -162,10 +168,11 @@ export function SDUIComponent({
   const baseH = useDerivedValue(() => component.layout.height * canvasHeight);
   const baseRotation = useDerivedValue(() => component.layout.rotation ?? 0);
 
-  // Animate to center when editing, back when done
+  // Animate to center when editing or drilled into, back when done
   // Account for keyboard height so the component centers in the visible area
+  const shouldCenter = isComponentEditing || !!isDrilledInto;
   useEffect(() => {
-    if (isComponentEditing) {
+    if (shouldCenter) {
       const currentX = component.layout.x * canvasWidth;
       const currentY = component.layout.y * canvasHeight;
       const w = component.layout.width * canvasWidth;
@@ -179,7 +186,7 @@ export function SDUIComponent({
       editOffsetX.value = withTiming(0, { duration: 300 });
       editOffsetY.value = withTiming(0, { duration: 300 });
     }
-  }, [isComponentEditing, canvasWidth, canvasHeight, keyboardHeight, component.layout, editOffsetX, editOffsetY]);
+  }, [shouldCenter, canvasWidth, canvasHeight, keyboardHeight, component.layout, editOffsetX, editOffsetY]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const tScale = interpolate(trashProgress.value, [0, 1], [1, 0.1]);
@@ -386,13 +393,24 @@ export function SDUIComponent({
         runOnJS(fireEditTap)();
       });
 
+    const longPressGesture = Gesture.LongPress()
+      .enabled(!gesturesDisabled)
+      .minDuration(500)
+      .onEnd((e, success) => {
+        if (success) {
+          runOnJS(fireLongPress)(e.absoluteX, e.absoluteY);
+        }
+      });
+
+    const tapOrLongPress = Gesture.Exclusive(longPressGesture, tapGesture);
+
     return Gesture.Simultaneous(
-      tapGesture,
+      tapOrLongPress,
       panGesture,
       pinchGesture,
       rotationGesture
     );
-  }, [gesturesDisabled, commitLayout, fireEditTap, notifyDragStart, notifyDragEnd, notifyDragOverTrash, deleteThisComponent, translateX, translateY, scale, rotation, savedTranslateX, savedTranslateY, savedScale, savedRotation, activeGestures, panStarted, pinchStarted, rotationStarted, trashProgress, isOverTrashSV, siblingRects, componentIndex, onGuidesChange, onGuidesEnd, canvasWidth, canvasHeight, baseX, baseY, baseW, baseH]);
+  }, [gesturesDisabled, commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragOverTrash, deleteThisComponent, translateX, translateY, scale, rotation, savedTranslateX, savedTranslateY, savedScale, savedRotation, activeGestures, panStarted, pinchStarted, rotationStarted, trashProgress, isOverTrashSV, siblingRects, componentIndex, onGuidesChange, onGuidesEnd, canvasWidth, canvasHeight, baseX, baseY, baseW, baseH]);
 
   const handleEditStart = useCallback((initialState: TextEditingState) => {
     onEditStart?.(component.id, initialState);

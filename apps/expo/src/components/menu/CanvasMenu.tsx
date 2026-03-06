@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Pressable,
@@ -47,6 +47,11 @@ interface CanvasMenuProps {
   currentScreenId: string;
   initialScreenId: string;
   screenActions?: ScreenActions;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onOpenVersionHistory?: () => void;
 }
 
 export function CanvasMenu({
@@ -74,11 +79,27 @@ export function CanvasMenu({
   currentScreenId,
   initialScreenId,
   screenActions,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onOpenVersionHistory,
 }: CanvasMenuProps) {
   const [pageIndex, setPageIndex] = useState(INITIAL_PAGE);
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
   const didScrollToInitial = useRef(false);
+
+  // Reset to Edit page every time the menu opens
+  useEffect(() => {
+    if (visible) {
+      setPageIndex(INITIAL_PAGE);
+      didScrollToInitial.current = false;
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: INITIAL_PAGE * screenWidth, animated: false });
+      }, 0);
+    }
+  }, [visible, screenWidth]);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -169,6 +190,14 @@ export function CanvasMenu({
               lockedIds={lockedIds}
               onToggleLock={onToggleLock}
               onMoveComponent={onMoveComponent}
+              onUndo={onUndo}
+              onRedo={onRedo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onOpenVersionHistory={() => {
+                onClose();
+                onOpenVersionHistory?.();
+              }}
             />
           </ScrollView>
 

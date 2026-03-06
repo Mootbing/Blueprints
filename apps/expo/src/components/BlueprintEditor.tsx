@@ -9,6 +9,7 @@ import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen, Va
 import { useRuntimeStore } from "../runtime";
 import { uuid } from "../utils/uuid";
 import { deepUpdateComponent, deepDeleteComponent } from "../utils/componentTree";
+import { useUndoHistory } from "../hooks/useUndoHistory";
 
 const SCREEN_ID = "00000000-0000-0000-0000-000000000001";
 const TIMER_SCREEN_ID = "00000000-0000-0000-0000-000000000002";
@@ -478,7 +479,20 @@ export function BlueprintEditor({
   onCloseBlueprint,
   onDeleteBlueprint,
 }: BlueprintEditorProps) {
-  const [blueprint, setBlueprint] = useState(defaultBlueprint);
+  const {
+    blueprint,
+    setBlueprint,
+    setBlueprintRaw,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    entries,
+    currentId,
+    restoreToId,
+    startBatch,
+    endBatch,
+  } = useUndoHistory(defaultBlueprint);
   const [isEditMode, setIsEditMode] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [currentScreenId, setCurrentScreenId] = useState(SCREEN_ID);
@@ -505,7 +519,7 @@ export function BlueprintEditor({
         ]);
 
         const loadedBp = bp ?? defaultBlueprint;
-        setBlueprint(loadedBp);
+        setBlueprintRaw(loadedBp);
         setCurrentScreenId(loadedBp.initial_screen_id);
 
         // Always start in edit mode
@@ -602,7 +616,7 @@ export function BlueprintEditor({
   }, [blueprintId, onCloseBlueprint]);
 
   const updateScreenComponents = useCallback(
-    (fn: (components: Component[]) => Component[]) => {
+    (fn: (components: Component[]) => Component[], description = "Updated components") => {
       setBlueprint((prev) => {
         const sid = currentScreenIdRef.current;
         const screen = prev.screens[sid];
@@ -614,21 +628,21 @@ export function BlueprintEditor({
             [sid]: { ...screen, components: fn(screen.components) },
           },
         };
-      });
+      }, description);
     },
-    []
+    [setBlueprint]
   );
 
   const handleAddComponent = useCallback(
     (component: Component) => {
-      updateScreenComponents((components) => [...components, component]);
+      updateScreenComponents((components) => [...components, component], `Added ${component.type}`);
     },
     [updateScreenComponents]
   );
 
   const handleDeleteComponent = useCallback(
     (id: string) => {
-      updateScreenComponents((components) => deepDeleteComponent(components, id));
+      updateScreenComponents((components) => deepDeleteComponent(components, id), "Deleted component");
     },
     [updateScreenComponents]
   );
@@ -638,7 +652,8 @@ export function BlueprintEditor({
       updateScreenComponents((components) =>
         deepUpdateComponent(components, id, (c) =>
           c.type === "text" ? { ...c, content } : c
-        )
+        ),
+        "Edited text"
       );
     },
     [updateScreenComponents]
@@ -647,7 +662,8 @@ export function BlueprintEditor({
   const handleStyleChange = useCallback(
     (id: string, updates: ComponentStyleUpdates) => {
       updateScreenComponents((components) =>
-        deepUpdateComponent(components, id, (c) => ({ ...c, ...updates }))
+        deepUpdateComponent(components, id, (c) => ({ ...c, ...updates })),
+        "Changed style"
       );
     },
     [updateScreenComponents]
@@ -656,7 +672,8 @@ export function BlueprintEditor({
   const handleComponentUpdate = useCallback(
     (id: string, layout: Layout) => {
       updateScreenComponents((components) =>
-        deepUpdateComponent(components, id, (c) => ({ ...c, layout }))
+        deepUpdateComponent(components, id, (c) => ({ ...c, layout })),
+        "Moved component"
       );
     },
     [updateScreenComponents]
@@ -665,7 +682,8 @@ export function BlueprintEditor({
   const handleComponentReplace = useCallback(
     (id: string, replacement: Component) => {
       updateScreenComponents((components) =>
-        deepUpdateComponent(components, id, () => replacement)
+        deepUpdateComponent(components, id, () => replacement),
+        "Replaced component"
       );
     },
     [updateScreenComponents]
@@ -677,7 +695,8 @@ export function BlueprintEditor({
         deepUpdateComponent(components, parentId, (c) => {
           if (c.type !== "container") return c;
           return { ...c, children: [...(c.children ?? []), child] };
-        })
+        }),
+        "Added child"
       );
     },
     [updateScreenComponents]
@@ -694,9 +713,9 @@ export function BlueprintEditor({
             [sid]: updatedScreen,
           },
         };
-      });
+      }, "Updated screen");
     },
-    []
+    [setBlueprint]
   );
 
   const handleResetAndBuild = useCallback(() => {
@@ -709,9 +728,9 @@ export function BlueprintEditor({
           [sid]: { ...prev.screens[sid], components: [makeBackgroundShape("#ffffff")] },
         },
       };
-    });
+    }, "Reset canvas");
     setIsEditMode(true);
-  }, []);
+  }, [setBlueprint]);
 
   // --- Screen navigation (preview mode) ---
   const handleNavigate = useCallback((targetScreenId: string) => {
@@ -751,10 +770,10 @@ export function BlueprintEditor({
     setBlueprint((prev) => ({
       ...prev,
       screens: { ...prev.screens, [newId]: newScreen },
-    }));
+    }), "Added screen");
     setCurrentScreenId(newId);
     setNavStack([]);
-  }, []);
+  }, [setBlueprint]);
 
   const handleDeleteScreen = useCallback((screenId: string) => {
     setBlueprint((prev) => {
@@ -766,14 +785,14 @@ export function BlueprintEditor({
         ? remainingIds[0]
         : prev.initial_screen_id;
       return { ...prev, screens: rest, initial_screen_id: newInitial };
-    });
+    }, "Deleted screen");
     if (currentScreenIdRef.current === screenId) {
       const bp = blueprintRef.current;
       const ids = Object.keys(bp.screens).filter((id) => id !== screenId);
       setCurrentScreenId(ids[0] ?? bp.initial_screen_id);
     }
     setNavStack([]);
-  }, []);
+  }, [setBlueprint]);
 
   const handleRenameScreen = useCallback((screenId: string, name: string) => {
     setBlueprint((prev) => {
@@ -783,12 +802,12 @@ export function BlueprintEditor({
         ...prev,
         screens: { ...prev.screens, [screenId]: { ...screen, name } },
       };
-    });
-  }, []);
+    }, "Renamed screen");
+  }, [setBlueprint]);
 
   const handleSetInitialScreen = useCallback((screenId: string) => {
-    setBlueprint((prev) => ({ ...prev, initial_screen_id: screenId }));
-  }, []);
+    setBlueprint((prev) => ({ ...prev, initial_screen_id: screenId }), "Set initial screen");
+  }, [setBlueprint]);
 
   if (!loaded) return null;
 
@@ -814,8 +833,22 @@ export function BlueprintEditor({
         onDeleteComponent={handleDeleteComponent}
         onComponentReplace={handleComponentReplace}
         onAddChildComponent={handleAddChildComponent}
-        onBlueprintChange={setBlueprint}
+        onBlueprintChange={(updater) => {
+          setBlueprint(
+            typeof updater === "function" ? updater : () => updater,
+            "Updated blueprint"
+          );
+        }}
         currentScreenId={currentScreenId}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        entries={entries}
+        currentId={currentId}
+        restoreToId={restoreToId}
+        startBatch={startBatch}
+        endBatch={endBatch}
         initialScreenId={blueprint.initial_screen_id}
         screenActions={{
           onSwitchScreen: handleSwitchScreen,
