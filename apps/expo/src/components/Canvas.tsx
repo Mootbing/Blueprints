@@ -225,7 +225,7 @@ interface CanvasProps {
   onDeleteComponent?: (id: string) => void;
   onComponentReplace?: (id: string, replacement: Component) => void;
   onAddChildComponent?: (parentId: string, child: Component) => void;
-  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate), description?: string) => void;
   currentScreenId?: string;
   initialScreenId?: string;
   screenActions?: ScreenActions;
@@ -245,6 +245,8 @@ interface CanvasProps {
   storage?: import("../storage/StorageProvider").StorageProvider;
   // Preview-only mode (viewer share link)
   isPreviewOnly?: boolean;
+  // Current user ID for "You" badge in history
+  currentUserId?: string;
 }
 
 export function Canvas(props: CanvasProps) {
@@ -294,6 +296,7 @@ function CanvasInner({
   slateId,
   storage: storageProp,
   isPreviewOnly,
+  currentUserId,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const store = useCanvasStoreApi();
@@ -478,7 +481,7 @@ function CanvasInner({
             [screenId]: { ...scr, components: newComponents },
           },
         };
-      });
+      }, "Reordered component");
     },
     [onSlateChange, screenId],
   );
@@ -578,7 +581,7 @@ function CanvasInner({
             [screenId]: { ...scr, components: addChild(newComponents) },
           },
         };
-      });
+      }, "Reparented component");
     },
     [onSlateChange, screenId],
   );
@@ -796,7 +799,7 @@ function CanvasInner({
           ...prev,
           screens: { ...prev.screens, [screenId]: { ...scr, components: finalComponents } },
         };
-      });
+      }, "Moved component into container");
     }
     setDraggingId(null);
     setDragOverTrash(false);
@@ -1519,6 +1522,7 @@ function CanvasInner({
           setVersionHistoryOpen(false);
           openMenu();
         }}
+        currentUserId={currentUserId}
       />
 
       {/* Agent Pager */}

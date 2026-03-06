@@ -1133,10 +1133,12 @@ function TimelineRow({
   item,
   isSelected,
   onSelect,
+  currentUserId,
 }: {
   item: DisplayItem;
   isSelected: boolean;
   onSelect: () => void;
+  currentUserId?: string;
 }) {
   const isHead = item.status === "head";
   const isFuture = item.status === "future";
@@ -1211,6 +1213,11 @@ function TimelineRow({
           {isHead && (
             <View style={tl.headBadge}>
               <Text style={tl.headBadgeText}>HEAD</Text>
+            </View>
+          )}
+          {currentUserId && item.entry.authorId === currentUserId && (
+            <View style={tl.youBadge}>
+              <Text style={tl.youBadgeText}>You</Text>
             </View>
           )}
           {item.branchCount > 0 && (
@@ -1311,6 +1318,18 @@ const tl = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
+  youBadge: {
+    backgroundColor: "rgba(99,102,241,0.15)",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  youBadgeText: {
+    color: "#818cf8",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
   branchBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1357,6 +1376,7 @@ interface VersionHistoryModalProps {
   currentId: string;
   onRestore: (id: string) => void;
   onClose: () => void;
+  currentUserId?: string;
 }
 
 export function VersionHistoryModal({
@@ -1365,6 +1385,7 @@ export function VersionHistoryModal({
   currentId,
   onRestore,
   onClose,
+  currentUserId,
 }: VersionHistoryModalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -1436,6 +1457,7 @@ export function VersionHistoryModal({
                     selectedId === item.entry.id ? null : item.entry.id
                   )
                 }
+                currentUserId={currentUserId}
               />
             ))}
             <View style={{ height: 20 }} />

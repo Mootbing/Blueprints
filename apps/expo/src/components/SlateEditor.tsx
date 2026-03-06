@@ -11,6 +11,7 @@ import { useRuntimeStore } from "../runtime";
 import { uuid } from "../utils/uuid";
 import { deepUpdateComponent, deepDeleteComponent } from "../utils/componentTree";
 import { useUndoHistory } from "../hooks/useUndoHistory";
+import { getSupabaseClient } from "../storage/supabaseClient";
 
 const SCREEN_ID = "00000000-0000-0000-0000-000000000001";
 const PLAYGROUND_SCREEN_ID = "00000000-0000-0000-0000-000000000002";
@@ -957,6 +958,8 @@ export function SlateEditor({
   storage,
   shareRole,
 }: SlateEditorProps) {
+  const userIdRef = useRef<string | null>(null);
+
   const {
     slate,
     setSlate,
@@ -975,7 +978,7 @@ export function SlateEditor({
     getRedoMap,
     createBranch,
     addBranchEntry,
-  } = useUndoHistory(defaultSlate);
+  } = useUndoHistory(defaultSlate, userIdRef.current ?? undefined);
   const isPreviewOnly = shareRole === 'viewer';
   const [isEditMode, setIsEditMode] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -1008,6 +1011,12 @@ export function SlateEditor({
   useEffect(() => {
     (async () => {
       try {
+        // Fetch user ID for history author tracking
+        try {
+          const { data: { user } } = await getSupabaseClient().auth.getUser();
+          if (user?.id) userIdRef.current = user.id;
+        } catch {}
+
         const [bp, editMode, persistedJson, savedHistory] = await Promise.all([
           storage.loadSlate(slateId),
           AsyncStorage.getItem("settings_editMode"),
@@ -1382,10 +1391,10 @@ export function SlateEditor({
         onDeleteComponent={handleDeleteComponent}
         onComponentReplace={handleComponentReplace}
         onAddChildComponent={handleAddChildComponent}
-        onSlateChange={(updater) => {
+        onSlateChange={(updater, description) => {
           setSlate(
             typeof updater === "function" ? updater : () => updater,
-            "Updated slate"
+            description || "Updated slate"
           );
         }}
         currentScreenId={currentScreenId}
@@ -1410,6 +1419,7 @@ export function SlateEditor({
         }}
         slateId={slateId}
         storage={storage}
+        currentUserId={userIdRef.current ?? undefined}
       />
     </GestureHandlerRootView>
   );

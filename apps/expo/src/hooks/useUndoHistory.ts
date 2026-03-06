@@ -9,6 +9,7 @@ export interface HistoryEntry {
   timestamp: number;
   description: string;
   parentId: string;
+  authorId?: string;
 }
 
 let _idCounter = 0;
@@ -16,7 +17,7 @@ function historyId(): string {
   return `h_${Date.now()}_${++_idCounter}`;
 }
 
-export function useUndoHistory(initialSlate: AppSlate) {
+export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
   const [slate, setSlateState] = useState(initialSlate);
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -67,6 +68,7 @@ export function useUndoHistory(initialSlate: AppSlate) {
               timestamp: Date.now(),
               description,
               parentId: currentIdRef.current,
+              authorId,
             },
           ];
           currentIdRef.current = newId;
@@ -180,6 +182,7 @@ export function useUndoHistory(initialSlate: AppSlate) {
           timestamp: Date.now(),
           description,
           parentId: currentIdRef.current,
+          authorId,
         },
       ];
       currentIdRef.current = newId;
@@ -218,6 +221,7 @@ export function useUndoHistory(initialSlate: AppSlate) {
           timestamp: Date.now(),
           description,
           parentId: currentIdRef.current,
+          authorId,
         },
       ];
       currentIdRef.current = newId;
@@ -242,6 +246,7 @@ export function useUndoHistory(initialSlate: AppSlate) {
           timestamp: Date.now(),
           description,
           parentId: currentIdRef.current,
+          authorId,
         },
       ];
       bump();

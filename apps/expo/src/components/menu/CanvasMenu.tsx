@@ -71,7 +71,7 @@ interface CanvasMenuProps {
   onScreenUpdate: (screen: Screen) => void;
   onDeleteComponent: (id: string) => void;
   onTreeSelect: (id: string) => void;
-  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate), description?: string) => void;
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;

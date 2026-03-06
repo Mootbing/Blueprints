@@ -68,7 +68,7 @@ interface VariablesPageProps {
   width: number;
   slate: AppSlate;
   screenId: string;
-  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate), description?: string) => void;
 }
 
 export function VariablesPage({ width, slate, screenId, onSlateChange }: VariablesPageProps) {
@@ -129,7 +129,7 @@ function VariablesSection({
   const screenVars = slate.screens[screenId]?.variables ?? [];
   const variables = scope === "app" ? appVars : screenVars;
 
-  const updateVariables = useCallback((newVars: Variable[]) => {
+  const updateVariables = useCallback((newVars: Variable[], description?: string) => {
     if (!onSlateChange) return;
     onSlateChange((prev: AppSlate) => {
       if (scope === "app") {
@@ -144,17 +144,18 @@ function VariablesSection({
           [screenId]: { ...screen, variables: newVars },
         },
       };
-    });
+    }, description);
   }, [onSlateChange, scope, screenId]);
 
   const handleAdd = useCallback(() => {
+    const varName = `var${variables.length + 1}`;
     const newVar: Variable = {
       id: uuid(),
-      name: `var${variables.length + 1}`,
+      name: varName,
       type: "string",
       defaultValue: "",
     };
-    updateVariables([...variables, newVar]);
+    updateVariables([...variables, newVar], `Added ${scope} variable '${varName}'`);
     setEditingId(newVar.id);
     setEditName(newVar.name);
     setEditType(newVar.type);
@@ -178,14 +179,15 @@ function VariablesSection({
         ? { ...v, name: editName, type: editType, defaultValue: parsed, persist: editPersist || undefined }
         : v
     );
-    updateVariables(updated);
+    updateVariables(updated, `Edited ${scope} variable '${editName}'`);
     setEditingId(null);
-  }, [editingId, editName, editType, editDefault, editPersist, variables, updateVariables]);
+  }, [editingId, editName, editType, editDefault, editPersist, variables, updateVariables, scope]);
 
   const handleDelete = useCallback((id: string) => {
-    updateVariables(variables.filter((v) => v.id !== id));
+    const varName = variables.find((v) => v.id === id)?.name ?? "unknown";
+    updateVariables(variables.filter((v) => v.id !== id), `Deleted ${scope} variable '${varName}'`);
     if (editingId === id) setEditingId(null);
-  }, [variables, updateVariables, editingId]);
+  }, [variables, updateVariables, editingId, scope]);
 
   return (
     <>
@@ -292,7 +294,7 @@ function LogicSection({
   const components = screen?.components ?? [];
   const flatComponents = useMemo(() => flattenComponentTree(components, 0, null, "", false), [components]);
 
-  const updateComponent = useCallback((id: string, updater: (c: Component) => Component) => {
+  const updateComponent = useCallback((id: string, updater: (c: Component) => Component, description?: string) => {
     if (!onSlateChange) return;
     onSlateChange((prev: AppSlate) => {
       const scr = prev.screens[screenId];
@@ -304,7 +306,7 @@ function LogicSection({
           [screenId]: { ...scr, components: deepUpdateComponent(scr.components, id, updater) },
         },
       };
-    });
+    }, description);
   }, [onSlateChange, screenId]);
 
   if (selectedCompId) {
@@ -319,7 +321,7 @@ function LogicSection({
         slate={slate}
         screenId={screenId}
         onBack={() => setSelectedCompId(null)}
-        updateComponent={(updater) => updateComponent(selectedCompId, updater)}
+        updateComponent={(updater, description) => updateComponent(selectedCompId, updater, description)}
       />
     );
   }
@@ -366,7 +368,7 @@ function ComponentLogicDetail({
   slate: AppSlate;
   screenId: string;
   onBack: () => void;
-  updateComponent: (updater: (c: Component) => Component) => void;
+  updateComponent: (updater: (c: Component) => Component, description?: string) => void;
 }) {
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
   const [addingActionFor, setAddingActionFor] = useState<string | null>(null);
@@ -383,13 +385,15 @@ function ComponentLogicDetail({
   const toggleEvent = (ev: string) =>
     setExpandedEvents((prev) => ({ ...prev, [ev]: !prev[ev] }));
 
+  const compLabel = getComponentLabel(component, { includeType: true });
+
   // --- Actions CRUD ---
   const addAction = (event: string, action: Action) => {
     updateComponent((c) => {
       const actions: Record<string, Action[]> = { ...(c.actions ?? {}) };
       actions[event] = [...(actions[event] ?? []), action];
       return { ...c, actions } as Component;
-    });
+    }, `Added ${event} action on ${compLabel}`);
     setAddingActionFor(null);
   };
 
@@ -405,7 +409,7 @@ function ComponentLogicDetail({
       }
       const cleaned = Object.keys(actions).length > 0 ? actions : undefined;
       return { ...c, actions: cleaned } as Component;
-    });
+    }, `Removed ${event} action from ${compLabel}`);
   };
 
   const updateAction = (event: string, index: number, action: Action) => {
@@ -415,7 +419,7 @@ function ComponentLogicDetail({
       arr[index] = action;
       actions[event] = arr;
       return { ...c, actions } as Component;
-    });
+    }, `Updated ${event} action on ${compLabel}`);
     setEditingAction(null);
   };
 
@@ -424,7 +428,7 @@ function ComponentLogicDetail({
     updateComponent((c) => {
       const bindings = { ...(c.bindings ?? {}), [prop]: expr };
       return { ...c, bindings } as Component;
-    });
+    }, `Bound '${prop}' on ${compLabel}`);
     setAddingBinding(false);
   };
 
@@ -434,12 +438,13 @@ function ComponentLogicDetail({
       delete bindings[prop];
       const cleaned = Object.keys(bindings).length > 0 ? bindings : undefined;
       return { ...c, bindings: cleaned } as Component;
-    });
+    }, `Removed '${prop}' binding from ${compLabel}`);
   };
 
   // --- Visibility ---
   const setVisibleWhen = (expr: string | undefined) => {
-    updateComponent((c) => ({ ...c, visibleWhen: expr || undefined } as Component));
+    updateComponent((c) => ({ ...c, visibleWhen: expr || undefined } as Component),
+      expr ? `Set visibility on ${compLabel}` : `Cleared visibility on ${compLabel}`);
     setEditingVisibility(false);
   };
 

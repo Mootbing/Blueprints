@@ -362,7 +362,7 @@ interface SettingsPageProps {
   slateId?: string;
   slateName?: string;
   onRenameSlate?: (name: string) => void;
-  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
+  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate), description?: string) => void;
   storage?: StorageProvider;
 }
 
@@ -411,7 +411,7 @@ export function SettingsPage({
       onSlateChange?.((prev) => ({
         ...prev,
         theme: { ...prev.theme, ...patch },
-      }));
+      }), "Updated theme");
     },
     [onSlateChange],
   );
@@ -546,7 +546,7 @@ export function SettingsPage({
           crossAlert("Import Failed", "Invalid slate format:\n" + parsed.error.issues.map((i) => i.message).join(", "));
           return;
         }
-        onSlateChange?.(parsed.data);
+        onSlateChange?.(parsed.data, "Imported project from JSON");
 
         // Restore project data if available
         if (slateId && wrapper && wrapper._exportType === "project") {
@@ -716,7 +716,7 @@ export function SettingsPage({
                   onSlateChange?.((prev) => {
                     const { theme: _, ...rest } = prev;
                     return rest as typeof prev;
-                  });
+                  }, "Reset theme to defaults");
                 }},
               ]);
             }}
