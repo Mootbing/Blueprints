@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import type { Component, Layout } from "../types";
 import { rendererRegistry } from "./renderers";
-import type { TextEditingState } from "./TextEditorModal";
+import type { TextEditingState } from "./EditorToolbar";
 
 function clamp(value: number, min: number, max: number) {
   "worklet";

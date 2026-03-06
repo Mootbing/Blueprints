@@ -58,6 +58,17 @@ export interface SlateMeta {
   id: string;
   name: string;
   createdAt: number;
+  syncStatus?: 'synced' | 'dirty' | 'conflict' | 'local-only';
+  remoteVersion?: number;
+  lastSyncedAt?: number;
+  updatedAt?: number;
+}
+
+export interface ShareInfo {
+  shareCode: string;
+  role: 'viewer' | 'editor';
+  isActive: boolean;
+  expiresAt?: number;
 }
 
 export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode">>;

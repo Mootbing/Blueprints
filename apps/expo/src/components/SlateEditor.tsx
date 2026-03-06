@@ -3,9 +3,10 @@ import { StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Canvas } from "./Canvas";
-import { AsyncStorageProvider } from "../storage";
 import type { StorageProvider } from "../storage";
+import type { SyncableStorageProvider } from "../storage/StorageProvider";
 import type { AppSlate, Layout, Component, ComponentStyleUpdates, Screen, Variable } from "../types";
+import { useCollaboration } from "../hooks/useCollaboration";
 import { useRuntimeStore } from "../runtime";
 import { uuid } from "../utils/uuid";
 import { deepUpdateComponent, deepDeleteComponent } from "../utils/componentTree";
@@ -458,8 +459,6 @@ export const defaultSlate: AppSlate = {
   },
 };
 
-const storage: StorageProvider = new AsyncStorageProvider();
-
 function collectPersistedVarNames(appVars: Variable[], screenVars: Variable[]): Set<string> {
   const names = new Set<string>();
   for (const v of [...appVars, ...screenVars]) {
@@ -474,6 +473,7 @@ interface SlateEditorProps {
   onCloseSlate: () => void;
   onDeleteSlate: () => void;
   onRenameSlate: (name: string) => void;
+  storage: StorageProvider;
 }
 
 export function SlateEditor({
@@ -482,6 +482,7 @@ export function SlateEditor({
   onCloseSlate,
   onDeleteSlate,
   onRenameSlate,
+  storage,
 }: SlateEditorProps) {
   const {
     slate,
@@ -518,6 +519,17 @@ export function SlateEditor({
   const initFromSlate = useRuntimeStore((s) => s.initFromSlate);
   const navigateToScreen = useRuntimeStore((s) => s.navigateToScreen);
   const runtimeVariables = useRuntimeStore((s) => s.variables);
+
+  // Collaboration: receive remote changes via setSlateRaw (no undo history)
+  const isSyncable = 'joinCollabChannel' in storage;
+  const { collaborators, broadcastChange } = useCollaboration({
+    storage: storage as SyncableStorageProvider,
+    slateId,
+    onRemoteChange: (remoteSlate) => {
+      setSlateRaw(remoteSlate);
+    },
+    enabled: isSyncable,
+  });
 
   // Load slate and settings on mount
   useEffect(() => {
@@ -574,13 +586,17 @@ export function SlateEditor({
     };
   }, [slateId]);
 
-  // Debounced save on slate change
+  // Debounced save on slate change + broadcast for collaboration
   useEffect(() => {
     if (!loaded) return;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
       storage.saveSlate(slateId, slate);
     }, 500);
+    // Broadcast to collaborators
+    if (isSyncable) {
+      broadcastChange(slate);
+    }
     return () => {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
     };
@@ -917,6 +933,7 @@ export function SlateEditor({
         apiKey={apiKey}
         onApiKeyChange={handleApiKeyChange}
         slateId={slateId}
+        storage={storage}
       />
     </GestureHandlerRootView>
   );

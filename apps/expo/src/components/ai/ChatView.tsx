@@ -28,6 +28,8 @@ interface ChatViewProps {
   headerActions?: React.ReactNode;
   /** Custom per-message action renderer. If provided, replaces the default Apply button. */
   renderMessageActions?: (message: ChatMessageType) => React.ReactNode;
+  /** Pre-fill the input field */
+  initialText?: string;
 }
 
 export function ChatView({
@@ -40,8 +42,9 @@ export function ChatView({
   placeholder = "Describe what you want...",
   headerActions,
   renderMessageActions,
+  initialText,
 }: ChatViewProps) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialText ?? "");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
 

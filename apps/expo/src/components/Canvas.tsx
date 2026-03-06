@@ -4,12 +4,14 @@ import {
   Pressable,
   Text,
   TextInput,
+  ScrollView,
   Platform,
   StyleSheet,
   Animated,
   Keyboard,
   PanResponder,
   Vibration,
+  ActivityIndicator,
 } from "react-native";
 import { crossAlert } from "../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,8 +22,7 @@ import type { AppSlate, Layout, Component, ComponentStyleUpdates, Screen } from 
 import { ComponentSchema } from "../types";
 import { SDUIComponent } from "./SDUIComponent";
 import { SnapGuides } from "./SnapGuides";
-import { TextEditorToolbar, type TextEditingState } from "./TextEditorModal";
-import { StyleEditorToolbar, type StyleEditingState } from "./ComponentToolbar";
+import { EditorToolbar, type TextEditingState, type StyleEditingState } from "./EditorToolbar";
 import * as ImagePicker from "expo-image-picker";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { GroupBreadcrumb } from "./GroupBreadcrumb";
@@ -30,13 +31,16 @@ import { PRESETS } from "./menu/ComponentsPage";
 import { BACKGROUND_ID } from "./SlateEditor";
 import { findComponent, deepCloneComponent } from "../utils/componentTree";
 import { ContextMenu } from "./ContextMenu";
+import { SpotlightOverlay } from "./SpotlightOverlay";
 import { VersionHistoryModal } from "./menu/VersionHistoryModal";
 import { AIChatSheet } from "./ai/AIChatSheet";
 import { AgentPagerModal } from "./ai/AgentPagerModal";
 import { tidyLayout } from "../ai/tidyLayout";
 import { useChatLog } from "../ai/useChatLog";
 import { useAgentRunner } from "../ai/useAgentRunner";
+import { useVoiceTranscription } from "../hooks/useVoiceTranscription";
 import type { HistoryEntry } from "../hooks/useUndoHistory";
+import type { ChatMessage } from "../ai/types";
 
 /* Circular progress ring for long-press feedback (SVG) */
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -129,7 +133,7 @@ function AddSphere({
         }).start();
         longPressTimer.current = setTimeout(() => {
           didLongPress.current = true;
-          onPressRef.current();
+          onToggleRef.current();
         }, LONG_PRESS_DURATION);
       },
       onPanResponderMove: (_, g) => {
@@ -155,7 +159,7 @@ function AddSphere({
         longPressProgress.setValue(0);
         pan.flattenOffset();
         if (!moved.current && !didLongPress.current) {
-          onToggleRef.current();
+          onPressRef.current();
         }
       },
     })
@@ -178,6 +182,248 @@ function AddSphere({
       />
       <Feather name={isEditMode ? "code" : "eye"} size={22} color={isEditMode ? "#000" : "#fff"} />
     </Animated.View>
+  );
+}
+
+/* Voice bar – collapsed sphere morphs into expanded input bar, replies pop upward */
+function VoiceBar({
+  expanded,
+  isRecording,
+  onSphereTap,
+  onToggleRecording,
+  onSendText,
+  onClose,
+  messages,
+  isLoading,
+  error,
+  transcript,
+  interimTranscript,
+}: {
+  expanded: boolean;
+  isRecording: boolean;
+  onSphereTap: () => void;
+  onToggleRecording: () => void;
+  onSendText: (text: string) => void;
+  onClose: () => void;
+  messages: ChatMessage[];
+  isLoading: boolean;
+  error: string | null;
+  transcript: string;
+  interimTranscript: string;
+}) {
+  const [input, setInput] = useState("");
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const moved = useRef(false);
+  const onSphereTapRef = useRef(onSphereTap);
+  onSphereTapRef.current = onSphereTap;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseDot = useRef(new Animated.Value(1)).current;
+  const barSlide = useRef(new Animated.Value(60)).current;
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Animate bar slide in/out
+  useEffect(() => {
+    if (expanded) {
+      barSlide.setValue(60);
+      Animated.spring(barSlide, {
+        toValue: 0,
+        tension: 80,
+        friction: 12,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [expanded, barSlide]);
+
+  // Pulse sphere when not expanded
+  useEffect(() => {
+    if (isRecording && !expanded) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.18, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ]),
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+    pulseAnim.setValue(1);
+  }, [isRecording, expanded, pulseAnim]);
+
+  // Pulsing live dot
+  useEffect(() => {
+    if (isRecording) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseDot, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseDot, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ]),
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+    pulseDot.setValue(1);
+  }, [isRecording, pulseDot]);
+
+  // Auto-scroll messages
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages.length, isLoading]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+    onSendText(text);
+    setInput("");
+  };
+
+  const stripJson = (content: string) =>
+    content.replace(/<json>[\s\S]*?<\/json>/g, "").trim();
+
+  const liveText = (transcript + " " + interimTranscript).trim();
+
+  // Pan responder for collapsed sphere
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+      onPanResponderGrant: () => {
+        moved.current = false;
+        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: (_, g) => {
+        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) moved.current = true;
+        Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, g);
+      },
+      onPanResponderRelease: () => {
+        pan.flattenOffset();
+        if (!moved.current) onSphereTapRef.current();
+      },
+    })
+  ).current;
+
+  // --- Collapsed sphere ---
+  if (!expanded) {
+    return (
+      <Animated.View
+        style={[
+          styles.voiceSphere,
+          styles.voiceSphereInactive,
+          { transform: [...pan.getTranslateTransform(), { scale: pulseAnim }] },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <Feather name="mic-off" size={22} color="#888" />
+      </Animated.View>
+    );
+  }
+
+  // --- Expanded bar with floating messages ---
+  const visibleMsgs = messages.slice(-6);
+
+  return (
+    <View style={styles.vbWrapper} pointerEvents="box-none">
+      {/* Messages popping upward */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.vbMsgScroll}
+        contentContainerStyle={styles.vbMsgScrollContent}
+        showsVerticalScrollIndicator={false}
+        pointerEvents="box-none"
+      >
+        {visibleMsgs.map((msg) => {
+          const text = stripJson(msg.content);
+          if (!text) return null;
+          const isUser = msg.role === "user";
+          return (
+            <View
+              key={msg.id}
+              style={[
+                styles.vbBubble,
+                isUser ? styles.vbBubbleUser : styles.vbBubbleAI,
+              ]}
+            >
+              {isUser && msg.content.startsWith("\uD83C\uDFA4") && (
+                <Feather name="mic" size={10} color="#60a5fa" style={{ marginRight: 5 }} />
+              )}
+              <Text
+                style={[styles.vbBubbleText, isUser && styles.vbBubbleTextUser]}
+                numberOfLines={4}
+              >
+                {text}
+              </Text>
+            </View>
+          );
+        })}
+
+        {/* Live transcript */}
+        {isRecording && (
+          <View style={[styles.vbBubble, styles.vbBubbleLive]}>
+            <Animated.View style={[styles.vbLiveDot, { opacity: pulseDot }]} />
+            <Text style={styles.vbLiveText} numberOfLines={2}>
+              {liveText || "Listening..."}
+            </Text>
+          </View>
+        )}
+
+        {isLoading && (
+          <View style={[styles.vbBubble, styles.vbBubbleAI]}>
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+          </View>
+        )}
+
+        {error && (
+          <View style={[styles.vbBubble, styles.vbBubbleError]}>
+            <Text style={styles.vbErrorText} numberOfLines={2}>{error}</Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* The bar */}
+      <Animated.View
+        style={[styles.vbBar, { transform: [{ translateY: barSlide }] }]}
+      >
+        <Pressable
+          style={[styles.vbMic, isRecording && styles.vbMicActive]}
+          onPress={onToggleRecording}
+          hitSlop={8}
+        >
+          <Feather
+            name={isRecording ? "mic" : "mic-off"}
+            size={18}
+            color={isRecording ? "#fff" : "#888"}
+          />
+        </Pressable>
+        <TextInput
+          style={styles.vbInput}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Type or speak..."
+          placeholderTextColor="rgba(255,255,255,0.25)"
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+          editable={!isLoading}
+        />
+        <Pressable
+          style={[
+            styles.vbSend,
+            (!input.trim() || isLoading) && styles.vbSendDisabled,
+          ]}
+          onPress={handleSend}
+          disabled={!input.trim() || isLoading}
+          hitSlop={8}
+        >
+          <Feather
+            name="arrow-up"
+            size={16}
+            color={input.trim() && !isLoading ? "#000" : "rgba(255,255,255,0.2)"}
+          />
+        </Pressable>
+        <Pressable onPress={onClose} hitSlop={8} style={styles.vbClose}>
+          <Feather name="x" size={16} color="rgba(255,255,255,0.4)" />
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -229,6 +475,8 @@ interface CanvasProps {
   apiKey: string;
   onApiKeyChange: (key: string) => void;
   slateId: string;
+  // Storage
+  storage?: import("../storage/StorageProvider").StorageProvider;
 }
 
 export function Canvas({
@@ -270,6 +518,7 @@ export function Canvas({
   apiKey,
   onApiKeyChange,
   slateId,
+  storage: storageProp,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const [canvasDimensions, setCanvasDimensions] = useState({
@@ -302,6 +551,7 @@ export function Canvas({
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [agentPagerOpen, setAgentPagerOpen] = useState(false);
   const [agentPagerSessionId, setAgentPagerSessionId] = useState<string | null>(null);
+  const [agentPagerInitialMessage, setAgentPagerInitialMessage] = useState<string | null>(null);
 
   // Chat log for agent context
   const { chatLog, logInteraction } = useChatLog(slateId);
@@ -317,6 +567,78 @@ export function Canvas({
     onAddBranchEntry: addBranchEntry,
     chatLog,
   });
+
+  // Voice agent state
+  const [voiceAgentEnabled, setVoiceAgentEnabled] = useState(false);
+  const [voiceExpanded, setVoiceExpanded] = useState(false);
+  const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
+  const voiceLoaded = useRef(false);
+  const voice = useVoiceTranscription();
+  const voiceSessionIdRef = useRef(voiceSessionId);
+  voiceSessionIdRef.current = voiceSessionId;
+
+  // Load voice agent setting
+  useEffect(() => {
+    AsyncStorage.getItem("settings_voiceAgent").then((val) => {
+      if (val !== null) setVoiceAgentEnabled(val === "true");
+      voiceLoaded.current = true;
+    });
+  }, []);
+
+  // Persist voice agent setting
+  useEffect(() => {
+    if (!voiceLoaded.current) return;
+    AsyncStorage.setItem("settings_voiceAgent", String(voiceAgentEnabled));
+  }, [voiceAgentEnabled]);
+
+  const voiceSession = voiceSessionId
+    ? agentRunner.sessions.find((s) => s.id === voiceSessionId)
+    : null;
+
+  // Tap collapsed sphere → expand + start recording
+  const handleVoiceSphereTap = useCallback(() => {
+    setVoiceExpanded(true);
+    voice.reset();
+    voice.start();
+  }, [voice]);
+
+  // Toggle mic in expanded bar
+  const handleVoiceToggle = useCallback(() => {
+    if (voice.isListening) {
+      const transcript = voice.stop();
+      if (transcript.trim()) {
+        let sid = voiceSessionIdRef.current;
+        if (!sid) {
+          const session = agentRunner.createSession("Voice Agent");
+          sid = session.id;
+          setVoiceSessionId(sid);
+        }
+        agentRunner.sendMessage(sid, "\uD83C\uDFA4 " + transcript.trim());
+      }
+      voice.reset();
+    } else {
+      voice.reset();
+      voice.start();
+    }
+  }, [voice, agentRunner]);
+
+  // Close expanded bar
+  const handleVoiceClose = useCallback(() => {
+    if (voice.isListening) voice.stop();
+    voice.reset();
+    setVoiceExpanded(false);
+  }, [voice]);
+
+  // Send typed text from bar
+  const handleVoiceSendText = useCallback((text: string) => {
+    let sid = voiceSessionIdRef.current;
+    if (!sid) {
+      const session = agentRunner.createSession("Voice Agent");
+      sid = session.id;
+      setVoiceSessionId(sid);
+    }
+    agentRunner.sendMessage(sid, text);
+  }, [agentRunner]);
 
   // AI state
   const [aiChatTarget, setAiChatTarget] = useState<Component | null>(null);
@@ -340,6 +662,8 @@ export function Canvas({
     | { mode: "style"; componentId: string; state: StyleEditingState; initialState: StyleEditingState }
     | null
   >(null);
+  const editingInfoRef = useRef(editingInfo);
+  editingInfoRef.current = editingInfo;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverTrash, setDragOverTrash] = useState(false);
 
@@ -745,7 +1069,8 @@ export function Canvas({
       if (!prev || prev.mode !== "style") return prev;
       return { ...prev, state: { ...prev.state, ...updates } };
     });
-    if (editingInfo && editingInfo.mode === "style") {
+    const info = editingInfoRef.current;
+    if (info && info.mode === "style") {
       const styleUpdates: Record<string, unknown> = {};
       if (updates.borderRadius !== undefined) styleUpdates.borderRadius = updates.borderRadius;
       if (updates.borderWidth !== undefined) styleUpdates.borderWidth = updates.borderWidth;
@@ -757,10 +1082,10 @@ export function Canvas({
       if (updates.justifyContent !== undefined) styleUpdates.justifyContent = updates.justifyContent;
       if (updates.alignItems !== undefined) styleUpdates.alignItems = updates.alignItems;
       if (Object.keys(styleUpdates).length > 0) {
-        onStyleChange?.(editingInfo.componentId, styleUpdates);
+        onStyleChange?.(info.componentId, styleUpdates);
       }
     }
-  }, [editingInfo, onStyleChange]);
+  }, [onStyleChange]);
 
   const handleEditDone = useCallback(() => {
     if (!editingInfo || !screen) return;
@@ -799,15 +1124,17 @@ export function Canvas({
   }, [editingInfo, screen.components, onContentChange, onStyleChange]);
 
   const handleEditCancel = useCallback(() => {
+    const info = editingInfoRef.current;
     // Revert live style changes to their original values
-    if (editingInfo?.mode === "style") {
-      const { componentId, initialState } = editingInfo;
+    if (info?.mode === "style") {
+      const { componentId, initialState } = info;
       const revert: Record<string, unknown> = {};
       if (initialState.hasBorderRadius) revert.borderRadius = initialState.borderRadius;
       if (initialState.hasBorder) {
         revert.borderWidth = initialState.borderWidth;
         revert.borderColor = initialState.borderColor;
       }
+      if (initialState.hasBackgroundColor) revert.backgroundColor = initialState.backgroundColor;
       if (initialState.hasLayoutMode) {
         revert.layoutMode = initialState.layoutMode;
         revert.flexDirection = initialState.flexDirection;
@@ -823,7 +1150,7 @@ export function Canvas({
     setEditingInfo(null);
     setSelectedComponentId(null);
     setInspectorOpen(false);
-  }, [editingInfo, onStyleChange]);
+  }, [onStyleChange]);
 
   const handlePickImage = useCallback(async (componentId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -1024,20 +1351,12 @@ export function Canvas({
           onPress={handleEditDone}
         />
       )}
-      {editingInfo?.mode === "text" && !inspectorOpen && (
-        <TextEditorToolbar
-          state={editingInfo.state}
-          onStateChange={handleEditStateChange}
-          onUndo={handleEditCancel}
-          onInspect={inspectorEnabled ? openInspector : undefined}
-          onAIChat={apiKey ? handleOpenAIChatFromToolbar : undefined}
-          theme={slate.theme}
-        />
-      )}
-      {editingInfo?.mode === "style" && !inspectorOpen && (
-        <StyleEditorToolbar
-          state={editingInfo.state}
-          onStateChange={handleStyleStateChange}
+      {editingInfo && !inspectorOpen && (
+        <EditorToolbar
+          {...(editingInfo.mode === "text"
+            ? { mode: "text", textState: editingInfo.state, onTextStateChange: handleEditStateChange }
+            : { mode: "style", styleState: editingInfo.state, onStyleStateChange: handleStyleStateChange }
+          )}
           onUndo={handleEditCancel}
           onInspect={inspectorEnabled ? openInspector : undefined}
           onAIChat={apiKey ? handleOpenAIChatFromToolbar : undefined}
@@ -1054,6 +1373,23 @@ export function Canvas({
             onToggleEditMode();
             Vibration.vibrate(50);
           }}
+        />
+      )}
+
+      {/* Voice Agent Bar */}
+      {voiceAgentEnabled && !menuOpen && (
+        <VoiceBar
+          expanded={voiceExpanded}
+          isRecording={voice.isListening}
+          onSphereTap={handleVoiceSphereTap}
+          onToggleRecording={handleVoiceToggle}
+          onSendText={handleVoiceSendText}
+          onClose={handleVoiceClose}
+          messages={voiceSession?.messages ?? []}
+          isLoading={voiceSession?.status === "running"}
+          error={agentRunner.error}
+          transcript={voice.transcript}
+          interimTranscript={voice.interimTranscript}
         />
       )}
 
@@ -1097,6 +1433,7 @@ export function Canvas({
         onClose={() => {
           setAgentPagerOpen(false);
           setAgentPagerSessionId(null);
+          setAgentPagerInitialMessage(null);
           openMenu();
         }}
         apiKey={apiKey}
@@ -1107,6 +1444,7 @@ export function Canvas({
         isEditMode={isEditMode}
         onToggleEditMode={onToggleEditMode}
         initialSessionId={agentPagerSessionId}
+        initialMessage={agentPagerInitialMessage}
       />
 
       {/* Tidy loading overlay */}
@@ -1134,23 +1472,10 @@ export function Canvas({
         const pad = 6;
         return (
           <>
-            {/* Dim overlay — 4 rects around the component cutout */}
-            <View style={[styles.aiDimRect, { top: 0, left: 0, right: 0, height: Math.max(0, compY - pad) }]} pointerEvents="none" />
-            <View style={[styles.aiDimRect, { top: compY - pad, left: 0, width: Math.max(0, compX - pad), height: compH + pad * 2 }]} pointerEvents="none" />
-            <View style={[styles.aiDimRect, { top: compY - pad, left: compX + compW + pad, right: 0, height: compH + pad * 2 }]} pointerEvents="none" />
-            <View style={[styles.aiDimRect, { top: compY + compH + pad, left: 0, right: 0, bottom: 0 }]} pointerEvents="none" />
-            {/* Glow border around component */}
-            <View
-              style={[
-                styles.aiSpotlightBorder,
-                {
-                  top: compY - pad,
-                  left: compX - pad,
-                  width: compW + pad * 2,
-                  height: compH + pad * 2,
-                },
-              ]}
-              pointerEvents="none"
+            <SpotlightOverlay
+              rect={{ x: compX, y: compY, width: compW, height: compH }}
+              padding={pad}
+              style={{ zIndex: 899 }}
             />
             {/* Buttons */}
             <View
@@ -1244,6 +1569,9 @@ export function Canvas({
         onOpenVersionHistory={() => setVersionHistoryOpen(true)}
         apiKey={apiKey}
         onApiKeyChange={onApiKeyChange}
+        voiceAgentEnabled={voiceAgentEnabled}
+        onToggleVoiceAgent={() => setVoiceAgentEnabled((v) => !v)}
+        storage={storageProp}
         onApplyComponents={handleApplyComponents}
         historyEntries={entries}
         currentHistoryId={currentId}
@@ -1253,8 +1581,9 @@ export function Canvas({
         chatLog={chatLog}
         agentRunner={agentRunner}
         onAIChatComponent={handleAIChatFromLayer}
-        onOpenAgentPager={(sessionId) => {
+        onOpenAgentPager={(sessionId, initialMessage) => {
           setAgentPagerSessionId(sessionId ?? null);
+          setAgentPagerInitialMessage(initialMessage ?? null);
           closeMenu();
           setTimeout(() => setAgentPagerOpen(true), 200);
         }}
@@ -1380,6 +1709,165 @@ const styles = StyleSheet.create({
     backgroundColor: "#333",
     borderColor: "#555",
   },
+  // Voice bar styles
+  voiceSphere: {
+    position: "absolute",
+    bottom: 32,
+    left: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+    borderWidth: 1.5,
+    overflow: "visible",
+    backgroundColor: "#1a1a1a",
+    borderColor: "#333",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
+  },
+  voiceSphereInactive: {
+    backgroundColor: "#1a1a1a",
+    borderColor: "#333",
+  },
+  vbWrapper: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+  },
+  vbMsgScroll: {
+    maxHeight: 260,
+  },
+  vbMsgScrollContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  vbBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignSelf: "flex-start" as const,
+    maxWidth: "85%",
+  },
+  vbBubbleUser: {
+    alignSelf: "flex-end" as const,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "#333",
+  },
+  vbBubbleAI: {
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderColor: "#1a1a1a",
+  },
+  vbBubbleLive: {
+    alignSelf: "flex-end" as const,
+    backgroundColor: "rgba(96,165,250,0.1)",
+    borderColor: "rgba(96,165,250,0.3)",
+    gap: 6,
+  },
+  vbBubbleError: {
+    backgroundColor: "rgba(220,38,38,0.1)",
+    borderColor: "rgba(220,38,38,0.3)",
+  },
+  vbBubbleText: {
+    color: "#ccc",
+    fontSize: 13,
+    lineHeight: 18,
+    flexShrink: 1,
+  },
+  vbBubbleTextUser: {
+    color: "#fff",
+  },
+  vbLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#ef4444",
+  },
+  vbLiveText: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    fontStyle: "italic" as const,
+    flexShrink: 1,
+  },
+  vbErrorText: {
+    color: "#ef4444",
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  vbBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginBottom: Platform.OS === "ios" ? 34 : 12,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    gap: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
+  },
+  vbMic: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  vbMicActive: {
+    backgroundColor: "#ef4444",
+  },
+  vbInput: {
+    flex: 1,
+    color: "#ccc",
+    fontSize: 15,
+    paddingHorizontal: 8,
+    paddingVertical: Platform.OS === "ios" ? 6 : 4,
+  },
+  vbSend: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vbSendDisabled: {
+    backgroundColor: "#222",
+  },
+  vbClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   tidyOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 500,
@@ -1400,18 +1888,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 0.3,
-  },
-  aiDimRect: {
-    position: "absolute",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    zIndex: 899,
-  },
-  aiSpotlightBorder: {
-    position: "absolute",
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.25)",
-    zIndex: 899,
   },
   aiConfirmRow: {
     position: "absolute",

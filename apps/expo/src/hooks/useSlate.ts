@@ -1,12 +1,9 @@
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { AppSlateSchema } from "@shared/schema";
 import type { AppSlate } from "../types";
+import { getSupabaseClient } from "../storage/supabaseClient";
 
-const supabase = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL!,
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = getSupabaseClient();
 
 interface UseSlateResult {
   slate: AppSlate | null;

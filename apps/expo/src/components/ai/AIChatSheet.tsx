@@ -14,7 +14,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
+import { SpotlightOverlay } from "../SpotlightOverlay";
 import * as ImagePicker from "expo-image-picker";
 import { useAIChat } from "../../ai/useAIChat";
 import { modifyComponentChat } from "../../ai/modifyComponent";
@@ -187,38 +187,8 @@ export function AIChatSheet({
 
   return (
     <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
-      {/* Spotlight cutout: 4 dim rects around the component + glow border */}
       {r ? (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Top */}
-          <Pressable
-            style={[styles.dimRect, { top: 0, left: 0, right: 0, height: Math.max(0, r.y - PAD) }]}
-            onPress={handleBlurPress}
-          >
-            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-          {/* Bottom */}
-          <Pressable
-            style={[styles.dimRect, { top: r.y + r.height + PAD, left: 0, right: 0, bottom: 0 }]}
-            onPress={handleBlurPress}
-          >
-            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-          {/* Left */}
-          <Pressable
-            style={[styles.dimRect, { top: Math.max(0, r.y - PAD), left: 0, width: Math.max(0, r.x - PAD), height: r.height + PAD * 2 }]}
-            onPress={handleBlurPress}
-          >
-            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-          {/* Right */}
-          <Pressable
-            style={[styles.dimRect, { top: Math.max(0, r.y - PAD), left: r.x + r.width + PAD, right: 0, height: r.height + PAD * 2 }]}
-            onPress={handleBlurPress}
-          >
-            <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-        </View>
+        <SpotlightOverlay rect={r} blur onPressDim={handleBlurPress} />
       ) : (
         <Pressable style={StyleSheet.absoluteFill} onPress={handleBlurPress} />
       )}
@@ -361,10 +331,6 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1000,
-  },
-  dimRect: {
-    position: "absolute",
-    overflow: "hidden",
   },
   messagesArea: {
     flex: 1,

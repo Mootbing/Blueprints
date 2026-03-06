@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Text, TextInput, View } from "react-native";
 import type { ButtonComponent } from "../../types";
-import type { TextEditingState } from "../TextEditorModal";
+import type { TextEditingState } from "../EditorToolbar";
 
 export interface ButtonRendererProps {
   component: ButtonComponent;

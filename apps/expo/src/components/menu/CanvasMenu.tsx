@@ -85,7 +85,10 @@ interface CanvasMenuProps {
   // AI props
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  voiceAgentEnabled?: boolean;
+  onToggleVoiceAgent?: () => void;
   onApplyComponents?: (components: import("../../types").Component[], mode: "replace" | "add") => void;
+  storage?: import("../../storage/StorageProvider").StorageProvider;
   // Agent orchestration props
   historyEntries?: import("../../hooks/useUndoHistory").HistoryEntry[];
   currentHistoryId?: string;
@@ -95,7 +98,7 @@ interface CanvasMenuProps {
   chatLog?: ChatLogEntry[];
   agentRunner?: ReturnType<typeof useAgentRunner>;
   onAIChatComponent?: (id: string) => void;
-  onOpenAgentPager?: (sessionId?: string) => void;
+  onOpenAgentPager?: (sessionId?: string, initialMessage?: string) => void;
 }
 
 export function CanvasMenu({
@@ -134,7 +137,10 @@ export function CanvasMenu({
   onOpenVersionHistory,
   apiKey,
   onApiKeyChange,
+  voiceAgentEnabled,
+  onToggleVoiceAgent,
   onApplyComponents,
+  storage: storageProp,
   historyEntries,
   currentHistoryId,
   onRestoreToId,
@@ -177,6 +183,11 @@ export function CanvasMenu({
   const handleEditWorkflow = useCallback((_comp: Component) => {
     onOpenAgentPager?.();
   }, [onOpenAgentPager]);
+
+  const handleNavigateToCanvas = useCallback(() => {
+    scrollRef.current?.scrollTo({ x: 1 * screenWidth, animated: true });
+    setPageIndex(1);
+  }, [screenWidth]);
 
   if (!visible) return null;
 
@@ -253,6 +264,8 @@ export function CanvasMenu({
               showAdvancedCode={showAdvancedCode}
               onNavigateToAgent={handleNavigateToAgent}
               onEditWorkflow={handleEditWorkflow}
+              onNavigateToCanvas={handleNavigateToCanvas}
+              onOpenAgentPager={onOpenAgentPager}
               onClose={onClose}
             />
           </RegisteredScrollView>
@@ -363,10 +376,12 @@ export function CanvasMenu({
               snappingEnabled={snappingEnabled}
               inspectorEnabled={inspectorEnabled}
               showAdvancedCode={showAdvancedCode}
+              voiceAgentEnabled={voiceAgentEnabled ?? false}
               onToggleEditMode={onToggleEditMode}
               onToggleSnapping={onToggleSnapping}
               onToggleInspector={onToggleInspector}
               onToggleAdvancedCode={onToggleAdvancedCode}
+              onToggleVoiceAgent={onToggleVoiceAgent ?? (() => {})}
               onCloseSlate={onCloseSlate}
               onDeleteSlate={onDeleteSlate}
               onClose={onClose}
@@ -377,6 +392,7 @@ export function CanvasMenu({
               onSlateChange={onSlateChange}
               apiKey={apiKey}
               onApiKeyChange={onApiKeyChange}
+              storage={storageProp}
             />
           </RegisteredScrollView>
 

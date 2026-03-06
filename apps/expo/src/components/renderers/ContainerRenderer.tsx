@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import type { ContainerComponent, Layout } from "../../types";
-import type { TextEditingState } from "../TextEditorModal";
+import type { TextEditingState } from "../EditorToolbar";
 import { rendererRegistry } from "./index";
 import { GroupChildComponent } from "../GroupChildComponent";
 

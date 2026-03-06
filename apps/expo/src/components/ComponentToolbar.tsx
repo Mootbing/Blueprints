@@ -1,15 +1,22 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
+  TextInput,
   Pressable,
   Text,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  runOnJS,
+} from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { ColorPickerModal } from "./ColorPickerModal";
-import { SliderModal } from "./SliderModal";
 import type { Theme } from "../types";
 
 export interface StyleEditingState {
@@ -107,10 +114,11 @@ export function StyleEditorToolbar({
     const c = theme?.colors ?? { primary: "#ffffff", secondary: "#cccccc", error: "#dc2626", success: "#22c55e", warning: "#f59e0b" };
     return [bg.background, bg.secondaryBackground, c.primary, c.secondary, c.error, c.success, c.warning];
   }, [theme?.backgroundColors, theme?.colors]);
+  const { height: screenHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
 
   const [activePanel, setActivePanel] = useState<PanelType>(null);
-  const [sliderModal, setSliderModal] = useState<SliderTarget | null>(null);
+  const [sliderTarget, setSliderTarget] = useState<SliderTarget>("borderRadius");
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"borderColor" | "backgroundColor">("borderColor");
 
@@ -118,20 +126,93 @@ export function StyleEditorToolbar({
     setActivePanel((current) => (current === panel ? null : panel));
   }, []);
 
-  const sliderPresets = useMemo(() => {
-    if (!sliderModal) return undefined;
-    if (sliderModal === "borderRadius") {
-      const radii = theme?.borderRadii ?? DEFAULT_BORDER_RADII;
-      return BORDER_RADII_PRESETS.map((p) => ({ label: p.label, value: radii[p.key] }));
-    }
-    if (sliderModal === "borderWidth") {
-      return DEFAULT_BORDER_WIDTHS.map((p) => ({ label: p.label, value: p.value }));
-    }
-    return [0, 4, 8, 12, 16, 24].map((v) => ({ label: String(v), value: v }));
-  }, [sliderModal, theme?.borderRadii]);
+  // Dynamic slider config based on target
+  const { min: sliderMin, max: sliderMax } = SLIDER_CONFIG[sliderTarget];
+  const currentValue = sliderTarget === "borderRadius" ? state.borderRadius : sliderTarget === "borderWidth" ? state.borderWidth : state.gap;
+
+  const thumbSize = 40;
+  const [trackHeight, setTrackHeight] = useState(screenHeight * 0.25);
+  const maxOffset = Math.max(0, trackHeight - thumbSize);
+
+  const sliderOffset = useSharedValue(
+    (1 - (currentValue - sliderMin) / (sliderMax - sliderMin)) * maxOffset
+  );
+  const isDraggingSlider = useRef(false);
+
+  useEffect(() => {
+    if (isDraggingSlider.current) return;
+    sliderOffset.value =
+      (1 - (currentValue - sliderMin) / (sliderMax - sliderMin)) * maxOffset;
+  }, [currentValue, sliderMin, sliderMax, maxOffset, sliderOffset]);
+
+  const onTrackLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+    setTrackHeight(e.nativeEvent.layout.height);
+  }, []);
+
+  const updateSliderValue = useCallback((offset: number) => {
+    const trackRange = Math.max(1, trackHeight - thumbSize);
+    const normalized = 1 - Math.max(0, Math.min(offset / trackRange, 1));
+    const newVal = sliderMin + normalized * (sliderMax - sliderMin);
+    onStateChange({ [sliderTarget]: Math.round(newVal) });
+  }, [trackHeight, sliderMin, sliderMax, sliderTarget, onStateChange]);
+
+  const setDragging = useCallback((v: boolean) => { isDraggingSlider.current = v; }, []);
+
+  const startOffset = useSharedValue(0);
+
+  const panGesture = useMemo(() =>
+    Gesture.Pan()
+      .onStart(() => {
+        runOnJS(setDragging)(true);
+        startOffset.value = sliderOffset.value;
+      })
+      .onUpdate((e) => {
+        const newOffset = Math.max(0, Math.min(maxOffset, startOffset.value + e.translationY));
+        sliderOffset.value = newOffset;
+        runOnJS(updateSliderValue)(newOffset);
+      })
+      .onFinalize(() => {
+        runOnJS(setDragging)(false);
+      }),
+    [maxOffset, updateSliderValue, setDragging, startOffset, sliderOffset]
+  );
+
+  const sliderThumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sliderOffset.value }],
+  }));
 
   return (
     <View style={styles.container} pointerEvents="box-none">
+      {/* Dynamic Slider - Left Side */}
+      {((sliderTarget === "borderRadius" && state.hasBorderRadius) ||
+        (sliderTarget === "borderWidth" && state.hasBorder) ||
+        (sliderTarget === "gap" && state.hasLayoutMode && state.layoutMode === "flex")) && (
+        <View style={[styles.sizeSliderContainer, keyboardHeight > 0 && { bottom: keyboardHeight + 80 }]}>
+          <TextInput
+            style={styles.radiusInput}
+            value={String(currentValue)}
+            onChangeText={(val) => {
+              const num = parseInt(val, 10);
+              if (!isNaN(num) && num >= 0 && num <= sliderMax) {
+                onStateChange({ [sliderTarget]: num });
+              } else if (val === "") {
+                onStateChange({ [sliderTarget]: 0 });
+              }
+            }}
+            keyboardType="number-pad"
+            selectTextOnFocus
+          />
+          <View style={styles.sliderTrack} onLayout={onTrackLayout}>
+            <View style={styles.sliderTrackLine} />
+            <GestureDetector gesture={panGesture}>
+              <Animated.View style={[styles.sliderThumb, sliderThumbStyle]}>
+                <View style={styles.sliderThumbInner} />
+              </Animated.View>
+            </GestureDetector>
+          </View>
+        </View>
+      )}
+
       {/* Top Bar */}
       <View style={styles.topBar}>
         <View />
@@ -252,6 +333,49 @@ export function StyleEditorToolbar({
           </View>
         )}
 
+        {/* Border Radius Presets */}
+        {sliderTarget === "borderRadius" && state.hasBorderRadius && activePanel === null && (
+          <View style={styles.presetsPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+              {BORDER_RADII_PRESETS.map((p) => {
+                const radii = theme?.borderRadii ?? DEFAULT_BORDER_RADII;
+                const val = radii[p.key];
+                const active = state.borderRadius === val;
+                return (
+                  <Pressable
+                    key={p.key}
+                    style={[styles.presetButton, active && styles.presetButtonActive]}
+                    onPress={() => onStateChange({ borderRadius: val })}
+                  >
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{p.label}</Text>
+                    <Text style={[styles.presetValue, active && styles.presetLabelActive]}>{val}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Border Width Presets */}
+        {sliderTarget === "borderWidth" && state.hasBorder && activePanel === null && (
+          <View style={styles.presetsPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+              {DEFAULT_BORDER_WIDTHS.map((p) => {
+                const active = state.borderWidth === p.value;
+                return (
+                  <Pressable
+                    key={p.value}
+                    style={[styles.presetButton, active && styles.presetButtonActive]}
+                    onPress={() => onStateChange({ borderWidth: p.value })}
+                  >
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{p.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Flex Layout Options Panel */}
         {state.hasLayoutMode && state.layoutMode === "flex" && activePanel === null && (
           <View style={styles.flexPanel}>
@@ -303,8 +427,8 @@ export function StyleEditorToolbar({
 
           {state.hasBorderRadius && (
             <Pressable
-              style={[styles.iconButton, sliderModal === "borderRadius" && styles.iconButtonActive]}
-              onPress={() => setSliderModal("borderRadius")}
+              style={[styles.iconButton, sliderTarget === "borderRadius" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("borderRadius")}
             >
               <View style={styles.radiusIcon}>
                 <View style={styles.radiusCorner} />
@@ -315,8 +439,8 @@ export function StyleEditorToolbar({
 
           {state.hasBorder && (
             <Pressable
-              style={[styles.iconButton, sliderModal === "borderWidth" && styles.iconButtonActive]}
-              onPress={() => setSliderModal("borderWidth")}
+              style={[styles.iconButton, sliderTarget === "borderWidth" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("borderWidth")}
             >
               <View style={styles.borderWidthIcon}>
                 <View style={[styles.borderWidthLine, { height: Math.max(2, state.borderWidth * 2) }]} />
@@ -380,8 +504,8 @@ export function StyleEditorToolbar({
           {/* Gap slider toggle */}
           {state.hasLayoutMode && state.layoutMode === "flex" && (
             <Pressable
-              style={[styles.iconButton, sliderModal === "gap" && styles.iconButtonActive]}
-              onPress={() => setSliderModal("gap")}
+              style={[styles.iconButton, sliderTarget === "gap" && styles.iconButtonActive]}
+              onPress={() => setSliderTarget("gap")}
             >
               <Feather name="maximize-2" size={14} color="#FFFFFF" />
               <Text style={styles.iconSubLabel}>{state.gap}</Text>
@@ -405,17 +529,6 @@ export function StyleEditorToolbar({
         onSelect={(color) => onStateChange({ [pickerTarget]: color })}
         onClose={() => setPickerVisible(false)}
       />
-
-      <SliderModal
-        visible={sliderModal !== null}
-        title={sliderModal === "borderRadius" ? "Border Radius" : sliderModal === "borderWidth" ? "Border Width" : "Gap"}
-        initialValue={sliderModal === "borderRadius" ? state.borderRadius : sliderModal === "borderWidth" ? state.borderWidth : state.gap}
-        min={SLIDER_CONFIG[sliderModal ?? "borderRadius"].min}
-        max={SLIDER_CONFIG[sliderModal ?? "borderRadius"].max}
-        presets={sliderPresets}
-        onSelect={(val) => { if (sliderModal) onStateChange({ [sliderModal]: val }); }}
-        onClose={() => setSliderModal(null)}
-      />
     </View>
   );
 }
@@ -424,6 +537,61 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 300,
+  },
+  sizeSliderContainer: {
+    position: "absolute",
+    left: 20,
+    top: "20%",
+    bottom: "15%",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  radiusInput: {
+    width: 44,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    padding: 0,
+  },
+  sliderTrack: {
+    flex: 1,
+    width: 40,
+    justifyContent: "flex-start",
+    alignItems: "center",
+    position: "relative",
+  },
+  sliderTrackLine: {
+    width: 4,
+    height: "100%",
+    backgroundColor: "#333",
+    borderRadius: 2,
+    position: "absolute",
+  },
+  sliderThumb: {
+    position: "absolute",
+    top: 0,
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sliderThumbInner: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   topBar: {
     position: "absolute",
@@ -606,6 +774,43 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   flexOptionTextActive: {
+    color: "#000",
+  },
+  presetsPanel: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#1a1a1a",
+  },
+  presetsRow: {
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  presetButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    alignItems: "center",
+  },
+  presetButtonActive: {
+    backgroundColor: "#fff",
+    borderColor: "#fff",
+  },
+  presetLabel: {
+    color: "#555",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  presetValue: {
+    color: "#333",
+    fontSize: 10,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  presetLabelActive: {
     color: "#000",
   },
   colorDivider: {

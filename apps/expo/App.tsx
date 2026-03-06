@@ -1,14 +1,14 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { ActivityIndicator, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeScreen } from "./src/components/HomeScreen";
 import { SlateEditor, defaultSlate } from "./src/components/SlateEditor";
-import { AsyncStorageProvider } from "./src/storage";
-import type { StorageProvider } from "./src/storage";
+import { SupabaseStorageProvider } from "./src/storage";
+import { useSupabaseSync } from "./src/hooks/useSupabaseSync";
 import type { SlateMeta } from "./src/types";
 import { uuid } from "./src/utils/uuid";
 
-const storage: StorageProvider = new AsyncStorageProvider();
+const storage = new SupabaseStorageProvider();
 
 type Route =
   | { screen: "home" }
@@ -18,6 +18,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>({ screen: "home" });
   const [slateList, setSlateList] = useState<SlateMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const { connectionStatus, isSyncing, syncAll } = useSupabaseSync(storage);
 
   // Load slate list on startup with legacy migration
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function App() {
         onCloseSlate={handleCloseSlate}
         onDeleteSlate={() => handleDeleteSlate(route.slateId)}
         onRenameSlate={(name: string) => handleRenameSlate(route.slateId, name)}
+        storage={storage}
       />
     );
   }
@@ -140,6 +142,10 @@ export default function App() {
       onCreateSlate={handleCreateSlate}
       onDeleteSlate={handleDeleteSlate}
       onRenameSlate={handleRenameSlate}
+      connectionStatus={connectionStatus}
+      isSyncing={isSyncing}
+      onSync={syncAll}
+      storage={storage}
     />
   );
 }

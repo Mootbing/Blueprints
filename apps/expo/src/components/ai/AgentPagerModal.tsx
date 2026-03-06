@@ -84,6 +84,8 @@ interface AgentPagerModalProps {
   onToggleEditMode?: () => void;
   /** Open directly on a specific session */
   initialSessionId?: string | null;
+  /** Pre-fill the chat input when opening */
+  initialMessage?: string | null;
 }
 
 export function AgentPagerModal({
@@ -97,6 +99,7 @@ export function AgentPagerModal({
   isEditMode,
   onToggleEditMode,
   initialSessionId,
+  initialMessage,
 }: AgentPagerModalProps) {
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
@@ -420,6 +423,7 @@ export function AgentPagerModal({
                 onSend={(text, images) => sendMessage(session.id, text, images)}
                 renderMessageActions={renderMessageActions}
                 placeholder="Ask anything -- generate screens, add logic, modify components..."
+                initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
               />
             </View>
           ))}

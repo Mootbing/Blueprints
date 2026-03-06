@@ -61,6 +61,9 @@ interface DetailsPageProps {
   showAdvancedCode: boolean;
   onNavigateToAgent?: () => void;
   onEditWorkflow?: (component: Component) => void;
+  // Navigation
+  onNavigateToCanvas?: () => void;
+  onOpenAgentPager?: (sessionId?: string, initialMessage?: string) => void;
   // Common
   onClose: () => void;
 }
@@ -88,6 +91,8 @@ export function DetailsPage({
   showAdvancedCode,
   onNavigateToAgent,
   onEditWorkflow,
+  onNavigateToCanvas,
+  onOpenAgentPager,
   onClose,
 }: DetailsPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,6 +240,13 @@ export function DetailsPage({
         title="PAGES"
         isOpen={openSections.has("pages")}
         onToggle={() => toggleSection("pages")}
+        trailing={
+          !q ? (
+            <Pressable onPress={onAddScreen} hitSlop={8}>
+              <Feather name="plus" size={14} color="#555" />
+            </Pressable>
+          ) : undefined
+        }
       />
       {openSections.has("pages") && (
         <>
@@ -312,13 +324,6 @@ export function DetailsPage({
             );
           })}
 
-          {!q && (
-            <Pressable style={styles.addPageBtn} onPress={onAddScreen}>
-              <Feather name="plus" size={14} color="#888" />
-              <Text style={styles.addPageBtnText}>Add New Page</Text>
-            </Pressable>
-          )}
-
           {q && filteredScreens.length === 0 && (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No pages match "{searchQuery}"</Text>
@@ -332,7 +337,13 @@ export function DetailsPage({
         title="LAYERS"
         isOpen={openSections.has("layers")}
         onToggle={() => toggleSection("layers")}
-        trailing={<Text style={styles.sectionHint}>Higher is above</Text>}
+        trailing={
+          onNavigateToCanvas ? (
+            <Pressable onPress={onNavigateToCanvas} hitSlop={8}>
+              <Feather name="plus" size={14} color="#555" />
+            </Pressable>
+          ) : undefined
+        }
       />
       {openSections.has("layers") && (
         <>
@@ -370,6 +381,16 @@ export function DetailsPage({
         title="WORKFLOWS"
         isOpen={openSections.has("workflows")}
         onToggle={() => toggleSection("workflows")}
+        trailing={
+          onOpenAgentPager ? (
+            <Pressable
+              onPress={() => onOpenAgentPager(undefined, "make a workflow for the following: ")}
+              hitSlop={8}
+            >
+              <Feather name="plus" size={14} color="#555" />
+            </Pressable>
+          ) : undefined
+        }
       />
       {openSections.has("workflows") && (
         <>
@@ -649,12 +670,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionHeader: sharedMenuStyles.sectionHeader,
-  sectionHint: {
-    color: "#333",
-    fontSize: 10,
-    fontWeight: "500",
-    letterSpacing: 0.3,
-  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -745,26 +760,6 @@ const styles = StyleSheet.create({
   },
   iconBtnDisabled: {
     opacity: 0.4,
-  },
-  addPageBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 4,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    borderStyle: "dashed",
-    backgroundColor: "#0a0a0a",
-  },
-  addPageBtnText: {
-    color: "#888",
-    fontSize: 13,
-    fontWeight: "600",
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth,

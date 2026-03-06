@@ -4,8 +4,10 @@ import { crossAlert } from "../../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppSlateSchema } from "../../types";
 import type { AppSlate, Theme } from "../../types";
+import type { StorageProvider, SyncableStorageProvider } from "../../storage/StorageProvider";
 import { sharedMenuStyles } from "./sharedStyles";
 import { ColorPickerModal } from "../ColorPickerModal";
+import { ShareModal } from "../ShareModal";
 
 const DEFAULT_COLORS = {
   primary: "#ffffff",
@@ -248,10 +250,12 @@ interface SettingsPageProps {
   snappingEnabled: boolean;
   inspectorEnabled: boolean;
   showAdvancedCode: boolean;
+  voiceAgentEnabled: boolean;
   onToggleEditMode: () => void;
   onToggleSnapping: () => void;
   onToggleInspector: () => void;
   onToggleAdvancedCode: () => void;
+  onToggleVoiceAgent: () => void;
   onCloseSlate: () => void;
   onDeleteSlate: () => void;
   onClose: () => void;
@@ -262,6 +266,7 @@ interface SettingsPageProps {
   onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  storage?: StorageProvider;
 }
 
 export function SettingsPage({
@@ -270,10 +275,12 @@ export function SettingsPage({
   snappingEnabled,
   inspectorEnabled,
   showAdvancedCode,
+  voiceAgentEnabled,
   onToggleEditMode,
   onToggleSnapping,
   onToggleInspector,
   onToggleAdvancedCode,
+  onToggleVoiceAgent,
   onCloseSlate,
   onDeleteSlate,
   onClose,
@@ -284,6 +291,7 @@ export function SettingsPage({
   onSlateChange,
   apiKey,
   onApiKeyChange,
+  storage,
 }: SettingsPageProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(slateName ?? "");
@@ -296,6 +304,8 @@ export function SettingsPage({
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [activeEditor, setActiveEditor] = useState<{ type: EditorType; key: string; label: string } | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const isSyncable = storage && 'joinCollabChannel' in storage;
 
   const theme = slate.theme ?? {};
   const colors = theme.colors ?? DEFAULT_COLORS;
@@ -590,6 +600,13 @@ export function SettingsPage({
         )}
       </View>
 
+      <Pressable style={styles.row} onPress={onToggleVoiceAgent}>
+        <Text style={styles.rowLabel}>Voice Agent</Text>
+        <View style={[styles.toggleTrack, voiceAgentEnabled && styles.toggleTrackOn]}>
+          <View style={[styles.toggleThumb, voiceAgentEnabled && styles.toggleThumbOn]} />
+        </View>
+      </Pressable>
+
       <View style={styles.divider} />
 
       {/* Design */}
@@ -745,6 +762,16 @@ export function SettingsPage({
           <Text style={styles.exportBtnText}>Import</Text>
         </Pressable>
       </View>
+      {isSyncable && slateId && (
+        <View style={styles.exportImportRow}>
+          <Pressable
+            style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
+            onPress={() => setShareModalOpen(true)}
+          >
+            <Text style={styles.exportBtnText}>Share</Text>
+          </Pressable>
+        </View>
+      )}
       <Pressable
         style={({ pressed }) => [styles.row, styles.projectRow, pressed && styles.projectRowPressed]}
         onPress={handleClose}
@@ -794,6 +821,15 @@ export function SettingsPage({
         }}
         onClose={() => setColorPickerTarget(null)}
       />
+
+      {isSyncable && slateId && (
+        <ShareModal
+          visible={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          storage={storage as SyncableStorageProvider}
+          slateId={slateId}
+        />
+      )}
     </View>
   );
 }

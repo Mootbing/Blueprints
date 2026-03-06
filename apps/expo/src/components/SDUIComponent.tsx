@@ -13,7 +13,7 @@ import Animated, {
 import type { Component, Layout, ComponentStyleUpdates } from "../types";
 import { rendererRegistry } from "./renderers";
 import { computeSnap } from "../utils/snapWorklet";
-import type { TextEditingState } from "./TextEditorModal";
+import type { TextEditingState } from "./EditorToolbar";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { SmartComponentWrapper } from "../runtime/SmartComponentWrapper";
 
