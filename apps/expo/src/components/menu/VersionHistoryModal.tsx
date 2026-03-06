@@ -1220,6 +1220,11 @@ function TimelineRow({
               <Text style={tl.youBadgeText}>You</Text>
             </View>
           )}
+          {item.entry.source === "ai" && (
+            <View style={tl.aiBadge}>
+              <Text style={tl.aiBadgeText}>AI</Text>
+            </View>
+          )}
           {item.branchCount > 0 && (
             <View style={tl.branchBadge}>
               <Feather name="git-branch" size={10} color="#f59e0b" />
@@ -1326,6 +1331,18 @@ const tl = StyleSheet.create({
   },
   youBadgeText: {
     color: "#818cf8",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  aiBadge: {
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  aiBadgeText: {
+    color: "#10b981",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.3,

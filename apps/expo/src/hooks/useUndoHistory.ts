@@ -10,6 +10,7 @@ export interface HistoryEntry {
   description: string;
   parentId: string;
   authorId?: string;
+  source?: "user" | "ai";
 }
 
 let _idCounter = 0;
@@ -39,7 +40,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
   const redoMapRef = useRef<Map<string, string>>(new Map());
 
   const isUndoRedoRef = useRef(false);
-  const batchRef = useRef<{ description: string; snapshot: AppSlate } | null>(null);
+  const batchRef = useRef<{ description: string; snapshot: AppSlate; source?: "user" | "ai" } | null>(null);
   const slateRef = useRef(slate);
   slateRef.current = slate;
 
@@ -163,13 +164,13 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
     [findEntry, bump]
   );
 
-  const startBatch = useCallback((description: string) => {
-    batchRef.current = { description, snapshot: slateRef.current };
+  const startBatch = useCallback((description: string, source?: "user" | "ai") => {
+    batchRef.current = { description, snapshot: slateRef.current, source };
   }, []);
 
   const endBatch = useCallback(() => {
     if (!batchRef.current) return;
-    const { description, snapshot } = batchRef.current;
+    const { description, snapshot, source } = batchRef.current;
     batchRef.current = null;
     // Only record if slate actually changed
     if (snapshot !== slateRef.current) {
@@ -183,6 +184,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
           description,
           parentId: currentIdRef.current,
           authorId,
+          source,
         },
       ];
       currentIdRef.current = newId;
@@ -211,7 +213,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
   }, []);
 
   const createBranch = useCallback(
-    (branchSlate: AppSlate, description: string): string => {
+    (branchSlate: AppSlate, description: string, source?: "user" | "ai"): string => {
       const newId = historyId();
       entriesRef.current = [
         ...entriesRef.current,
@@ -222,6 +224,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
           description,
           parentId: currentIdRef.current,
           authorId,
+          source,
         },
       ];
       currentIdRef.current = newId;
@@ -236,7 +239,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
   );
 
   const addBranchEntry = useCallback(
-    (branchSlate: AppSlate, description: string): string => {
+    (branchSlate: AppSlate, description: string, source?: "user" | "ai"): string => {
       const newId = historyId();
       entriesRef.current = [
         ...entriesRef.current,
@@ -247,6 +250,7 @@ export function useUndoHistory(initialSlate: AppSlate, authorId?: string) {
           description,
           parentId: currentIdRef.current,
           authorId,
+          source,
         },
       ];
       bump();

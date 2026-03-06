@@ -98,7 +98,7 @@ interface UseAgentRunnerOptions {
   screenId: string;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
-  onAddBranchEntry?: (branchSlate: AppSlate, description: string) => string;
+  onAddBranchEntry?: (branchSlate: AppSlate, description: string, source?: "user" | "ai") => string;
   chatLog?: ChatLogEntry[];
 }
 
@@ -114,11 +114,27 @@ export function useAgentRunner({
   const { sessions, sessionsRef, createSession, updateSession, deleteSession } =
     useAgentSessions(slateId);
 
-  const [error, setError] = useState<string | null>(null);
+  const [errorMap, setErrorMap] = useState<Record<string, string | null>>({});
   const loadingSessionsRef = useRef(new Set<string>());
-  const [loadingCount, setLoadingCount] = useState(0);
-  const isLoading = loadingCount > 0;
-  const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
+  const [loadingSessions, setLoadingSessions] = useState<Set<string>>(new Set());
+  const isLoading = loadingSessions.size > 0;
+  const [streamingThinkingMap, setStreamingThinkingMap] = useState<Record<string, string | null>>({});
+
+  // Helpers for per-session state updates
+  const addLoadingSession = useCallback((sid: string) => {
+    loadingSessionsRef.current.add(sid);
+    setLoadingSessions(new Set(loadingSessionsRef.current));
+  }, []);
+  const removeLoadingSession = useCallback((sid: string) => {
+    loadingSessionsRef.current.delete(sid);
+    setLoadingSessions(new Set(loadingSessionsRef.current));
+  }, []);
+  const setSessionError = useCallback((sid: string, err: string | null) => {
+    setErrorMap((prev) => ({ ...prev, [sid]: err }));
+  }, []);
+  const setSessionThinking = useCallback((sid: string, val: string | null) => {
+    setStreamingThinkingMap((prev) => ({ ...prev, [sid]: val }));
+  }, []);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -177,7 +193,7 @@ export function useAgentRunner({
 
           if (slateRow?.slate) {
             const description = response.description ?? "AI changes";
-            const entryId = onAddBranchEntryRef.current(slateRow.slate, description);
+            const entryId = onAddBranchEntryRef.current(slateRow.slate, description, "ai");
             msg.branchEntryId = entryId;
           }
         } catch (err) {
@@ -235,9 +251,10 @@ export function useAgentRunner({
 
       const newMessages = [...session.messages, userMsg];
       updateSession(sessionId, { messages: newMessages, status: "running" });
-      loadingSessionsRef.current.add(sessionId);
-      if (mountedRef.current) setLoadingCount((c) => c + 1);
-      if (mountedRef.current) setError(null);
+      if (mountedRef.current) {
+        addLoadingSession(sessionId);
+        setSessionError(sessionId, null);
+      }
 
       try {
         const system = agentSystemPrompt(
@@ -266,7 +283,7 @@ export function useAgentRunner({
           };
         });
 
-        if (mountedRef.current) setStreamingThinking("");
+        if (mountedRef.current) setSessionThinking(sessionId, "");
 
         // Get current slate version for CAS
         const baseVersion = await getSlateVersion();
@@ -294,11 +311,11 @@ export function useAgentRunner({
         const cleanup = subscribeToJob(jobId, {
           onThinking: (chunk) => {
             thinkingTextRef.current += chunk;
-            if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
+            if (mountedRef.current) setSessionThinking(sessionId, thinkingTextRef.current);
           },
           onComplete: async (job) => {
             if (!mountedRef.current) return;
-            setStreamingThinking(null);
+            setSessionThinking(sessionId, null);
 
             const response = job.response;
             const assistantMsg = await buildAssistantMessage(response);
@@ -335,20 +352,18 @@ export function useAgentRunner({
               }).catch(() => {});
             }
 
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.delete(sessionId);
             cleanup();
-            if (mountedRef.current) setLoadingCount((c) => c - 1);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           },
           onError: (errorMsg) => {
             if (!mountedRef.current) return;
-            setStreamingThinking(null);
-            setError(errorMsg);
+            setSessionThinking(sessionId, null);
+            setSessionError(sessionId, errorMsg);
             updateSession(sessionId, { status: "idle" });
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.delete(sessionId);
             cleanup();
-            if (mountedRef.current) setLoadingCount((c) => c - 1);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           },
         });
 
@@ -364,29 +379,27 @@ export function useAgentRunner({
             if (!loadingSessionsRef.current.has(sessionId)) return;
 
             if (mountedRef.current) {
-              setStreamingThinking(null);
+              setSessionThinking(sessionId, null);
               const assistantMsg = await buildAssistantMessage(result.response);
               updateSession(sessionId, {
                 messages: [...newMessages, assistantMsg],
                 status: "idle",
               });
             }
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
-            if (mountedRef.current) setLoadingCount((c) => c - 1);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           } else if (result.status === "failed") {
             clearInterval(pollInterval);
             if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
-              setStreamingThinking(null);
-              setError(result.error_message ?? "Job failed");
+              setSessionThinking(sessionId, null);
+              setSessionError(sessionId, result.error_message ?? "Job failed");
               updateSession(sessionId, { status: "idle" });
             }
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
-            if (mountedRef.current) setLoadingCount((c) => c - 1);
+            if (mountedRef.current) removeLoadingSession(sessionId);
           }
         }, 5000);
 
@@ -395,15 +408,14 @@ export function useAgentRunner({
 
       } catch (err) {
         if (mountedRef.current) {
-          setStreamingThinking(null);
-          setError(err instanceof Error ? err.message : "Unknown error");
+          setSessionThinking(sessionId, null);
+          setSessionError(sessionId, err instanceof Error ? err.message : "Unknown error");
           updateSession(sessionId, { status: "idle" });
+          removeLoadingSession(sessionId);
         }
-        loadingSessionsRef.current.delete(sessionId);
-        if (mountedRef.current) setLoadingCount((c) => c - 1);
       }
     },
-    [sessionsRef, updateSession, slateId, getSlateVersion, buildAssistantMessage],
+    [sessionsRef, updateSession, slateId, getSlateVersion, buildAssistantMessage, addLoadingSession, removeLoadingSession, setSessionError, setSessionThinking],
   );
 
   // ─── Mount-time reconciliation: resume tracking in-progress jobs, apply completed ones ───
@@ -429,10 +441,9 @@ export function useAgentRunner({
         if (!session) continue;
 
         console.log(`[useAgentRunner] Re-subscribing to active job ${job.id} for session ${sessionId}`);
-        loadingSessionsRef.current.add(sessionId);
         if (mountedRef.current) {
-          setLoadingCount((c) => c + 1);
-          setStreamingThinking("");
+          addLoadingSession(sessionId);
+          setSessionThinking(sessionId, "");
           updateSession(sessionId, { status: "running" });
         }
 
@@ -440,11 +451,11 @@ export function useAgentRunner({
         const cleanup = subscribeToJob(job.id, {
           onThinking: (chunk) => {
             thinkingTextRef.current += chunk;
-            if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
+            if (mountedRef.current) setSessionThinking(sessionId, thinkingTextRef.current);
           },
           onComplete: async (completedJob) => {
             if (!mountedRef.current) return;
-            setStreamingThinking(null);
+            setSessionThinking(sessionId, null);
 
             const response = completedJob.response;
             const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
@@ -461,20 +472,18 @@ export function useAgentRunner({
               });
             }
 
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.delete(sessionId);
             cleanup();
-            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            if (mountedRef.current) removeLoadingSession(sessionId);
           },
           onError: (errorMsg) => {
             if (!mountedRef.current) return;
-            setStreamingThinking(null);
-            setError(errorMsg);
+            setSessionThinking(sessionId, null);
+            setSessionError(sessionId, errorMsg);
             updateSession(sessionId, { status: "idle" });
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.delete(sessionId);
             cleanup();
-            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            if (mountedRef.current) removeLoadingSession(sessionId);
           },
         });
         cleanupFnsRef.current.set(sessionId, cleanup);
@@ -487,7 +496,7 @@ export function useAgentRunner({
             clearInterval(pollInterval);
             if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
-              setStreamingThinking(null);
+              setSessionThinking(sessionId, null);
               const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
               const alreadyHasReply = currentSession?.messages.some(
                 (m) => m.role === "assistant" && m.timestamp > (job.created_at ? new Date(job.created_at).getTime() : 0)
@@ -500,22 +509,20 @@ export function useAgentRunner({
                 });
               }
             }
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
-            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            if (mountedRef.current) removeLoadingSession(sessionId);
           } else if (result.status === "failed") {
             clearInterval(pollInterval);
             if (!loadingSessionsRef.current.has(sessionId)) return;
             if (mountedRef.current) {
-              setStreamingThinking(null);
-              setError(result.error_message ?? "Job failed");
+              setSessionThinking(sessionId, null);
+              setSessionError(sessionId, result.error_message ?? "Job failed");
               updateSession(sessionId, { status: "idle" });
             }
-            loadingSessionsRef.current.delete(sessionId);
             cleanupFnsRef.current.get(sessionId)?.();
             cleanupFnsRef.current.delete(sessionId);
-            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            if (mountedRef.current) removeLoadingSession(sessionId);
           }
         }, 3000);
         setTimeout(() => clearInterval(pollInterval), 300000);
@@ -574,17 +581,16 @@ export function useAgentRunner({
           if (!session) continue;
 
           console.log(`[useAgentRunner] Foreground: re-subscribing to job ${job.id}`);
-          loadingSessionsRef.current.add(sessionId);
           if (mountedRef.current) {
-            setLoadingCount((c) => c + 1);
-            setStreamingThinking("");
+            addLoadingSession(sessionId);
+            setSessionThinking(sessionId, "");
             updateSession(sessionId, { status: "running" });
           }
 
           const cleanup = subscribeToJob(job.id, {
             onComplete: async (completedJob) => {
               if (!mountedRef.current) return;
-              setStreamingThinking(null);
+              setSessionThinking(sessionId, null);
               const response = completedJob.response;
               const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
               const assistantMsg = await buildAssistantMessage(response);
@@ -592,20 +598,18 @@ export function useAgentRunner({
                 messages: [...(currentSession?.messages ?? []), assistantMsg],
                 status: "idle",
               });
-              loadingSessionsRef.current.delete(sessionId);
               cleanupFnsRef.current.delete(sessionId);
               cleanup();
-              if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+              if (mountedRef.current) removeLoadingSession(sessionId);
             },
             onError: (errorMsg) => {
               if (!mountedRef.current) return;
-              setStreamingThinking(null);
-              setError(errorMsg);
+              setSessionThinking(sessionId, null);
+              setSessionError(sessionId, errorMsg);
               updateSession(sessionId, { status: "idle" });
-              loadingSessionsRef.current.delete(sessionId);
               cleanupFnsRef.current.delete(sessionId);
               cleanup();
-              if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+              if (mountedRef.current) removeLoadingSession(sessionId);
             },
           });
           cleanupFnsRef.current.set(sessionId, cleanup);
@@ -625,18 +629,17 @@ export function useAgentRunner({
             messages: [...session.messages, assistantMsg],
             status: "idle",
           });
-          loadingSessionsRef.current.delete(sessionId);
           cleanupFnsRef.current.get(sessionId)?.();
           cleanupFnsRef.current.delete(sessionId);
           if (mountedRef.current) {
-            setStreamingThinking(null);
-            setLoadingCount((c) => Math.max(0, c - 1));
+            setSessionThinking(sessionId, null);
+            removeLoadingSession(sessionId);
           }
         }
       }).catch(() => {});
     });
     return () => subscription.remove();
-  }, [slateId, sessionsRef, updateSession, buildAssistantMessage]);
+  }, [slateId, sessionsRef, updateSession, buildAssistantMessage, addLoadingSession, removeLoadingSession, setSessionError, setSessionThinking]);
 
   const deleteSessionWithAbort = useCallback(
     (id: string) => {
@@ -645,21 +648,24 @@ export function useAgentRunner({
         cleanup();
         cleanupFnsRef.current.delete(id);
       }
-      loadingSessionsRef.current.delete(id);
+      removeLoadingSession(id);
+      setSessionThinking(id, null);
+      setSessionError(id, null);
       deleteSession(id);
     },
-    [deleteSession],
+    [deleteSession, removeLoadingSession, setSessionThinking, setSessionError],
   );
 
   return {
     sessions,
     isLoading,
-    streamingThinking,
-    error,
+    loadingSessions,
+    streamingThinkingMap,
+    errorMap,
     sendMessage,
     createSession,
     updateSession,
     deleteSession: deleteSessionWithAbort,
-    setError,
+    setError: setSessionError,
   };
 }

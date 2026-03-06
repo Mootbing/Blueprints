@@ -236,9 +236,9 @@ interface CanvasProps {
   entries?: HistoryEntry[];
   currentId?: string;
   restoreToId?: (id: string) => void;
-  createBranch?: (branchSlate: AppSlate, description: string) => string;
-  addBranchEntry?: (branchSlate: AppSlate, description: string) => string;
-  startBatch?: (description: string) => void;
+  createBranch?: (branchSlate: AppSlate, description: string, source?: "user" | "ai") => string;
+  addBranchEntry?: (branchSlate: AppSlate, description: string, source?: "user" | "ai") => string;
+  startBatch?: (description: string, source?: "user" | "ai") => void;
   endBatch?: () => void;
   slateId: string;
   // Storage
@@ -853,7 +853,7 @@ function CanvasInner({
     if (isTidying || !screen) return;
     setIsTidying(true);
     try {
-      startBatch?.("AI Tidy Layout");
+      startBatch?.("AI Tidy Layout", "ai");
       const tidied = await tidyLayout(slateId, screen.components, slate.theme);
       onSlateChange?.((prev: any) => {
         const scr = prev.screens[screenId];
@@ -900,7 +900,7 @@ function CanvasInner({
     if (aiChatTarget) {
       setPendingAIChange({ componentId: component.id, original: aiChatTarget });
     }
-    startBatch?.("AI Modified Component");
+    startBatch?.("AI Modified Component", "ai");
     onComponentReplace?.(component.id, component);
     endBatch?.();
     setAiChatTarget(null);
@@ -919,7 +919,7 @@ function CanvasInner({
   }, [pendingAIChange, onComponentReplace, startBatch, endBatch, setPendingAIChange]);
 
   const handleApplyComponents = useCallback((components: Component[], mode: "replace" | "add") => {
-    startBatch?.("AI Generated Screen");
+    startBatch?.("AI Generated Screen", "ai");
     onSlateChange?.((prev: any) => {
       const scr = prev.screens[screenId];
       if (!scr) return prev;
@@ -1811,7 +1811,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 999,
+    zIndex: 2147483647,
     borderWidth: 1.5,
     overflow: "visible",
     ...Platform.select({
