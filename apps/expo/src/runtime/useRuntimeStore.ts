@@ -11,6 +11,7 @@ export interface RuntimeStore {
     screenVars: Variable[],
     persisted: Record<string, unknown>
   ) => void;
+  navigateToScreen: (appVars: Variable[], screenVars: Variable[]) => void;
 }
 
 export const useRuntimeStore = create<RuntimeStore>((set) => ({
@@ -44,5 +45,18 @@ export const useRuntimeStore = create<RuntimeStore>((set) => ({
       }
     }
     set({ variables: defaults });
+  },
+
+  navigateToScreen: (appVars, screenVars) => {
+    set((state) => {
+      const merged: Record<string, unknown> = {};
+      for (const v of appVars) {
+        merged[v.name] = state.variables[v.name] ?? v.defaultValue;
+      }
+      for (const v of screenVars) {
+        merged[v.name] = v.defaultValue;
+      }
+      return { variables: merged };
+    });
   },
 }));

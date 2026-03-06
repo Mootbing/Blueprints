@@ -1,14 +1,8 @@
-import React, { useState } from "react";
-import { View, Pressable, Text, ScrollView, StyleSheet, Platform } from "react-native";
+import React, { useState, useRef } from "react";
+import { View, Pressable, Text, StyleSheet, Platform, Animated as RNAnimated } from "react-native";
 import type { Component } from "../../types";
 import { uuid } from "../../utils/uuid";
-
-const BG_COLORS = [
-  "#ffffff", "#f5f5f5", "#e0e0e0", "#1a1a1a", "#000000",
-  "#fef3c7", "#fde68a", "#fca5a5", "#fecaca", "#fed7aa",
-  "#bbf7d0", "#a7f3d0", "#a5f3fc", "#bae6fd", "#c7d2fe",
-  "#ddd6fe", "#f5d0fe", "#fbcfe8",
-];
+import { TreeView } from "./TreeView";
 
 export const PRESETS: { label: string; icon: string; create: (x: number, y: number) => Component }[] = [
   {
@@ -355,65 +349,88 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
 
 interface ComponentsPageProps {
   width: number;
-  backgroundColor: string;
+  components: Component[];
   onAddComponent: (preset: (typeof PRESETS)[number]) => void;
-  onBackgroundColorChange: (color: string) => void;
+  onSelectComponent: (id: string) => void;
+  onDeleteComponent: (id: string) => void;
+  lockedIds?: Set<string>;
+  onToggleLock?: (id: string) => void;
+  onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
 }
 
-export function ComponentsPage({ width, backgroundColor, onAddComponent, onBackgroundColorChange }: ComponentsPageProps) {
-  const [showBgPicker, setShowBgPicker] = useState(false);
+export function ComponentsPage({
+  width,
+  components,
+  onAddComponent,
+  onSelectComponent,
+  onDeleteComponent,
+  lockedIds,
+  onToggleLock,
+  onMoveComponent,
+}: ComponentsPageProps) {
+  const [showComponents, setShowComponents] = useState(false);
+  const fadeAnim = useRef(new RNAnimated.Value(0)).current;
+
+  const toggleComponents = () => {
+    if (showComponents) {
+      RNAnimated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => setShowComponents(false));
+    } else {
+      setShowComponents(true);
+      fadeAnim.setValue(0);
+      RNAnimated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
 
   return (
     <View style={[styles.page, { width }]}>
-      {/* Background Color */}
+      {/* Add Component Row */}
       <Pressable
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => setShowBgPicker((v) => !v)}
+        onPress={toggleComponents}
       >
-        <View style={[styles.bgIndicator, { backgroundColor }]} />
-        <Text style={styles.rowLabel}>Background Color</Text>
-        <Text style={styles.chevron}>{showBgPicker ? "\u2212" : "+"}</Text>
+        <Text style={styles.plusIcon}>+</Text>
+        <Text style={styles.rowLabel}>Add Component</Text>
+        <Text style={styles.chevron}>{showComponents ? "\u2212" : "+"}</Text>
       </Pressable>
-      {showBgPicker && (
-        <View style={styles.bgPickerWrap}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.bgPickerContent}
-          >
-            {BG_COLORS.map((col) => {
-              const active = backgroundColor === col;
-              return (
-                <Pressable
-                  key={col}
-                  style={[
-                    styles.bgColorDot,
-                    { backgroundColor: col },
-                    active && styles.bgColorDotActive,
-                  ]}
-                  onPress={() => onBackgroundColorChange(col)}
-                />
-              );
-            })}
-          </ScrollView>
-        </View>
+
+      {/* Fade-in component list */}
+      {showComponents && (
+        <RNAnimated.View style={{ opacity: fadeAnim }}>
+          {PRESETS.map((preset, i) => (
+            <React.Fragment key={preset.label}>
+              <Pressable
+                style={({ pressed }) => [styles.presetRow, pressed && styles.rowPressed]}
+                onPress={() => onAddComponent(preset)}
+              >
+                <Text style={styles.presetIcon}>{preset.icon}</Text>
+                <Text style={styles.rowLabel}>{preset.label}</Text>
+              </Pressable>
+              {i < PRESETS.length - 1 && <View style={styles.rowDivider} />}
+            </React.Fragment>
+          ))}
+        </RNAnimated.View>
       )}
 
       <View style={styles.sectionDivider} />
 
-      {/* Components */}
-      {PRESETS.map((preset, i) => (
-        <React.Fragment key={preset.label}>
-          <Pressable
-            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            onPress={() => onAddComponent(preset)}
-          >
-            <Text style={styles.presetIcon}>{preset.icon}</Text>
-            <Text style={styles.rowLabel}>{preset.label}</Text>
-          </Pressable>
-          {i < PRESETS.length - 1 && <View style={styles.rowDivider} />}
-        </React.Fragment>
-      ))}
+      {/* Layers */}
+      <Text style={styles.sectionLabel}>LAYERS (HIGHER IS ABOVE)</Text>
+      <TreeView
+        components={components}
+        onSelectComponent={onSelectComponent}
+        onDeleteComponent={onDeleteComponent}
+        lockedIds={lockedIds}
+        onToggleLock={onToggleLock}
+        onMoveComponent={onMoveComponent}
+      />
     </View>
   );
 }
@@ -438,6 +455,21 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
+  plusIcon: {
+    color: "#818cf8",
+    fontSize: 20,
+    fontWeight: "700",
+    width: 28,
+    textAlign: "center",
+  },
+  presetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    paddingLeft: 32,
+    gap: 12,
+  },
   presetIcon: {
     color: "rgba(255,255,255,0.5)",
     fontSize: 13,
@@ -451,40 +483,23 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
     marginLeft: 56,
   },
-  bgIndicator: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.4)",
-  },
   chevron: {
     color: "rgba(255,255,255,0.4)",
     fontSize: 18,
     fontWeight: "600",
   },
-  bgPickerWrap: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  bgPickerContent: {
-    gap: 8,
-    paddingVertical: 6,
-  },
-  bgColorDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  bgColorDotActive: {
-    borderWidth: 3,
-    borderColor: "#ffffff",
-  },
   sectionDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255,255,255,0.12)",
     marginVertical: 8,
+  },
+  sectionLabel: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
 });

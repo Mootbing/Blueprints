@@ -44,12 +44,125 @@ function hexToHsv(hex: string): { h: number; s: number; v: number } {
 const HUE_STEPS = 36;
 const SV_STEPS = 20;
 
+const WHEEL_SIZE = 220;
+const WHEEL_CELLS = 22;
+const CELL_SIZE = WHEEL_SIZE / WHEEL_CELLS;
+const WHEEL_RADIUS = WHEEL_SIZE / 2;
+
 interface ColorPickerModalProps {
   visible: boolean;
   initialColor: string;
   onSelect: (color: string) => void;
   onClose: () => void;
 }
+
+function ColorWheel({
+  hue,
+  sat,
+  val,
+  onHueSatChange,
+}: {
+  hue: number;
+  sat: number;
+  val: number;
+  onHueSatChange: (h: number, s: number) => void;
+}) {
+  const wheelCells = useMemo(() => {
+    const cells: { x: number; y: number; color: string }[] = [];
+    for (let row = 0; row < WHEEL_CELLS; row++) {
+      for (let col = 0; col < WHEEL_CELLS; col++) {
+        const cx = (col + 0.5) * CELL_SIZE - WHEEL_RADIUS;
+        const cy = (row + 0.5) * CELL_SIZE - WHEEL_RADIUS;
+        const dist = Math.sqrt(cx * cx + cy * cy);
+        if (dist > WHEEL_RADIUS - 1) continue;
+        const angle = (Math.atan2(-cy, cx) * 180 / Math.PI + 360) % 360;
+        const saturation = (dist / WHEEL_RADIUS) * 100;
+        cells.push({
+          x: col * CELL_SIZE,
+          y: row * CELL_SIZE,
+          color: hsvToHex(angle, saturation, val),
+        });
+      }
+    }
+    return cells;
+  }, [val]);
+
+  const indicatorPos = useMemo(() => {
+    const angleRad = (hue * Math.PI) / 180;
+    const dist = (sat / 100) * WHEEL_RADIUS;
+    return {
+      x: WHEEL_RADIUS + dist * Math.cos(angleRad) - 10,
+      y: WHEEL_RADIUS - dist * Math.sin(angleRad) - 10,
+    };
+  }, [hue, sat]);
+
+  const handleTouch = useCallback(
+    (e: any) => {
+      const { locationX, locationY } = e.nativeEvent;
+      const cx = locationX - WHEEL_RADIUS;
+      const cy = locationY - WHEEL_RADIUS;
+      const dist = Math.min(Math.sqrt(cx * cx + cy * cy), WHEEL_RADIUS);
+      const angle = (Math.atan2(-cy, cx) * 180 / Math.PI + 360) % 360;
+      const saturation = (dist / WHEEL_RADIUS) * 100;
+      onHueSatChange(Math.round(angle), Math.round(saturation));
+    },
+    [onHueSatChange]
+  );
+
+  return (
+    <View
+      style={wheelStyles.container}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={handleTouch}
+      onResponderMove={handleTouch}
+    >
+      {wheelCells.map((cell, i) => (
+        <View
+          key={i}
+          style={{
+            position: "absolute",
+            left: cell.x,
+            top: cell.y,
+            width: CELL_SIZE + 1,
+            height: CELL_SIZE + 1,
+            backgroundColor: cell.color,
+          }}
+        />
+      ))}
+      <View
+        style={[
+          wheelStyles.indicator,
+          { left: indicatorPos.x, top: indicatorPos.y },
+        ]}
+      />
+    </View>
+  );
+}
+
+const wheelStyles = StyleSheet.create({
+  container: {
+    width: WHEEL_SIZE,
+    height: WHEEL_SIZE,
+    borderRadius: WHEEL_RADIUS,
+    overflow: "hidden",
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  indicator: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 3,
+    borderColor: "#FFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+});
 
 export function ColorPickerModal({
   visible,
@@ -64,6 +177,7 @@ export function ColorPickerModal({
   const [sat, setSat] = useState(100);
   const [val, setVal] = useState(100);
   const [hexText, setHexText] = useState("");
+  const [showWheel, setShowWheel] = useState(true);
 
   useEffect(() => {
     if (visible) {
@@ -138,6 +252,11 @@ export function ColorPickerModal({
     },
   });
 
+  const handleWheelHueSat = useCallback((h: number, s: number) => {
+    setHue(h);
+    setSat(s);
+  }, []);
+
   if (!visible) return null;
 
   return (
@@ -177,84 +296,101 @@ export function ColorPickerModal({
                 autoCorrect={false}
               />
             </View>
-            <Pressable style={s.dropperBtn} hitSlop={8}>
-              <Feather name="crosshair" size={20} color="#FFF" />
+            <Pressable
+              style={[s.dropperBtn, showWheel && s.dropperBtnActive]}
+              hitSlop={8}
+              onPress={() => setShowWheel((v) => !v)}
+            >
+              <Feather name="target" size={20} color={showWheel ? "#6366f1" : "#FFF"} />
             </Pressable>
           </View>
 
-          <Text style={s.label}>Hue</Text>
-          <View
-            style={[s.sliderWrap, { width: sliderWidth }]}
-            {...makeHandler(setHue, 360)}
-          >
-            <View style={s.sliderTrack}>
-              {hueColors.map((c, i) => (
-                <View
-                  key={i}
-                  style={{
-                    flex: 1,
-                    backgroundColor: c,
-                    borderTopLeftRadius: i === 0 ? 8 : 0,
-                    borderBottomLeftRadius: i === 0 ? 8 : 0,
-                    borderTopRightRadius: i === hueColors.length - 1 ? 8 : 0,
-                    borderBottomRightRadius:
-                      i === hueColors.length - 1 ? 8 : 0,
-                  }}
-                />
-              ))}
-            </View>
-            <View
-              style={[
-                s.thumb,
-                {
-                  left: Math.max(
-                    0,
-                    Math.min(
-                      sliderWidth - 20,
-                      (hue / 360) * sliderWidth - 10
-                    )
-                  ),
-                },
-              ]}
+          {showWheel && (
+            <ColorWheel
+              hue={hue}
+              sat={sat}
+              val={val}
+              onHueSatChange={handleWheelHueSat}
             />
-          </View>
+          )}
 
-          <Text style={s.label}>Saturation</Text>
-          <View
-            style={[s.sliderWrap, { width: sliderWidth }]}
-            {...makeHandler(setSat, 100)}
-          >
-            <View style={s.sliderTrack}>
-              {satColors.map((c, i) => (
+          {!showWheel && (
+            <>
+              <Text style={s.label}>Hue</Text>
+              <View
+                style={[s.sliderWrap, { width: sliderWidth }]}
+                {...makeHandler(setHue, 360)}
+              >
+                <View style={s.sliderTrack}>
+                  {hueColors.map((c, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        flex: 1,
+                        backgroundColor: c,
+                        borderTopLeftRadius: i === 0 ? 8 : 0,
+                        borderBottomLeftRadius: i === 0 ? 8 : 0,
+                        borderTopRightRadius: i === hueColors.length - 1 ? 8 : 0,
+                        borderBottomRightRadius:
+                          i === hueColors.length - 1 ? 8 : 0,
+                      }}
+                    />
+                  ))}
+                </View>
                 <View
-                  key={i}
-                  style={{
-                    flex: 1,
-                    backgroundColor: c,
-                    borderTopLeftRadius: i === 0 ? 8 : 0,
-                    borderBottomLeftRadius: i === 0 ? 8 : 0,
-                    borderTopRightRadius: i === satColors.length - 1 ? 8 : 0,
-                    borderBottomRightRadius:
-                      i === satColors.length - 1 ? 8 : 0,
-                  }}
+                  style={[
+                    s.thumb,
+                    {
+                      left: Math.max(
+                        0,
+                        Math.min(
+                          sliderWidth - 20,
+                          (hue / 360) * sliderWidth - 10
+                        )
+                      ),
+                    },
+                  ]}
                 />
-              ))}
-            </View>
-            <View
-              style={[
-                s.thumb,
-                {
-                  left: Math.max(
-                    0,
-                    Math.min(
-                      sliderWidth - 20,
-                      (sat / 100) * sliderWidth - 10
-                    )
-                  ),
-                },
-              ]}
-            />
-          </View>
+              </View>
+
+              <Text style={s.label}>Saturation</Text>
+              <View
+                style={[s.sliderWrap, { width: sliderWidth }]}
+                {...makeHandler(setSat, 100)}
+              >
+                <View style={s.sliderTrack}>
+                  {satColors.map((c, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        flex: 1,
+                        backgroundColor: c,
+                        borderTopLeftRadius: i === 0 ? 8 : 0,
+                        borderBottomLeftRadius: i === 0 ? 8 : 0,
+                        borderTopRightRadius: i === satColors.length - 1 ? 8 : 0,
+                        borderBottomRightRadius:
+                          i === satColors.length - 1 ? 8 : 0,
+                      }}
+                    />
+                  ))}
+                </View>
+                <View
+                  style={[
+                    s.thumb,
+                    {
+                      left: Math.max(
+                        0,
+                        Math.min(
+                          sliderWidth - 20,
+                          (sat / 100) * sliderWidth - 10
+                        )
+                      ),
+                    },
+                  ]}
+                />
+              </View>
+            </>
+          )}
 
           <Text style={s.label}>Brightness</Text>
           <View
@@ -374,6 +510,9 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  dropperBtnActive: {
+    backgroundColor: "rgba(99,102,241,0.2)",
   },
   label: {
     color: "rgba(255,255,255,0.5)",

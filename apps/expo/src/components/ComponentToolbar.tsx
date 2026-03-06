@@ -17,6 +17,7 @@ import Animated, {
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { ColorPickerModal } from "./ColorPickerModal";
+import type { Theme } from "../types";
 
 export interface StyleEditingState {
   borderRadius: number;
@@ -40,7 +41,26 @@ interface StyleEditorToolbarProps {
   onStateChange: (updates: Partial<StyleEditingState>) => void;
   onUndo: () => void;
   onInspect?: () => void;
+  theme?: Theme;
 }
+
+const DEFAULT_BORDER_RADII = { none: 0, sm: 4, md: 8, lg: 12, xl: 16, full: 9999 };
+const BORDER_RADII_PRESETS = [
+  { key: "none", label: "N/A" },
+  { key: "sm", label: "SM" },
+  { key: "md", label: "MD" },
+  { key: "lg", label: "LG" },
+  { key: "xl", label: "XL" },
+  { key: "full", label: "Full" },
+] as const;
+
+const DEFAULT_BORDER_WIDTHS = [
+  { value: 0, label: "0" },
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+] as const;
 
 const BORDER_COLORS = [
   "#000000", "#FFFFFF", "#e0e0e0", "#94a3b8",
@@ -80,7 +100,18 @@ export function StyleEditorToolbar({
   onStateChange,
   onUndo,
   onInspect,
+  theme,
 }: StyleEditorToolbarProps) {
+  const themeBorderColors = useMemo(() => {
+    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    return [c.primary, c.secondary, c.error, c.success, c.warning];
+  }, [theme?.colors]);
+
+  const themeBgColors = useMemo(() => {
+    const bg = theme?.backgroundColors ?? { background: "#ffffff", secondaryBackground: "#f3f4f6" };
+    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    return [bg.background, bg.secondaryBackground, c.primary, c.secondary, c.error, c.success, c.warning];
+  }, [theme?.backgroundColors, theme?.colors]);
   const { height: screenHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
 
@@ -198,6 +229,26 @@ export function StyleEditorToolbar({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.colorPickerContent}
             >
+              {themeBorderColors.map((col, i) => (
+                <Pressable
+                  key={`theme-${i}`}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: col },
+                    state.borderColor === col && styles.colorOptionSelected,
+                  ]}
+                  onPress={() => onStateChange({ borderColor: col })}
+                >
+                  {state.borderColor === col && (
+                    <View style={styles.colorCheckmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+              <View style={styles.colorDivider}>
+                <View style={styles.colorDividerLine} />
+              </View>
               {BORDER_COLORS.map((col) => (
                 <Pressable
                   key={col}
@@ -233,6 +284,26 @@ export function StyleEditorToolbar({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.colorPickerContent}
             >
+              {themeBgColors.map((col, i) => (
+                <Pressable
+                  key={`theme-bg-${i}`}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: col },
+                    state.backgroundColor === col && styles.colorOptionSelected,
+                  ]}
+                  onPress={() => onStateChange({ backgroundColor: col })}
+                >
+                  {state.backgroundColor === col && (
+                    <View style={styles.colorCheckmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+              <View style={styles.colorDivider}>
+                <View style={styles.colorDividerLine} />
+              </View>
               {BORDER_COLORS.map((col) => (
                 <Pressable
                   key={col}
@@ -256,6 +327,49 @@ export function StyleEditorToolbar({
               >
                 <Feather name="plus" size={22} color="#FFF" />
               </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Border Radius Presets */}
+        {sliderTarget === "borderRadius" && state.hasBorderRadius && activePanel === null && (
+          <View style={styles.presetsPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+              {BORDER_RADII_PRESETS.map((p) => {
+                const radii = theme?.borderRadii ?? DEFAULT_BORDER_RADII;
+                const val = radii[p.key];
+                const active = state.borderRadius === val;
+                return (
+                  <Pressable
+                    key={p.key}
+                    style={[styles.presetButton, active && styles.presetButtonActive]}
+                    onPress={() => onStateChange({ borderRadius: val })}
+                  >
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{p.label}</Text>
+                    <Text style={[styles.presetValue, active && styles.presetLabelActive]}>{val}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Border Width Presets */}
+        {sliderTarget === "borderWidth" && state.hasBorder && activePanel === null && (
+          <View style={styles.presetsPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+              {DEFAULT_BORDER_WIDTHS.map((p) => {
+                const active = state.borderWidth === p.value;
+                return (
+                  <Pressable
+                    key={p.value}
+                    style={[styles.presetButton, active && styles.presetButtonActive]}
+                    onPress={() => onStateChange({ borderWidth: p.value })}
+                  >
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{p.label}</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -637,5 +751,49 @@ const styles = StyleSheet.create({
   },
   flexOptionTextActive: {
     color: "#FFFFFF",
+  },
+  presetsPanel: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  presetsRow: {
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  presetButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+  },
+  presetButtonActive: {
+    backgroundColor: "#6366f1",
+  },
+  presetLabel: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  presetValue: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  presetLabelActive: {
+    color: "#FFFFFF",
+  },
+  colorDivider: {
+    width: 20,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  colorDividerLine: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
 });

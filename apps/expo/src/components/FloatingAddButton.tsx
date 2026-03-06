@@ -198,7 +198,7 @@ export function FloatingAddButton({ onAdd }: FloatingAddButtonProps) {
               didDrag.current = false;
             }}
           >
-            <Text style={styles.fabText}>{expanded ? "\u00D7" : "+"}</Text>
+            <Text style={styles.fabText}>{expanded ? "\u00D7" : "</>"}</Text>
           </Pressable>
         </Animated.View>
       </GestureDetector>
@@ -229,9 +229,9 @@ const styles = StyleSheet.create({
   },
   fabText: {
     color: "#ffffff",
-    fontSize: 28,
-    fontWeight: "300",
-    lineHeight: 32,
+    fontSize: 18,
+    fontWeight: "600",
+    lineHeight: 22,
   },
   pillsContainer: {
     alignItems: "center",

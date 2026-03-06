@@ -30,6 +30,7 @@ export type {
   ToggleVariableAction,
   NavigateAction,
   OpenUrlAction,
+  ResetCanvasAction,
   ConditionalAction,
   Bindings,
   EventHandlers,

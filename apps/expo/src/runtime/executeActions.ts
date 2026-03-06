@@ -34,6 +34,9 @@ export function executeActions(
         safeOpenUrl(url);
         break;
       }
+      case "RESET_CANVAS":
+        navigation.resetAndBuild?.();
+        break;
       case "CONDITIONAL": {
         const result = evaluate(action.condition, context);
         if (result) {

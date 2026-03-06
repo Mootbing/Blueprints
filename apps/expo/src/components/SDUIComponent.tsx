@@ -47,6 +47,7 @@ interface SDUIComponentProps {
   onDeleteComponent?: (componentId: string) => void;
   onPickImage?: (componentId: string) => void;
   isDimmed?: boolean;
+  locked?: boolean;
   // Drill-in props (for container components)
   isDrilledInto?: boolean;
   selectedChildId?: string | null;
@@ -92,6 +93,7 @@ export function SDUIComponent({
   onDeleteComponent,
   onPickImage,
   isDimmed,
+  locked,
   isDrilledInto,
   selectedChildId,
   onChildSelect,
@@ -122,6 +124,12 @@ export function SDUIComponent({
       onAutoEditConsumed?.();
     }
   }, [autoEdit, isEditMode, onAutoEditConsumed]);
+
+  // Track whether we're in text-editing mode (shared value for animated style)
+  const isTextEditing = useSharedValue(false);
+  useEffect(() => {
+    isTextEditing.value = editState != null;
+  }, [editState, isTextEditing]);
 
   // All shared values must be declared unconditionally (rules of hooks)
   const translateX = useSharedValue(0);
@@ -181,13 +189,14 @@ export function SDUIComponent({
         position: "absolute" as const,
         left: baseX.value + translateX.value + editOffsetX.value,
         top: baseY.value + translateY.value + editOffsetY.value,
-        width: baseW.value * scale.value,
-        height: baseH.value * scale.value,
-        minHeight: 44,
+        width: baseW.value,
+        // When text editing, don't fix height so the TextInput can grow with content
+        height: isTextEditing.value ? undefined : baseH.value,
+        minHeight: isTextEditing.value ? Math.max(baseH.value, 44) : 44,
         opacity: tOpacity,
         transform: [
           { rotate: `${baseRotation.value + rotation.value}rad` },
-          { scale: tScale },
+          { scale: scale.value * tScale },
         ],
       };
     }
@@ -202,10 +211,14 @@ export function SDUIComponent({
   });
 
   const commitLayout = useCallback(() => {
-    const finalX = baseX.value + translateX.value;
-    const finalY = baseY.value + translateY.value;
-    const finalW = baseW.value * scale.value;
-    const finalH = baseH.value * scale.value;
+    const scaleFactor = scale.value;
+    // Transform scale is applied from center, so adjust position accordingly
+    const scaleOffsetX = baseW.value * (1 - scaleFactor) / 2;
+    const scaleOffsetY = baseH.value * (1 - scaleFactor) / 2;
+    const finalX = baseX.value + translateX.value + scaleOffsetX;
+    const finalY = baseY.value + translateY.value + scaleOffsetY;
+    const finalW = baseW.value * scaleFactor;
+    const finalH = baseH.value * scaleFactor;
     const finalRotation = baseRotation.value + rotation.value;
 
     const newLayout: Layout = {
@@ -222,7 +235,15 @@ export function SDUIComponent({
     rotation.value = 0;
 
     onUpdate(component.id, newLayout);
-  }, [component.id, canvasWidth, canvasHeight, onUpdate, baseX, baseY, baseW, baseH, baseRotation, translateX, translateY, scale, rotation]);
+
+    // Scale fontSize proportionally for text-containing components
+    if (scaleFactor !== 1 && onStyleChange) {
+      const fontSize = ('fontSize' in component) ? (component as any).fontSize as number | undefined : undefined;
+      if (fontSize != null) {
+        onStyleChange(component.id, { fontSize: Math.max(8, Math.round(fontSize * scaleFactor)) });
+      }
+    }
+  }, [component, canvasWidth, canvasHeight, onUpdate, onStyleChange, baseX, baseY, baseW, baseH, baseRotation, translateX, translateY, scale, rotation]);
 
   // Drag notification callbacks (stable refs for worklet runOnJS)
   const notifyDragStart = useCallback(() => {
@@ -241,7 +262,7 @@ export function SDUIComponent({
     onDeleteComponent?.(component.id);
   }, [onDeleteComponent, component.id]);
 
-  const gesturesDisabled = isComponentEditing || !!isDrilledInto;
+  const gesturesDisabled = isComponentEditing || !!isDrilledInto || !!locked;
 
   const allGestures = useMemo(() => {
     const panGesture = Gesture.Pan()
@@ -259,10 +280,11 @@ export function SDUIComponent({
         const rawY = savedTranslateY.value + e.translationY;
 
         if (siblingRects && componentIndex != null && onGuidesChange) {
-          const currentL = baseX.value + rawX;
-          const currentT = baseY.value + rawY;
+          // Scale is applied as transform from center, so compute visual bounds
           const currentW = baseW.value * scale.value;
           const currentH = baseH.value * scale.value;
+          const currentL = baseX.value + rawX + baseW.value * (1 - scale.value) / 2;
+          const currentT = baseY.value + rawY + baseH.value * (1 - scale.value) / 2;
 
           const result = computeSnap(
             currentL,
@@ -283,8 +305,8 @@ export function SDUIComponent({
           translateY.value = rawY;
         }
 
-        // Trash zone detection
-        const centerY = baseY.value + translateY.value + (baseH.value * scale.value) / 2;
+        // Trash zone detection (center is unaffected by scale-from-center transform)
+        const centerY = baseY.value + translateY.value + baseH.value / 2;
         const overTrash = centerY > canvasHeight - TRASH_ZONE_HEIGHT;
         if (overTrash !== isOverTrashSV.value) {
           isOverTrashSV.value = overTrash;
@@ -472,12 +494,22 @@ export function SDUIComponent({
           </View>
         )}
         <Renderer {...rendererProps} />
+        {/* Transparent overlay to capture touches for gesture handler.
+            Without this, Text/TextInput native views steal touch events
+            and prevent pan/pinch/rotation gestures from firing. */}
+        {!isComponentEditing && (
+          <View style={sduiStyles.gestureOverlay} />
+        )}
       </Animated.View>
     </GestureDetector>
   );
 }
 
 const sduiStyles = StyleSheet.create({
+  gestureOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
   groupSelectOutline: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 2,

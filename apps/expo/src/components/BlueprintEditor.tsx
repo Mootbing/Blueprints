@@ -7,59 +7,47 @@ import { AsyncStorageProvider } from "../storage";
 import type { StorageProvider } from "../storage";
 import type { AppBlueprint, Layout, Component, ComponentStyleUpdates, Screen, Variable } from "../types";
 import { useRuntimeStore } from "../runtime";
+import { uuid } from "../utils/uuid";
+import { deepUpdateComponent, deepDeleteComponent } from "../utils/componentTree";
 
 const SCREEN_ID = "00000000-0000-0000-0000-000000000001";
+const TIMER_SCREEN_ID = "00000000-0000-0000-0000-000000000002";
+const COUNTER_SCREEN_ID = "00000000-0000-0000-0000-000000000003";
+const RANDOM_SCREEN_ID = "00000000-0000-0000-0000-000000000004";
 
-function deepUpdateComponent(
-  components: Component[],
-  targetId: string,
-  updater: (comp: Component) => Component
-): Component[] {
-  return components.map((c) => {
-    if (c.id === targetId) return updater(c);
-    if (c.type === "container" && c.children) {
-      const updated = deepUpdateComponent(c.children, targetId, updater);
-      if (updated !== c.children) return { ...c, children: updated };
-    }
-    return c;
-  });
+export const BACKGROUND_ID = "00000000-0000-0000-0000-00000000000b";
+
+export function makeBackgroundShape(color = "#ffffff"): Component {
+  return {
+    type: "shape" as const,
+    id: BACKGROUND_ID,
+    layout: { x: 0, y: 0, width: 1, height: 1 },
+    shapeType: "rectangle" as const,
+    backgroundColor: color,
+    opacity: 1,
+  };
 }
 
-function deepDeleteComponent(
-  components: Component[],
-  targetId: string
-): Component[] {
-  const filtered = components.filter((c) => c.id !== targetId);
-  if (filtered.length < components.length) return filtered;
-  return components.map((c) => {
-    if (c.type === "container" && c.children) {
-      const updated = deepDeleteComponent(c.children, targetId);
-      if (updated !== c.children) return { ...c, children: updated };
-    }
-    return c;
-  });
+function bg(id: string, color = "#0f172a"): Component {
+  return { type: "shape", id, layout: { x: 0, y: 0, width: 1, height: 1 }, shapeType: "rectangle", backgroundColor: color, opacity: 1 };
 }
 
 export const defaultBlueprint: AppBlueprint = {
   version: 1,
   initial_screen_id: SCREEN_ID,
-  variables: [
-    { id: "00000000-0000-0000-0000-a00000000001", name: "count", type: "number", defaultValue: 0 },
-    { id: "00000000-0000-0000-0000-a00000000002", name: "greeting", type: "string", defaultValue: "Hello, Blueprints!" },
-    { id: "00000000-0000-0000-0000-a00000000003", name: "showSecret", type: "boolean", defaultValue: false },
-  ],
   screens: {
+    // ── Home Screen ──
     [SCREEN_ID]: {
       id: SCREEN_ID,
       name: "Home",
-      backgroundColor: "#0f172a",
       components: [
+        bg(BACKGROUND_ID),
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000010",
-          layout: { x: 0.06, y: 0.05, width: 0.88, height: 0.025 },
-          content: "VARIABLES  \u2022  BINDINGS  \u2022  ACTIONS",
-          fontSize: 11,
+          layout: { x: 0.06, y: 0.06, width: 0.8, height: 0.03 },
+          content: "DESIGN  \u2022  BUILD  \u2022  PREVIEW",
+          fontSize: 12,
           color: "#818cf8",
           fontWeight: "600",
           textAlign: "left",
@@ -67,230 +55,400 @@ export const defaultBlueprint: AppBlueprint = {
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000011",
-          layout: { x: 0.06, y: 0.085, width: 0.88, height: 0.045 },
-          content: "Hello, Blueprints!",
-          fontSize: 30,
+          layout: { x: 0.06, y: 0.10, width: 0.88, height: 0.05 },
+          content: "Welcome to Blueprints",
+          fontSize: 36,
           color: "#ffffff",
           fontWeight: "bold",
           textAlign: "left",
-          bindings: { content: "variables.greeting" },
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000012",
-          layout: { x: 0.06, y: 0.14, width: 0.88, height: 0.055 },
-          content: "Tap the buttons in preview mode to see variables, bindings, and actions working live.",
-          fontSize: 14,
+          layout: { x: 0.06, y: 0.17, width: 0.88, height: 0.05 },
+          content: "Build beautiful app interfaces visually. Drag, drop, and customize components to bring your ideas to life.",
+          fontSize: 15,
           color: "#94a3b8",
           fontWeight: "normal",
           textAlign: "left",
         },
         {
-          type: "divider",
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000013",
+          layout: { x: 0.06, y: 0.25, width: 0.88, height: 0.03 },
+          content: "Demos",
+          fontSize: 20,
+          color: "#e2e8f0",
+          fontWeight: "bold",
+          textAlign: "left",
+        },
+        {
+          type: "button",
           id: "00000000-0000-0000-0000-000000000040",
-          layout: { x: 0.06, y: 0.205, width: 0.88, height: 0.005 },
-          color: "#334155",
+          layout: { x: 0.06, y: 0.30, width: 0.88, height: 0.065 },
+          label: "Timer",
+          backgroundColor: "#6366f1",
+          textColor: "#ffffff",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "NAVIGATE", target: TIMER_SCREEN_ID }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000041",
+          layout: { x: 0.06, y: 0.38, width: 0.88, height: 0.065 },
+          label: "Counter",
+          backgroundColor: "#8b5cf6",
+          textColor: "#ffffff",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "NAVIGATE", target: COUNTER_SCREEN_ID }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000042",
+          layout: { x: 0.06, y: 0.46, width: 0.88, height: 0.065 },
+          label: "Random Number",
+          backgroundColor: "#ec4899",
+          textColor: "#ffffff",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "NAVIGATE", target: RANDOM_SCREEN_ID }] },
         },
         {
           type: "text",
-          id: "00000000-0000-0000-0000-000000000013",
-          layout: { x: 0.06, y: 0.22, width: 0.88, height: 0.025 },
-          content: "COUNTER",
-          fontSize: 12,
-          color: "#64748b",
-          fontWeight: "700",
+          id: "00000000-0000-0000-0000-000000000050",
+          layout: { x: 0.06, y: 0.56, width: 0.88, height: 0.03 },
+          content: "Quick Start",
+          fontSize: 20,
+          color: "#e2e8f0",
+          fontWeight: "bold",
           textAlign: "left",
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000014",
-          layout: { x: 0.06, y: 0.25, width: 0.88, height: 0.06 },
-          content: "0",
-          fontSize: 48,
-          color: "#e2e8f0",
-          fontWeight: "bold",
-          textAlign: "center",
-          bindings: { content: "variables.count" },
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000021",
-          layout: { x: 0.06, y: 0.32, width: 0.27, height: 0.055 },
-          label: "\u2212 1",
-          backgroundColor: "#334155",
-          textColor: "#e2e8f0",
-          fontSize: 18,
-          fontWeight: "700",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "variables.count - 1" }] },
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000022",
-          layout: { x: 0.36, y: 0.32, width: 0.27, height: 0.055 },
-          label: "Reset",
-          backgroundColor: "#1e293b",
-          textColor: "#94a3b8",
-          fontSize: 14,
-          fontWeight: "600",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "0" }] },
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000023",
-          layout: { x: 0.66, y: 0.32, width: 0.27, height: 0.055 },
-          label: "+ 1",
-          backgroundColor: "#6366f1",
-          textColor: "#ffffff",
-          fontSize: 18,
-          fontWeight: "700",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "variables.count + 1" }] },
-        },
-        {
-          type: "divider",
-          id: "00000000-0000-0000-0000-000000000041",
-          layout: { x: 0.06, y: 0.39, width: 0.88, height: 0.005 },
-          color: "#334155",
+          layout: { x: 0.06, y: 0.61, width: 0.88, height: 0.03 },
+          content: "1. Long-press the canvas to open the menu",
+          fontSize: 13,
+          color: "#94a3b8",
+          fontWeight: "normal",
+          textAlign: "left",
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000016",
-          layout: { x: 0.06, y: 0.405, width: 0.88, height: 0.025 },
-          content: "DYNAMIC GREETING",
-          fontSize: 12,
-          color: "#64748b",
-          fontWeight: "700",
+          layout: { x: 0.06, y: 0.65, width: 0.88, height: 0.03 },
+          content: "2. Toggle Edit Mode on, then add components",
+          fontSize: 13,
+          color: "#94a3b8",
+          fontWeight: "normal",
           textAlign: "left",
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000024",
-          layout: { x: 0.06, y: 0.435, width: 0.42, height: 0.055 },
-          label: "Say Hello",
-          backgroundColor: "#059669",
-          textColor: "#ffffff",
-          fontSize: 14,
-          fontWeight: "600",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "SET_VARIABLE", key: "greeting", value: "'Hello, Blueprints!'" }] },
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000025",
-          layout: { x: 0.52, y: 0.435, width: 0.42, height: 0.055 },
-          label: "Say Goodbye",
-          backgroundColor: "#dc2626",
-          textColor: "#ffffff",
-          fontSize: 14,
-          fontWeight: "600",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "SET_VARIABLE", key: "greeting", value: "'Goodbye, World!'" }] },
-        },
-        {
-          type: "divider",
-          id: "00000000-0000-0000-0000-000000000042",
-          layout: { x: 0.06, y: 0.505, width: 0.88, height: 0.005 },
-          color: "#334155",
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000017",
-          layout: { x: 0.06, y: 0.52, width: 0.88, height: 0.025 },
-          content: "CONDITIONAL VISIBILITY",
-          fontSize: 12,
-          color: "#64748b",
-          fontWeight: "700",
+          layout: { x: 0.06, y: 0.69, width: 0.88, height: 0.03 },
+          content: "3. Drag to move, pinch to resize, tap to edit",
+          fontSize: 13,
+          color: "#94a3b8",
+          fontWeight: "normal",
           textAlign: "left",
-        },
-        {
-          type: "button",
-          id: "00000000-0000-0000-0000-000000000026",
-          layout: { x: 0.06, y: 0.55, width: 0.88, height: 0.055 },
-          label: "Toggle Secret Message",
-          backgroundColor: "#7c3aed",
-          textColor: "#ffffff",
-          fontSize: 14,
-          fontWeight: "600",
-          borderRadius: 12,
-          actions: { onTap: [{ type: "TOGGLE_VARIABLE", key: "showSecret" }] },
-        },
-        {
-          type: "shape",
-          id: "00000000-0000-0000-0000-000000000050",
-          layout: { x: 0.06, y: 0.615, width: 0.88, height: 0.065 },
-          shapeType: "rounded-rectangle",
-          backgroundColor: "#1e1b4b",
-          borderColor: "#818cf8",
-          borderWidth: 1,
-          borderRadius: 12,
-          visibleWhen: "variables.showSecret",
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000018",
-          layout: { x: 0.1, y: 0.63, width: 0.8, height: 0.035 },
-          content: "You found the secret message!",
-          fontSize: 16,
-          color: "#a5b4fc",
-          fontWeight: "600",
-          textAlign: "center",
-          visibleWhen: "variables.showSecret",
-        },
-        {
-          type: "divider",
-          id: "00000000-0000-0000-0000-000000000043",
-          layout: { x: 0.06, y: 0.695, width: 0.88, height: 0.005 },
-          color: "#334155",
-        },
-        {
-          type: "text",
-          id: "00000000-0000-0000-0000-000000000019",
-          layout: { x: 0.06, y: 0.71, width: 0.88, height: 0.025 },
-          content: "CONDITIONAL ACTION",
-          fontSize: 12,
-          color: "#64748b",
-          fontWeight: "700",
+          layout: { x: 0.06, y: 0.73, width: 0.88, height: 0.03 },
+          content: "4. Toggle Edit Mode off to preview your app",
+          fontSize: 13,
+          color: "#94a3b8",
+          fontWeight: "normal",
           textAlign: "left",
         },
         {
-          type: "text",
-          id: "00000000-0000-0000-0000-000000000031",
-          layout: { x: 0.06, y: 0.74, width: 0.88, height: 0.03 },
-          content: "Tap below to check count",
-          fontSize: 14,
-          color: "#94a3b8",
-          fontWeight: "normal",
-          textAlign: "center",
-          bindings: { content: "variables.greeting" },
-        },
-        {
           type: "button",
-          id: "00000000-0000-0000-0000-000000000027",
-          layout: { x: 0.06, y: 0.78, width: 0.88, height: 0.055 },
-          label: "Check Count Status",
-          backgroundColor: "#0891b2",
+          id: "00000000-0000-0000-0000-000000000020",
+          layout: { x: 0.06, y: 0.80, width: 0.88, height: 0.065 },
+          label: "Start Building",
+          backgroundColor: "#22c55e",
           textColor: "#ffffff",
-          fontSize: 14,
+          fontSize: 16,
           fontWeight: "600",
-          borderRadius: 12,
-          actions: {
-            onTap: [{
-              type: "CONDITIONAL",
-              condition: "variables.count > 5",
-              then: [{ type: "SET_VARIABLE", key: "greeting", value: "'Count is HIGH! (' + variables.count + ')'" }],
-              else: [{ type: "SET_VARIABLE", key: "greeting", value: "'Count is low (' + variables.count + ')'" }],
-            }],
-          },
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "RESET_CANVAS" }] },
         },
         {
           type: "text",
           id: "00000000-0000-0000-0000-000000000015",
-          layout: { x: 0.06, y: 0.86, width: 0.88, height: 0.025 },
-          content: "Long-press canvas to open menu  \u2022  Made with Blueprints",
+          layout: { x: 0.06, y: 0.89, width: 0.88, height: 0.03 },
+          content: "v1.0  \u2022  Made with Blueprints",
           fontSize: 11,
           color: "#475569",
+          fontWeight: "normal",
+          textAlign: "left",
+        },
+      ],
+    },
+
+    // ── Timer Screen ──
+    [TIMER_SCREEN_ID]: {
+      id: TIMER_SCREEN_ID,
+      name: "Timer",
+      variables: [
+        { name: "seconds", defaultValue: 0 },
+        { name: "running", defaultValue: false },
+      ],
+      components: [
+        bg("00000000-0000-0000-0000-0000000002b0"),
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000201",
+          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          content: "Timer",
+          fontSize: 28,
+          color: "#ffffff",
+          fontWeight: "bold",
+          textAlign: "center",
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000202",
+          layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
+          content: "0",
+          fontSize: 72,
+          color: "#818cf8",
+          fontWeight: "bold",
+          textAlign: "center",
+          bindings: { content: "seconds" },
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000203",
+          layout: { x: 0.2, y: 0.42, width: 0.6, height: 0.03 },
+          content: "seconds",
+          fontSize: 16,
+          color: "#64748b",
+          fontWeight: "normal",
+          textAlign: "center",
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000204",
+          layout: { x: 0.1, y: 0.52, width: 0.8, height: 0.07 },
+          label: "Start / Stop",
+          backgroundColor: "#6366f1",
+          textColor: "#ffffff",
+          fontSize: 18,
+          fontWeight: "bold",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "TOGGLE_VARIABLE", key: "running" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000205",
+          layout: { x: 0.1, y: 0.62, width: 0.8, height: 0.07 },
+          label: "Reset",
+          backgroundColor: "#334155",
+          textColor: "#e2e8f0",
+          fontSize: 18,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: {
+            onTap: [
+              { type: "SET_VARIABLE", key: "seconds", value: "0" },
+              { type: "SET_VARIABLE", key: "running", value: "false" },
+            ],
+          },
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000206",
+          layout: { x: 0.1, y: 0.75, width: 0.8, height: 0.05 },
+          content: "Tap Start/Stop to toggle. Uses variables to track state.",
+          fontSize: 13,
+          color: "#64748b",
+          fontWeight: "normal",
+          textAlign: "center",
+        },
+      ],
+    },
+
+    // ── Counter Screen ──
+    [COUNTER_SCREEN_ID]: {
+      id: COUNTER_SCREEN_ID,
+      name: "Counter",
+      variables: [{ name: "count", defaultValue: 0 }],
+      components: [
+        bg("00000000-0000-0000-0000-0000000003b0"),
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000301",
+          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          content: "Counter",
+          fontSize: 28,
+          color: "#ffffff",
+          fontWeight: "bold",
+          textAlign: "center",
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000302",
+          layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
+          content: "0",
+          fontSize: 80,
+          color: "#8b5cf6",
+          fontWeight: "bold",
+          textAlign: "center",
+          bindings: { content: "count" },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000303",
+          layout: { x: 0.06, y: 0.48, width: 0.42, height: 0.08 },
+          label: "- 1",
+          backgroundColor: "#ef4444",
+          textColor: "#ffffff",
+          fontSize: 24,
+          fontWeight: "bold",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "count - 1" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000304",
+          layout: { x: 0.52, y: 0.48, width: 0.42, height: 0.08 },
+          label: "+ 1",
+          backgroundColor: "#22c55e",
+          textColor: "#ffffff",
+          fontSize: 24,
+          fontWeight: "bold",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "count + 1" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000305",
+          layout: { x: 0.2, y: 0.60, width: 0.6, height: 0.065 },
+          label: "Reset",
+          backgroundColor: "#334155",
+          textColor: "#e2e8f0",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "count", value: "0" }] },
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000306",
+          layout: { x: 0.1, y: 0.75, width: 0.8, height: 0.05 },
+          content: "A simple counter using SET_VARIABLE expressions.",
+          fontSize: 13,
+          color: "#64748b",
+          fontWeight: "normal",
+          textAlign: "center",
+        },
+      ],
+    },
+
+    // ── Random Number Screen ──
+    [RANDOM_SCREEN_ID]: {
+      id: RANDOM_SCREEN_ID,
+      name: "Random",
+      variables: [{ name: "result", defaultValue: 0 }],
+      components: [
+        bg("00000000-0000-0000-0000-0000000004b0"),
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000401",
+          layout: { x: 0.06, y: 0.06, width: 0.88, height: 0.04 },
+          content: "Random Number",
+          fontSize: 28,
+          color: "#ffffff",
+          fontWeight: "bold",
+          textAlign: "center",
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000402",
+          layout: { x: 0.1, y: 0.25, width: 0.8, height: 0.15 },
+          content: "?",
+          fontSize: 80,
+          color: "#ec4899",
+          fontWeight: "bold",
+          textAlign: "center",
+          bindings: { content: "result" },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000403",
+          layout: { x: 0.1, y: 0.48, width: 0.8, height: 0.08 },
+          label: "Generate (1-100)",
+          backgroundColor: "#ec4899",
+          textColor: "#ffffff",
+          fontSize: 20,
+          fontWeight: "bold",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "result", value: "floor(random(100)) + 1" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000404",
+          layout: { x: 0.1, y: 0.59, width: 0.38, height: 0.065 },
+          label: "1-10",
+          backgroundColor: "#7c3aed",
+          textColor: "#ffffff",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "result", value: "floor(random(10)) + 1" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000405",
+          layout: { x: 0.52, y: 0.59, width: 0.38, height: 0.065 },
+          label: "1-1000",
+          backgroundColor: "#7c3aed",
+          textColor: "#ffffff",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "result", value: "floor(random(1000)) + 1" }] },
+        },
+        {
+          type: "button",
+          id: "00000000-0000-0000-0000-000000000406",
+          layout: { x: 0.2, y: 0.68, width: 0.6, height: 0.065 },
+          label: "Reset",
+          backgroundColor: "#334155",
+          textColor: "#e2e8f0",
+          fontSize: 16,
+          fontWeight: "600",
+          textAlign: "center",
+          borderRadius: 14,
+          actions: { onTap: [{ type: "SET_VARIABLE", key: "result", value: "0" }] },
+        },
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000407",
+          layout: { x: 0.1, y: 0.80, width: 0.8, height: 0.05 },
+          content: "Uses random() and floor() in variable expressions.",
+          fontSize: 13,
+          color: "#64748b",
           fontWeight: "normal",
           textAlign: "center",
         },
@@ -321,14 +479,19 @@ export function BlueprintEditor({
   onDeleteBlueprint,
 }: BlueprintEditorProps) {
   const [blueprint, setBlueprint] = useState(defaultBlueprint);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [currentScreenId, setCurrentScreenId] = useState(SCREEN_ID);
+  const currentScreenIdRef = useRef(currentScreenId);
+  currentScreenIdRef.current = currentScreenId;
+  const [navStack, setNavStack] = useState<string[]>([]);
   const isEditModeLoaded = useRef(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blueprintRef = useRef(blueprint);
   blueprintRef.current = blueprint;
   const initFromBlueprint = useRuntimeStore((s) => s.initFromBlueprint);
+  const navigateToScreen = useRuntimeStore((s) => s.navigateToScreen);
   const runtimeVariables = useRuntimeStore((s) => s.variables);
 
   // Load blueprint and settings on mount
@@ -343,8 +506,9 @@ export function BlueprintEditor({
 
         const loadedBp = bp ?? defaultBlueprint;
         setBlueprint(loadedBp);
+        setCurrentScreenId(loadedBp.initial_screen_id);
 
-        // Always start in preview mode
+        // Always start in edit mode
         isEditModeLoaded.current = true;
 
         // Init runtime store
@@ -394,20 +558,18 @@ export function BlueprintEditor({
   // Re-initialize runtime store when blueprint variables change
   useEffect(() => {
     if (!loaded) return;
-    const screenId = blueprint.initial_screen_id;
-    const screen = blueprint.screens[screenId];
+    const screen = blueprint.screens[currentScreenId];
     const appVars = blueprint.variables ?? [];
     const screenVars = screen?.variables ?? [];
     initFromBlueprint(appVars, screenVars, {});
-  }, [blueprint.variables, blueprint.screens[blueprint.initial_screen_id]?.variables]);
+  }, [blueprint.variables, currentScreenId, blueprint.screens[currentScreenId]?.variables]);
 
   // Debounced persist of runtime variables
   useEffect(() => {
     if (!loaded) return;
     if (persistTimeout.current) clearTimeout(persistTimeout.current);
     persistTimeout.current = setTimeout(() => {
-      const screenId = blueprint.initial_screen_id;
-      const screen = blueprint.screens[screenId];
+      const screen = blueprint.screens[currentScreenIdRef.current];
       const persistedNames = collectPersistedVarNames(
         blueprint.variables ?? [],
         screen?.variables ?? []
@@ -442,13 +604,14 @@ export function BlueprintEditor({
   const updateScreenComponents = useCallback(
     (fn: (components: Component[]) => Component[]) => {
       setBlueprint((prev) => {
-        const screenId = prev.initial_screen_id;
-        const screen = prev.screens[screenId];
+        const sid = currentScreenIdRef.current;
+        const screen = prev.screens[sid];
+        if (!screen) return prev;
         return {
           ...prev,
           screens: {
             ...prev.screens,
-            [screenId]: { ...screen, components: fn(screen.components) },
+            [sid]: { ...screen, components: fn(screen.components) },
           },
         };
       });
@@ -520,32 +683,15 @@ export function BlueprintEditor({
     [updateScreenComponents]
   );
 
-  const handleBackgroundColorChange = useCallback(
-    (color: string) => {
-      setBlueprint((prev) => {
-        const screenId = prev.initial_screen_id;
-        const screen = prev.screens[screenId];
-        return {
-          ...prev,
-          screens: {
-            ...prev.screens,
-            [screenId]: { ...screen, backgroundColor: color },
-          },
-        };
-      });
-    },
-    []
-  );
-
   const handleScreenUpdate = useCallback(
     (updatedScreen: Screen) => {
       setBlueprint((prev) => {
-        const screenId = prev.initial_screen_id;
+        const sid = currentScreenIdRef.current;
         return {
           ...prev,
           screens: {
             ...prev.screens,
-            [screenId]: updatedScreen,
+            [sid]: updatedScreen,
           },
         };
       });
@@ -555,16 +701,93 @@ export function BlueprintEditor({
 
   const handleResetAndBuild = useCallback(() => {
     setBlueprint((prev) => {
-      const screenId = prev.initial_screen_id;
+      const sid = currentScreenIdRef.current;
       return {
         ...prev,
         screens: {
           ...prev.screens,
-          [screenId]: { ...prev.screens[screenId], components: [], backgroundColor: "#ffffff" },
+          [sid]: { ...prev.screens[sid], components: [makeBackgroundShape("#ffffff")] },
         },
       };
     });
     setIsEditMode(true);
+  }, []);
+
+  // --- Screen navigation (preview mode) ---
+  const handleNavigate = useCallback((targetScreenId: string) => {
+    setNavStack((prev) => [...prev, currentScreenIdRef.current]);
+    setCurrentScreenId(targetScreenId);
+    const bp = blueprintRef.current;
+    const targetScreen = bp.screens[targetScreenId];
+    navigateToScreen(bp.variables ?? [], targetScreen?.variables ?? []);
+  }, [navigateToScreen]);
+
+  const handleNavigateBack = useCallback(() => {
+    setNavStack((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      const previousId = next.pop()!;
+      setCurrentScreenId(previousId);
+      const bp = blueprintRef.current;
+      const prevScreen = bp.screens[previousId];
+      navigateToScreen(bp.variables ?? [], prevScreen?.variables ?? []);
+      return next;
+    });
+  }, [navigateToScreen]);
+
+  // --- Screen management (edit mode) ---
+  const handleSwitchScreen = useCallback((screenId: string) => {
+    setCurrentScreenId(screenId);
+    setNavStack([]);
+  }, []);
+
+  const handleAddScreen = useCallback(() => {
+    const newId = uuid();
+    const newScreen: Screen = {
+      id: newId,
+      name: `Screen ${Object.keys(blueprintRef.current.screens).length + 1}`,
+      components: [makeBackgroundShape("#ffffff")],
+    };
+    setBlueprint((prev) => ({
+      ...prev,
+      screens: { ...prev.screens, [newId]: newScreen },
+    }));
+    setCurrentScreenId(newId);
+    setNavStack([]);
+  }, []);
+
+  const handleDeleteScreen = useCallback((screenId: string) => {
+    setBlueprint((prev) => {
+      const ids = Object.keys(prev.screens);
+      if (ids.length <= 1) return prev;
+      const { [screenId]: _, ...rest } = prev.screens;
+      const remainingIds = Object.keys(rest);
+      const newInitial = prev.initial_screen_id === screenId
+        ? remainingIds[0]
+        : prev.initial_screen_id;
+      return { ...prev, screens: rest, initial_screen_id: newInitial };
+    });
+    if (currentScreenIdRef.current === screenId) {
+      const bp = blueprintRef.current;
+      const ids = Object.keys(bp.screens).filter((id) => id !== screenId);
+      setCurrentScreenId(ids[0] ?? bp.initial_screen_id);
+    }
+    setNavStack([]);
+  }, []);
+
+  const handleRenameScreen = useCallback((screenId: string, name: string) => {
+    setBlueprint((prev) => {
+      const screen = prev.screens[screenId];
+      if (!screen) return prev;
+      return {
+        ...prev,
+        screens: { ...prev.screens, [screenId]: { ...screen, name } },
+      };
+    });
+  }, []);
+
+  const handleSetInitialScreen = useCallback((screenId: string) => {
+    setBlueprint((prev) => ({ ...prev, initial_screen_id: screenId }));
   }, []);
 
   if (!loaded) return null;
@@ -574,22 +797,33 @@ export function BlueprintEditor({
       <StatusBar barStyle="dark-content" />
       <Canvas
         blueprint={blueprint}
-        screenId={blueprint.initial_screen_id}
+        screenId={currentScreenId}
         isEditMode={isEditMode}
         onToggleEditMode={() => setIsEditMode((v) => !v)}
         onComponentUpdate={handleComponentUpdate}
         onContentChange={handleContentChange}
         onStyleChange={handleStyleChange}
         onAddComponent={handleAddComponent}
-        onBackgroundColorChange={handleBackgroundColorChange}
         onCloseBlueprint={handleCloseBlueprint}
         onDeleteBlueprint={onDeleteBlueprint}
         onResetAndBuild={handleResetAndBuild}
+        onNavigate={handleNavigate}
+        onNavigateBack={handleNavigateBack}
+        navStack={navStack}
         onScreenUpdate={handleScreenUpdate}
         onDeleteComponent={handleDeleteComponent}
         onComponentReplace={handleComponentReplace}
         onAddChildComponent={handleAddChildComponent}
         onBlueprintChange={setBlueprint}
+        currentScreenId={currentScreenId}
+        initialScreenId={blueprint.initial_screen_id}
+        screenActions={{
+          onSwitchScreen: handleSwitchScreen,
+          onAddScreen: handleAddScreen,
+          onDeleteScreen: handleDeleteScreen,
+          onRenameScreen: handleRenameScreen,
+          onSetInitialScreen: handleSetInitialScreen,
+        }}
       />
     </GestureHandlerRootView>
   );

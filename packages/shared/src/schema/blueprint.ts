@@ -48,12 +48,17 @@ const OpenUrlActionSchema = z.object({
   url: z.string(),
 });
 
+const ResetCanvasActionSchema = z.object({
+  type: z.literal("RESET_CANVAS"),
+});
+
 export const ActionSchema: z.ZodType<Action> = z.lazy(() =>
   z.union([
     SetVariableActionSchema,
     ToggleVariableActionSchema,
     NavigateActionSchema,
     OpenUrlActionSchema,
+    ResetCanvasActionSchema,
     ConditionalActionSchema,
   ])
 );
@@ -69,6 +74,7 @@ export type SetVariableAction = z.infer<typeof SetVariableActionSchema>;
 export type ToggleVariableAction = z.infer<typeof ToggleVariableActionSchema>;
 export type NavigateAction = z.infer<typeof NavigateActionSchema>;
 export type OpenUrlAction = z.infer<typeof OpenUrlActionSchema>;
+export type ResetCanvasAction = z.infer<typeof ResetCanvasActionSchema>;
 export type ConditionalAction = {
   type: "CONDITIONAL";
   condition: string;
@@ -80,6 +86,7 @@ export type Action =
   | ToggleVariableAction
   | NavigateAction
   | OpenUrlAction
+  | ResetCanvasAction
   | ConditionalAction;
 
 // --- Bindings & Event Handlers ---
@@ -322,7 +329,6 @@ export const ComponentSchema: z.ZodType<Component> = z.union([BaseComponentSchem
 export const ScreenSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
-  backgroundColor: z.string().min(1).optional(),
   components: z.array(ComponentSchema),
   variables: z.array(VariableSchema).optional(),
 });
@@ -332,6 +338,43 @@ export const ThemeSchema = z.object({
   primaryColor: z.string().min(1).optional(),
   backgroundColor: z.string().min(1).optional(),
   fontFamily: z.string().optional(),
+  // Extended styling
+  colors: z.object({
+    primary: z.string().min(1),
+    secondary: z.string().min(1),
+    error: z.string().min(1),
+    success: z.string().min(1),
+    warning: z.string().min(1),
+  }).optional(),
+  backgroundColors: z.object({
+    background: z.string().min(1),
+    secondaryBackground: z.string().min(1),
+  }).optional(),
+  borderRadii: z.object({
+    none: z.number(),
+    sm: z.number(),
+    md: z.number(),
+    lg: z.number(),
+    xl: z.number(),
+    full: z.number(),
+  }).optional(),
+  spacing: z.object({
+    xs: z.number(),
+    sm: z.number(),
+    md: z.number(),
+    lg: z.number(),
+    xl: z.number(),
+    xxl: z.number(),
+  }).optional(),
+  fontSizes: z.object({
+    xs: z.number(),
+    sm: z.number(),
+    base: z.number(),
+    md: z.number(),
+    lg: z.number(),
+    xl: z.number(),
+    xxl: z.number(),
+  }).optional(),
 });
 export type Theme = z.infer<typeof ThemeSchema>;
 

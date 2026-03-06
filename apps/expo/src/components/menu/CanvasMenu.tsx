@@ -13,13 +13,14 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import type { Screen, AppBlueprint } from "../../types";
-import { PRESETS } from "./ComponentsPage";
-import { ComponentsPage } from "./ComponentsPage";
-import { LayersPage } from "./LayersPage";
+import { PRESETS, ComponentsPage } from "./ComponentsPage";
 import { SettingsPage } from "./SettingsPage";
 import { VariablesPage } from "./VariablesPage";
+import { ScreensPage } from "./ScreensPage";
+import type { ScreenActions } from "../Canvas";
 
-const PAGE_LABELS = ["Edit", "Layers", "Variables", "Settings"] as const;
+const PAGE_LABELS = ["Screens", "Edit", "Variables", "Settings"] as const;
+const INITIAL_PAGE = 1; // Start on Edit
 
 interface CanvasMenuProps {
   visible: boolean;
@@ -29,20 +30,23 @@ interface CanvasMenuProps {
   isEditMode: boolean;
   snappingEnabled: boolean;
   inspectorEnabled: boolean;
-  quickToggleEnabled: boolean;
   onClose: () => void;
   onAddComponent: (preset: (typeof PRESETS)[number]) => void;
   onToggleEditMode: () => void;
   onToggleSnapping: () => void;
   onToggleInspector: () => void;
-  onToggleQuickToggle: () => void;
-  onBackgroundColorChange: (color: string) => void;
   onCloseBlueprint: () => void;
   onDeleteBlueprint: () => void;
   onScreenUpdate: (screen: Screen) => void;
   onDeleteComponent: (id: string) => void;
   onTreeSelect: (id: string) => void;
   onBlueprintChange?: (updater: AppBlueprint | ((prev: AppBlueprint) => AppBlueprint)) => void;
+  lockedIds?: Set<string>;
+  onToggleLock?: (id: string) => void;
+  onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
+  currentScreenId: string;
+  initialScreenId: string;
+  screenActions?: ScreenActions;
 }
 
 export function CanvasMenu({
@@ -53,24 +57,28 @@ export function CanvasMenu({
   isEditMode,
   snappingEnabled,
   inspectorEnabled,
-  quickToggleEnabled,
   onClose,
   onAddComponent,
   onToggleEditMode,
   onToggleSnapping,
   onToggleInspector,
-  onToggleQuickToggle,
-  onBackgroundColorChange,
   onCloseBlueprint,
   onDeleteBlueprint,
   onScreenUpdate,
   onDeleteComponent,
   onTreeSelect,
   onBlueprintChange,
+  lockedIds,
+  onToggleLock,
+  onMoveComponent,
+  currentScreenId,
+  initialScreenId,
+  screenActions,
 }: CanvasMenuProps) {
-  const [pageIndex, setPageIndex] = useState(0);
+  const [pageIndex, setPageIndex] = useState(INITIAL_PAGE);
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
+  const didScrollToInitial = useRef(false);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -79,13 +87,6 @@ export function CanvasMenu({
       setPageIndex(idx);
     },
     [screenWidth],
-  );
-
-  const handleTreeSelect = useCallback(
-    (id: string) => {
-      onTreeSelect(id);
-    },
-    [onTreeSelect],
   );
 
   if (!visible) return null;
@@ -123,8 +124,36 @@ export function CanvasMenu({
           scrollEventThrottle={16}
           bounces={false}
           style={styles.pager}
+          contentOffset={{ x: INITIAL_PAGE * screenWidth, y: 0 }}
+          onLayout={() => {
+            if (!didScrollToInitial.current) {
+              didScrollToInitial.current = true;
+              scrollRef.current?.scrollTo({ x: INITIAL_PAGE * screenWidth, animated: false });
+            }
+          }}
         >
-          {/* Page 1: Components */}
+          {/* Page 1: Screens */}
+          <ScrollView
+            style={{ width: screenWidth }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            nestedScrollEnabled
+          >
+            <ScreensPage
+              width={screenWidth}
+              screens={blueprint.screens}
+              currentScreenId={currentScreenId}
+              initialScreenId={initialScreenId}
+              onSwitchScreen={screenActions?.onSwitchScreen ?? (() => {})}
+              onAddScreen={screenActions?.onAddScreen ?? (() => {})}
+              onDeleteScreen={screenActions?.onDeleteScreen ?? (() => {})}
+              onRenameScreen={screenActions?.onRenameScreen ?? (() => {})}
+              onSetInitialScreen={screenActions?.onSetInitialScreen ?? (() => {})}
+              onClose={onClose}
+            />
+          </ScrollView>
+
+          {/* Page 2: Edit (Layers + Add) */}
           <ScrollView
             style={{ width: screenWidth }}
             showsVerticalScrollIndicator={false}
@@ -133,26 +162,13 @@ export function CanvasMenu({
           >
             <ComponentsPage
               width={screenWidth}
-              backgroundColor={screen.backgroundColor ?? "#ffffff"}
-              onAddComponent={onAddComponent}
-              onBackgroundColorChange={onBackgroundColorChange}
-            />
-          </ScrollView>
-
-          {/* Page 2: Layers */}
-          <ScrollView
-            style={{ width: screenWidth }}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            nestedScrollEnabled
-          >
-            <LayersPage
-              width={screenWidth}
-              screen={screen}
               components={screen.components}
-              onSelectComponent={handleTreeSelect}
+              onAddComponent={onAddComponent}
+              onSelectComponent={onTreeSelect}
               onDeleteComponent={onDeleteComponent}
-              onScreenUpdate={onScreenUpdate}
+              lockedIds={lockedIds}
+              onToggleLock={onToggleLock}
+              onMoveComponent={onMoveComponent}
             />
           </ScrollView>
 
@@ -183,14 +199,14 @@ export function CanvasMenu({
               isEditMode={isEditMode}
               snappingEnabled={snappingEnabled}
               inspectorEnabled={inspectorEnabled}
-              quickToggleEnabled={quickToggleEnabled}
               onToggleEditMode={onToggleEditMode}
               onToggleSnapping={onToggleSnapping}
               onToggleInspector={onToggleInspector}
-              onToggleQuickToggle={onToggleQuickToggle}
               onCloseBlueprint={onCloseBlueprint}
               onDeleteBlueprint={onDeleteBlueprint}
               onClose={onClose}
+              blueprint={blueprint}
+              onBlueprintChange={onBlueprintChange}
             />
           </ScrollView>
         </ScrollView>

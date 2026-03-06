@@ -18,6 +18,7 @@ import Animated, {
 import { Feather } from "@expo/vector-icons";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { ColorPickerModal } from "./ColorPickerModal";
+import type { Theme } from "../types";
 
 export interface TextEditingState {
   text: string;
@@ -37,6 +38,7 @@ interface TextEditorToolbarProps {
   onStateChange: (updates: Partial<TextEditingState>) => void;
   onUndo: () => void;
   onInspect?: () => void;
+  theme?: Theme;
 }
 
 const FONTS = [
@@ -215,53 +217,83 @@ function ScrollColorRow({
   onSelect,
   showNone,
   onAddCustom,
+  themeColors,
 }: {
   colors: string[];
   activeColor: string;
   onSelect: (color: string) => void;
   showNone?: boolean;
   onAddCustom?: () => void;
+  themeColors?: string[];
 }) {
   const { width: sw } = useWindowDimensions();
   const inset = sw / 2 - COLOR_SIZE / 2;
   const scrollRef = useRef<ScrollView>(null);
   const lastIdx = useRef(-1);
-  const allItems = useMemo(
-    () => (showNone ? ["transparent", ...colors] : colors),
-    [colors, showNone],
+  const allItems = useMemo(() => {
+    const base = showNone ? ["transparent", ...colors] : colors;
+    if (themeColors && themeColors.length > 0) {
+      return [...themeColors, "|", ...base];
+    }
+    return base;
+  }, [colors, showNone, themeColors]);
+  const selectableItems = useMemo(
+    () => allItems.filter((c) => c !== "|"),
+    [allItems],
   );
-  const cbRef = useRef({ allItems, onSelect });
-  cbRef.current = { allItems, onSelect };
+  const cbRef = useRef({ allItems, selectableItems, onSelect });
+  cbRef.current = { allItems, selectableItems, onSelect };
 
   const snapOffsets = useMemo(
-    () => allItems.map((_, i) => i * COLOR_STEP),
-    [allItems.length],
+    () => {
+      let offset = 0;
+      return allItems.map((item) => {
+        const val = offset;
+        offset += item === "|" ? DIVIDER_STEP : COLOR_STEP;
+        return val;
+      });
+    },
+    [allItems],
   );
 
   useEffect(() => {
     const idx = allItems.indexOf(activeColor);
     if (idx >= 0) {
       lastIdx.current = idx;
-      setTimeout(() => scrollRef.current?.scrollTo({ x: idx * COLOR_STEP, animated: false }), 0);
+      setTimeout(() => scrollRef.current?.scrollTo({ x: snapOffsets[idx], animated: false }), 0);
     }
   }, []);
 
   const handleScroll = useCallback(
     (e: { nativeEvent: { contentOffset: { x: number } } }) => {
       const x = e.nativeEvent.contentOffset.x;
-      const index = Math.round(x / COLOR_STEP);
-      const { allItems: items, onSelect: sel } = cbRef.current;
-      const clamped = Math.max(0, Math.min(index, items.length - 1));
-      if (clamped !== lastIdx.current) {
-        lastIdx.current = clamped;
-        sel(items[clamped]);
+      // Find closest snap offset
+      const { allItems: items, selectableItems: selectable, onSelect: sel } = cbRef.current;
+      let closestIdx = 0;
+      let closestDist = Infinity;
+      let offset = 0;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i] !== "|") {
+          const dist = Math.abs(offset - x);
+          if (dist < closestDist) { closestDist = dist; closestIdx = i; }
+        }
+        offset += items[i] === "|" ? DIVIDER_STEP : COLOR_STEP;
+      }
+      if (closestIdx !== lastIdx.current) {
+        lastIdx.current = closestIdx;
+        sel(items[closestIdx]);
       }
     },
     [],
   );
 
   const scrollToIdx = useCallback((index: number) => {
-    scrollRef.current?.scrollTo({ x: index * COLOR_STEP, animated: true });
+    let offset = 0;
+    const items = cbRef.current.allItems;
+    for (let i = 0; i < index; i++) {
+      offset += items[i] === "|" ? DIVIDER_STEP : COLOR_STEP;
+    }
+    scrollRef.current?.scrollTo({ x: offset, animated: true });
   }, []);
 
   return (
@@ -270,7 +302,7 @@ function ScrollColorRow({
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToOffsets={snapOffsets}
+        snapToOffsets={snapOffsets.filter((_, i) => allItems[i] !== "|")}
         decelerationRate="fast"
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -280,11 +312,18 @@ function ScrollColorRow({
         ]}
       >
         {allItems.map((col, index) => {
+          if (col === "|") {
+            return (
+              <View key={`divider-${index}`} style={styles.colorDivider}>
+                <View style={styles.colorDividerLine} />
+              </View>
+            );
+          }
           const isNone = col === "transparent";
           const active = col === activeColor;
           return (
             <Pressable
-              key={col}
+              key={`${col}-${index}`}
               style={[
                 styles.colorOption,
                 isNone
@@ -336,7 +375,7 @@ const COLORS = [
   "#85C1E2",
 ];
 
-type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | null;
+type PanelType = "fonts" | "color" | "highlight" | "format" | "alignment" | "textSizes" | null;
 
 const BUBBLE_WIDTH = 100;
 const BUBBLE_GAP = 12;
@@ -346,12 +385,39 @@ const COLOR_SIZE = 44;
 const COLOR_GAP = 12;
 const COLOR_STEP = COLOR_SIZE + COLOR_GAP;
 
+const DIVIDER_WIDTH = 20;
+const DIVIDER_STEP = DIVIDER_WIDTH + COLOR_GAP;
+
 export function TextEditorToolbar({
   state,
   onStateChange,
   onUndo,
   onInspect,
+  theme,
 }: TextEditorToolbarProps) {
+  const themeColorValues = useMemo(() => {
+    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    return [c.primary, c.secondary, c.error, c.success, c.warning];
+  }, [theme?.colors]);
+
+  const highlightColorValues = useMemo(() => {
+    const bg = theme?.backgroundColors ?? { background: "#ffffff", secondaryBackground: "#f3f4f6" };
+    const c = theme?.colors ?? { primary: "#6366f1", secondary: "#8b5cf6", error: "#ef4444", success: "#22c55e", warning: "#f59e0b" };
+    return [bg.background, bg.secondaryBackground, c.primary, c.secondary, c.error, c.success, c.warning];
+  }, [theme?.backgroundColors, theme?.colors]);
+
+  const themeFontSizes = useMemo(() => {
+    const fs = theme?.fontSizes ?? { xs: 10, sm: 12, base: 14, md: 16, lg: 20, xl: 24, xxl: 32 };
+    return [
+      { label: "XS", value: String(fs.xs), size: fs.xs },
+      { label: "SM", value: String(fs.sm), size: fs.sm },
+      { label: "Base", value: String(fs.base), size: fs.base },
+      { label: "MD", value: String(fs.md), size: fs.md },
+      { label: "LG", value: String(fs.lg), size: fs.lg },
+      { label: "XL", value: String(fs.xl), size: fs.xl },
+      { label: "2XL", value: String(fs.xxl), size: fs.xxl },
+    ];
+  }, [theme?.fontSizes]);
   const { height: screenHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
 
@@ -520,6 +586,7 @@ export function TextEditorToolbar({
                 setPickerTarget("color");
                 setPickerVisible(true);
               }}
+              themeColors={themeColorValues}
             />
           )}
 
@@ -534,6 +601,19 @@ export function TextEditorToolbar({
                 setPickerTarget("highlight");
                 setPickerVisible(true);
               }}
+              themeColors={highlightColorValues}
+            />
+          )}
+
+          {/* Font Size Presets */}
+          {activePanel === "textSizes" && (
+            <BubbleRow
+              options={themeFontSizes.map((f) => ({
+                label: `${f.label} (${f.size})`,
+                value: f.value,
+              }))}
+              activeValue={String(state.fontSize)}
+              onSelect={(v) => onStateChange({ fontSize: parseInt(v, 10) })}
             />
           )}
 
@@ -601,6 +681,14 @@ export function TextEditorToolbar({
               onPress={() => togglePanel("format")}
             >
               <Text style={[styles.iconText, { textDecorationLine: "underline" }]}>U</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.iconButton, activePanel === "textSizes" && styles.iconButtonActive]}
+              onPress={() => togglePanel("textSizes")}
+            >
+              <Text style={styles.iconText}>T</Text>
+              <Text style={styles.iconSubText}>px</Text>
             </Pressable>
 
             {onInspect && (
@@ -847,5 +935,22 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.3)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.5)",
+  },
+  iconSubText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: -2,
+  },
+  colorDivider: {
+    width: DIVIDER_WIDTH,
+    height: COLOR_SIZE,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  colorDividerLine: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
 });
