@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { View, Text, TextInput, Pressable, Alert, StyleSheet, Platform } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Platform } from "react-native";
+import { crossAlert } from "../../utils/crossAlert";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import type { Screen, Component, AppSlate, Action } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { TreeView } from "./TreeView";
 import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
+import { SwipeToDelete } from "../SwipeToDelete";
 
 // ─── Layers Page ────────────────────────────────────────────────────────────
 
@@ -18,6 +20,7 @@ interface LayersPageProps {
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
   onClose: () => void;
+  onAIChatComponent?: (id: string) => void;
 }
 
 export function LayersPage({
@@ -30,6 +33,7 @@ export function LayersPage({
   onToggleLock,
   onMoveComponent,
   onClose,
+  onAIChatComponent,
 }: LayersPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -86,6 +90,7 @@ export function LayersPage({
         lockedIds={lockedIds}
         onToggleLock={onToggleLock}
         onMoveComponent={onMoveComponent}
+        onAIChatComponent={onAIChatComponent ? (id) => { onAIChatComponent(id); onClose(); } : undefined}
       />
     </View>
   );
@@ -142,11 +147,11 @@ export function PagesPage({
 
   const handleDelete = (id: string) => {
     if (allScreens.length <= 1) {
-      Alert.alert("Cannot delete", "You must have at least one screen.");
+      crossAlert("Cannot delete", "You must have at least one screen.");
       return;
     }
     const screen = screens[id];
-    Alert.alert(
+    crossAlert(
       "Delete Screen",
       `Delete "${screen?.name}"? This cannot be undone.`,
       [
@@ -280,6 +285,9 @@ interface WorkflowsSummaryPageProps {
   slate: AppSlate;
   currentScreen?: Screen;
   showAdvancedCode: boolean;
+  onNavigateToAgent?: () => void;
+  onDeleteComponent?: (id: string) => void;
+  onEditWorkflow?: (component: Component) => void;
 }
 
 export function WorkflowsSummaryPage({
@@ -288,6 +296,9 @@ export function WorkflowsSummaryPage({
   slate,
   currentScreen,
   showAdvancedCode,
+  onNavigateToAgent,
+  onDeleteComponent,
+  onEditWorkflow,
 }: WorkflowsSummaryPageProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -342,6 +353,21 @@ export function WorkflowsSummaryPage({
             Add actions, bindings, or visibility rules to components to see them here.
           </Text>
         </View>
+        {onNavigateToAgent && (
+          <Pressable
+            style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
+            onPress={onNavigateToAgent}
+          >
+            <Feather name="cpu" size={16} color="#fff" />
+            <View style={styles.aiCtaTextCol}>
+              <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
+              <Text style={styles.aiCtaHint}>
+                Describe the logic you want and an agent will wire it up for you.
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#444" />
+          </Pressable>
+        )}
       </View>
     );
   }
@@ -399,7 +425,7 @@ export function WorkflowsSummaryPage({
         const isExpanded = expandedId === comp.id;
         const pseudocode = generatePseudocode(comp, slate);
 
-        return (
+        const row = (
           <View key={comp.id}>
             <Pressable
               style={styles.workflowRow}
@@ -430,7 +456,21 @@ export function WorkflowsSummaryPage({
                   )}
                 </View>
               </View>
-              <MaterialIcons name="auto-awesome" size={14} color="#555" />
+              <Pressable
+                onPress={() => onEditWorkflow?.(comp)}
+                disabled={!onEditWorkflow}
+                hitSlop={10}
+                style={({ pressed }) => [
+                  styles.starBtn,
+                  pressed && onEditWorkflow && styles.starBtnPressed,
+                ]}
+              >
+                <MaterialIcons
+                  name="auto-awesome"
+                  size={14}
+                  color={onEditWorkflow ? "#f59e0b" : "#555"}
+                />
+              </Pressable>
               <Feather
                 name={isExpanded ? "chevron-up" : "chevron-down"}
                 size={16}
@@ -468,7 +508,29 @@ export function WorkflowsSummaryPage({
             )}
           </View>
         );
+
+        return onDeleteComponent ? (
+          <SwipeToDelete key={comp.id} onDelete={() => onDeleteComponent(comp.id)}>
+            {row}
+          </SwipeToDelete>
+        ) : row;
       })}
+
+      {onNavigateToAgent && (
+        <Pressable
+          style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
+          onPress={onNavigateToAgent}
+        >
+          <Feather name="cpu" size={16} color="#fff" />
+          <View style={styles.aiCtaTextCol}>
+            <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
+            <Text style={styles.aiCtaHint}>
+              Describe the logic you want and an agent will wire it up for you.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={16} color="#444" />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -787,5 +849,44 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     lineHeight: 14,
+  },
+  aiCtaBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    backgroundColor: "#0a0a0a",
+    gap: 12,
+  },
+  aiCtaBtnPressed: {
+    backgroundColor: "#111",
+  },
+  aiCtaTextCol: {
+    flex: 1,
+  },
+  aiCtaTitle: {
+    color: "#ccc",
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  aiCtaHint: {
+    color: "#444",
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  starBtn: {
+    padding: 6,
+    borderRadius: 6,
+  },
+  starBtnPressed: {
+    backgroundColor: "rgba(245,158,11,0.15)",
   },
 });

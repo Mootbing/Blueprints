@@ -55,7 +55,10 @@ export function parseComponentArray(text: string): z.infer<typeof ComponentArray
     throw new Error("Invalid JSON in response");
   }
 
-  return ComponentArraySchema.parse(parsed);
+  if (Array.isArray(parsed)) {
+    return ComponentArraySchema.parse(parsed);
+  }
+  return [ComponentSchema.parse(parsed)];
 }
 
 /**

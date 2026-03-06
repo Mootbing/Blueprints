@@ -410,7 +410,7 @@ export function ComponentsPage({
 
       {/* Add Component */}
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionHeader}>+ ADD COMPONENTS</Text>
+        <Text style={styles.sectionHeader}>ADD COMPONENTS</Text>
       </View>
 
       {PRESETS.map((preset, i) => (

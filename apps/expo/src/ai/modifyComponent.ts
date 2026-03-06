@@ -22,7 +22,8 @@ export async function modifyComponentChat(
     i === 0 ? { ...m, content: contextPrefix + m.content } : m,
   );
 
-  return callClaude(apiKey, system, augmentedMessages);
+  const result = await callClaude(apiKey, system, augmentedMessages);
+  return result.text;
 }
 
 /**

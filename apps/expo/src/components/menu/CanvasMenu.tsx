@@ -12,7 +12,10 @@ import {
   type NativeScrollEvent,
 } from "react-native";
 import { BlurView } from "expo-blur";
-import type { Screen, AppSlate } from "../../types";
+import type { Screen, AppSlate, Component } from "../../types";
+import { getComponentLabel } from "../../utils/componentTree";
+import type { ChatLogEntry } from "../../ai/useChatLog";
+import type { useAgentRunner } from "../../ai/useAgentRunner";
 import { PRESETS, ComponentsPage } from "./ComponentsPage";
 import { SettingsPage } from "./SettingsPage";
 import { AgentPage } from "./WorkflowsPage";
@@ -39,6 +42,8 @@ interface CanvasMenuProps {
   onToggleAdvancedCode: () => void;
   onCloseSlate: () => void;
   onDeleteSlate: () => void;
+  slateName?: string;
+  onRenameSlate?: (name: string) => void;
   onScreenUpdate: (screen: Screen) => void;
   onDeleteComponent: (id: string) => void;
   onTreeSelect: (id: string) => void;
@@ -61,9 +66,12 @@ interface CanvasMenuProps {
   // Agent orchestration props
   historyEntries?: import("../../hooks/useUndoHistory").HistoryEntry[];
   currentHistoryId?: string;
-  onCreateBranch?: (branchSlate: AppSlate, description: string) => string;
   onRestoreToId?: (id: string) => void;
   slateId?: string;
+  logInteraction?: (entry: Omit<ChatLogEntry, "id" | "timestamp">) => void;
+  chatLog?: ChatLogEntry[];
+  agentRunner?: ReturnType<typeof useAgentRunner>;
+  onAIChatComponent?: (id: string) => void;
 }
 
 export function CanvasMenu({
@@ -83,6 +91,8 @@ export function CanvasMenu({
   onToggleAdvancedCode,
   onCloseSlate,
   onDeleteSlate,
+  slateName,
+  onRenameSlate,
   onScreenUpdate,
   onDeleteComponent,
   onTreeSelect,
@@ -103,11 +113,16 @@ export function CanvasMenu({
   onApplyComponents,
   historyEntries,
   currentHistoryId,
-  onCreateBranch,
   onRestoreToId,
   slateId,
+  logInteraction,
+  chatLog,
+  agentRunner,
+  onAIChatComponent,
 }: CanvasMenuProps) {
   const [pageIndex, setPageIndex] = useState(INITIAL_PAGE);
+  const [agentCreateTrigger, setAgentCreateTrigger] = useState(0);
+  const [agentInitialPrompt, setAgentInitialPrompt] = useState<string | undefined>();
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
   const didScrollToInitial = useRef(false);
@@ -131,6 +146,34 @@ export function CanvasMenu({
     },
     [screenWidth],
   );
+
+  const handleNavigateToAgent = useCallback(() => {
+    const agentPageIndex = 4; // Agent tab
+    scrollRef.current?.scrollTo({ x: agentPageIndex * screenWidth, animated: true });
+    setPageIndex(agentPageIndex);
+    setAgentCreateTrigger((n) => n + 1);
+  }, [screenWidth]);
+
+  const handleEditWorkflow = useCallback((comp: Component) => {
+    const label = getComponentLabel(comp, { includeType: true });
+    const parts: string[] = [`Edit the workflow on "${label}" (id: ${comp.id}).`];
+    parts.push(`\nCurrent logic:`);
+    if (comp.actions) {
+      parts.push(`Actions: ${JSON.stringify(comp.actions)}`);
+    }
+    if (comp.bindings && Object.keys(comp.bindings).length > 0) {
+      parts.push(`Bindings: ${JSON.stringify(comp.bindings)}`);
+    }
+    if (comp.visibleWhen) {
+      parts.push(`Visibility: ${comp.visibleWhen}`);
+    }
+    parts.push(`\nWhat would you like to change about this workflow?`);
+
+    const agentPageIndex = 4;
+    scrollRef.current?.scrollTo({ x: agentPageIndex * screenWidth, animated: true });
+    setPageIndex(agentPageIndex);
+    setAgentInitialPrompt(parts.join("\n"));
+  }, [screenWidth]);
 
   if (!visible) return null;
 
@@ -213,6 +256,7 @@ export function CanvasMenu({
               onToggleLock={onToggleLock}
               onMoveComponent={onMoveComponent}
               onClose={onClose}
+              onAIChatComponent={onAIChatComponent}
             />
           </ScrollView>
 
@@ -229,6 +273,9 @@ export function CanvasMenu({
               slate={slate}
               currentScreen={screen}
               showAdvancedCode={showAdvancedCode}
+              onNavigateToAgent={handleNavigateToAgent}
+              onDeleteComponent={onDeleteComponent}
+              onEditWorkflow={handleEditWorkflow}
             />
           </ScrollView>
 
@@ -257,16 +304,13 @@ export function CanvasMenu({
           <View style={{ width: screenWidth, flex: 1 }}>
             <AgentPage
               width={screenWidth}
-              slate={slate}
-              screenId={screen.id}
               apiKey={apiKey}
-              slateId={slateId ?? "default"}
-              onSlateChange={onSlateChange}
-              onApplyComponents={onApplyComponents ?? (() => {})}
               historyEntries={historyEntries}
               currentHistoryId={currentHistoryId}
-              onCreateBranch={onCreateBranch}
               onRestoreToId={onRestoreToId}
+              createTrigger={agentCreateTrigger}
+              initialPrompt={agentInitialPrompt}
+              agentRunner={agentRunner}
             />
           </View>
 
@@ -291,6 +335,9 @@ export function CanvasMenu({
               onDeleteSlate={onDeleteSlate}
               onClose={onClose}
               slate={slate}
+              slateId={slateId}
+              slateName={slateName}
+              onRenameSlate={onRenameSlate}
               onSlateChange={onSlateChange}
               apiKey={apiKey}
               onApiKeyChange={onApiKeyChange}

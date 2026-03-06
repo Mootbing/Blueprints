@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { View, Pressable, Text, TextInput, StyleSheet, Platform, Alert } from "react-native";
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { View, Pressable, Text, TextInput, StyleSheet, Platform, Share, Modal } from "react-native";
+import { crossAlert } from "../../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppSlateSchema } from "../../types";
 import type { AppSlate, Theme } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { ColorPickerModal } from "../ColorPickerModal";
@@ -75,24 +77,169 @@ function ColorRow({ label, value, onSwatchPress }: { label: string; value: strin
   );
 }
 
-function NumberRow({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function NumberRow({ label, value, onChange, onPress }: { label: string; value: number; onChange: (v: number) => void; onPress?: () => void }) {
   return (
-    <View style={styles.numberRow}>
+    <Pressable style={styles.numberRow} onPress={onPress}>
       <Text style={styles.numberLabel}>{label}</Text>
-      <TextInput
-        style={styles.numberInput}
-        value={String(value)}
-        onChangeText={(t) => {
-          const n = parseInt(t, 10);
-          if (!isNaN(n) && n >= 0) onChange(n);
-          else if (t === "") onChange(0);
-        }}
-        keyboardType="numeric"
-        placeholderTextColor="rgba(255,255,255,0.25)"
-      />
+      <View {...(Platform.OS === 'web' ? { onClick: (e: any) => e.stopPropagation() } as any : {})}>
+        <TextInput
+          style={styles.numberInput}
+          value={String(value)}
+          onChangeText={(t) => {
+            const n = parseInt(t, 10);
+            if (!isNaN(n) && n >= 0) onChange(n);
+            else if (t === "") onChange(0);
+          }}
+          keyboardType="numeric"
+          placeholderTextColor="rgba(255,255,255,0.25)"
+        />
+      </View>
       <Text style={styles.unitLabel}>px</Text>
+    </Pressable>
+  );
+}
+
+type EditorType = 'borderRadius' | 'spacing' | 'fontSize';
+
+const SLIDER_RANGES: Record<EditorType, { min: number; max: number }> = {
+  borderRadius: { min: 0, max: 50 },
+  spacing: { min: 0, max: 64 },
+  fontSize: { min: 6, max: 48 },
+};
+
+function BorderRadiusDemo({ value }: { value: number }) {
+  const r = Math.min(value, 40);
+  return (
+    <View style={{ width: 64, height: 64, borderWidth: 2, borderColor: '#444', borderTopLeftRadius: r }} />
+  );
+}
+
+function SpacingDemo({ value }: { value: number }) {
+  const gap = Math.max(2, Math.min(value, 48));
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ width: 28, height: 28, backgroundColor: '#333', borderRadius: 4, borderWidth: 1.5, borderColor: '#555' }} />
+      <View style={{ width: gap }} />
+      <View style={{ width: 28, height: 28, backgroundColor: '#333', borderRadius: 4, borderWidth: 1.5, borderColor: '#555' }} />
     </View>
   );
+}
+
+function FontSizeDemo({ value }: { value: number }) {
+  const size = Math.max(12, Math.min(value, 40));
+  return <Text style={{ color: '#fff', fontSize: size, fontWeight: '600' }}>Aa</Text>;
+}
+
+function ValueEditorModal({
+  type, label, value, onValueChange, onClose,
+}: {
+  type: EditorType; label: string; value: number;
+  onValueChange: (v: number) => void; onClose: () => void;
+}) {
+  const range = SLIDER_RANGES[type];
+  const trackWidthRef = useRef(0);
+  const clamped = Math.max(range.min, Math.min(range.max, value));
+  const ratio = range.max > range.min ? (clamped - range.min) / (range.max - range.min) : 0;
+
+  const handleTouch = useCallback((locationX: number) => {
+    if (trackWidthRef.current <= 0) return;
+    const r = Math.max(0, Math.min(1, locationX / trackWidthRef.current));
+    onValueChange(Math.round(range.min + r * (range.max - range.min)));
+  }, [range, onValueChange]);
+
+  const Demo = type === 'borderRadius' ? BorderRadiusDemo : type === 'spacing' ? SpacingDemo : FontSizeDemo;
+
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
+        onPress={onClose}
+      >
+        <View
+          style={{
+            backgroundColor: '#111', borderRadius: 16, padding: 24, width: 260,
+            alignItems: 'center', borderWidth: 1, borderColor: '#222',
+          }}
+          onStartShouldSetResponder={() => true}
+        >
+          <View style={{ height: 72, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+            <Demo value={value} />
+          </View>
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', fontFamily: 'monospace' }}>
+            {value}<Text style={{ color: '#555', fontSize: 14, fontWeight: '500' }}>px</Text>
+          </Text>
+          <Text style={{ color: '#666', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 20, letterSpacing: 1 }}>
+            {label}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, width: '100%' }}>
+            <Pressable
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }}
+              onPress={() => onValueChange(Math.max(range.min, value - 1))}
+            >
+              <Text style={{ color: '#888', fontSize: 18, fontWeight: '600' }}>{"\u2212"}</Text>
+            </Pressable>
+            <View
+              style={{ flex: 1, height: 36, justifyContent: 'center', overflow: 'visible' }}
+              onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={(e) => handleTouch(e.nativeEvent.locationX)}
+              onResponderMove={(e) => handleTouch(e.nativeEvent.locationX)}
+            >
+              <View style={{ height: 4, backgroundColor: '#222', borderRadius: 2, overflow: 'hidden' }}>
+                <View style={{ height: 4, backgroundColor: '#fff', width: `${ratio * 100}%` }} />
+              </View>
+              <View
+                style={{
+                  position: 'absolute', left: `${ratio * 100}%`, top: 8,
+                  width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+                  transform: [{ translateX: -10 }],
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.3, shadowRadius: 4, elevation: 4,
+                }}
+                pointerEvents="none"
+              />
+            </View>
+            <Pressable
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }}
+              onPress={() => onValueChange(Math.min(range.max, value + 1))}
+            >
+              <Text style={{ color: '#888', fontSize: 18, fontWeight: '600' }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+interface SlateExportProject {
+  _exportType: "project";
+  slate: AppSlate;
+  history?: unknown;
+  chatLog?: unknown;
+  agentSessions?: unknown;
+  exportedAt: number;
+}
+
+interface SlateExportApp {
+  _exportType: "app";
+  slate: AppSlate;
+  exportedAt: number;
+}
+
+type SlateExport = SlateExportProject | SlateExportApp;
+
+function triggerWebDownload(json: string, filename: string) {
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 interface SettingsPageProps {
@@ -109,6 +256,9 @@ interface SettingsPageProps {
   onDeleteSlate: () => void;
   onClose: () => void;
   slate: AppSlate;
+  slateId?: string;
+  slateName?: string;
+  onRenameSlate?: (name: string) => void;
   onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
   apiKey: string;
   onApiKeyChange: (key: string) => void;
@@ -128,10 +278,15 @@ export function SettingsPage({
   onDeleteSlate,
   onClose,
   slate,
+  slateId,
+  slateName,
+  onRenameSlate,
   onSlateChange,
   apiKey,
   onApiKeyChange,
 }: SettingsPageProps) {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(slateName ?? "");
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [colorPickerTarget, setColorPickerTarget] = useState<{
     type: "color" | "bgColor";
@@ -140,6 +295,7 @@ export function SettingsPage({
   } | null>(null);
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  const [activeEditor, setActiveEditor] = useState<{ type: EditorType; key: string; label: string } | null>(null);
 
   const theme = slate.theme ?? {};
   const colors = theme.colors ?? DEFAULT_COLORS;
@@ -193,6 +349,140 @@ export function SettingsPage({
     [fontSizes, updateTheme],
   );
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const doExport = useCallback(
+    async (mode: "project" | "app") => {
+      const name = slateName || slate.screens[slate.initial_screen_id]?.name || "slate";
+      const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+      const timestamp = Date.now();
+
+      if (mode === "project" && slateId) {
+        const [historyRaw, chatLogRaw, agentRaw] = await Promise.all([
+          AsyncStorage.getItem(`undo_history_${slateId}`).catch(() => null),
+          AsyncStorage.getItem(`chat_log_${slateId}`).catch(() => null),
+          AsyncStorage.getItem(`agent_sessions_${slateId}`).catch(() => null),
+        ]);
+        const payload: SlateExportProject = {
+          _exportType: "project",
+          slate,
+          history: historyRaw ? JSON.parse(historyRaw) : undefined,
+          chatLog: chatLogRaw ? JSON.parse(chatLogRaw) : undefined,
+          agentSessions: agentRaw ? JSON.parse(agentRaw) : undefined,
+          exportedAt: timestamp,
+        };
+        const json = JSON.stringify(payload, null, 2);
+        const filename = `${safeName}_${timestamp}.json`;
+
+        if (Platform.OS === "web") {
+          triggerWebDownload(json, filename);
+        } else {
+          Share.share({ message: json, title: filename });
+        }
+      } else {
+        const payload: SlateExportApp = {
+          _exportType: "app",
+          slate,
+          exportedAt: timestamp,
+        };
+        const json = JSON.stringify(payload, null, 2);
+        const filename = `${safeName}_${timestamp}.json`;
+
+        if (Platform.OS === "web") {
+          triggerWebDownload(json, filename);
+        } else {
+          Share.share({ message: json, title: filename });
+        }
+      }
+    },
+    [slate, slateId, slateName],
+  );
+
+  const handleExport = useCallback(() => {
+    if (!slateId) {
+      doExport("app");
+      return;
+    }
+    crossAlert(
+      "Export Slate",
+      "Export Project includes history & AI logs.\nExport App is a clean slate without logs.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Export App", onPress: () => doExport("app") },
+        { text: "Export Project", onPress: () => doExport("project") },
+      ],
+    );
+  }, [slateId, doExport]);
+
+  const processImport = useCallback(
+    async (text: string) => {
+      try {
+        const data = JSON.parse(text) as SlateExport;
+        if (!data || typeof data !== "object" || !data.slate) {
+          crossAlert("Import Failed", "Invalid file: missing slate data.");
+          return;
+        }
+        const parsed = AppSlateSchema.safeParse(data.slate);
+        if (!parsed.success) {
+          crossAlert("Import Failed", "Invalid slate format:\n" + parsed.error.issues.map((i) => i.message).join(", "));
+          return;
+        }
+        onSlateChange?.(parsed.data);
+
+        // Restore project data if available
+        if (slateId && data._exportType === "project") {
+          const proj = data as SlateExportProject;
+          const ops: Promise<void>[] = [];
+          if (proj.history) {
+            ops.push(AsyncStorage.setItem(`undo_history_${slateId}`, JSON.stringify(proj.history)));
+          }
+          if (proj.chatLog) {
+            ops.push(AsyncStorage.setItem(`chat_log_${slateId}`, JSON.stringify(proj.chatLog)));
+          }
+          if (proj.agentSessions) {
+            ops.push(AsyncStorage.setItem(`agent_sessions_${slateId}`, JSON.stringify(proj.agentSessions)));
+          }
+          await Promise.all(ops);
+          crossAlert("Import Complete", "Project imported with history and AI logs. Reopen the slate to see restored history.");
+        } else {
+          crossAlert("Import Complete", "App slate imported successfully.");
+        }
+      } catch (e) {
+        crossAlert("Import Failed", "Could not parse JSON file.");
+      }
+    },
+    [onSlateChange, slateId],
+  );
+
+  const handleImport = useCallback(() => {
+    if (Platform.OS === "web") {
+      // Create or reuse hidden file input
+      if (!fileInputRef.current) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json,application/json";
+        input.style.display = "none";
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") {
+              processImport(reader.result);
+            }
+          };
+          reader.readAsText(file);
+          input.value = "";
+        });
+        document.body.appendChild(input);
+        fileInputRef.current = input;
+      }
+      fileInputRef.current.click();
+    } else {
+      crossAlert("Import", "Paste your exported JSON below is not yet supported on this platform. Please use the web version to import.");
+    }
+  }, [processImport]);
+
   const handleClose = () => {
     onClose();
     onCloseSlate();
@@ -209,7 +499,7 @@ export function SettingsPage({
         onDeleteSlate();
       }
     } else {
-      Alert.alert(
+      crossAlert(
         "Delete Slate",
         "This will permanently delete this slate. This cannot be undone.",
         [
@@ -334,7 +624,7 @@ export function SettingsPage({
           <Text style={styles.categoryHeader}>BORDER RADII</Text>
           <View style={styles.gridContainer}>
             {BORDER_RADII_FIELDS.map((f) => (
-              <NumberRow key={f.key} label={f.label} value={borderRadii[f.key]} onChange={(v) => setBorderRadius(f.key, v)} />
+              <NumberRow key={f.key} label={f.label} value={borderRadii[f.key]} onChange={(v) => setBorderRadius(f.key, v)} onPress={() => setActiveEditor({ type: 'borderRadius', key: f.key, label: f.label })} />
             ))}
           </View>
 
@@ -343,7 +633,7 @@ export function SettingsPage({
           <Text style={styles.categoryHeader}>SPACING</Text>
           <View style={styles.gridContainer}>
             {SPACING_FIELDS.map((f) => (
-              <NumberRow key={f.key} label={f.label} value={spacing[f.key]} onChange={(v) => setSpacing(f.key, v)} />
+              <NumberRow key={f.key} label={f.label} value={spacing[f.key]} onChange={(v) => setSpacing(f.key, v)} onPress={() => setActiveEditor({ type: 'spacing', key: f.key, label: f.label })} />
             ))}
           </View>
 
@@ -352,7 +642,7 @@ export function SettingsPage({
           <Text style={styles.categoryHeader}>FONT SIZES</Text>
           <View style={styles.gridContainer}>
             {FONT_SIZE_FIELDS.map((f) => (
-              <NumberRow key={f.key} label={f.label} value={fontSizes[f.key]} onChange={(v) => setFontSize(f.key, v)} />
+              <NumberRow key={f.key} label={f.label} value={fontSizes[f.key]} onChange={(v) => setFontSize(f.key, v)} onPress={() => setActiveEditor({ type: 'fontSize', key: f.key, label: f.label })} />
             ))}
           </View>
         </View>
@@ -379,6 +669,65 @@ export function SettingsPage({
 
       {/* Slate */}
       <Text style={styles.categoryHeader}>SLATE</Text>
+      <View style={styles.renameRow}>
+        {isRenaming ? (
+          <View style={styles.renameInputRow}>
+            <TextInput
+              style={styles.renameInput}
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              autoFocus
+              onSubmitEditing={() => {
+                const trimmed = renameDraft.trim();
+                if (trimmed && onRenameSlate) {
+                  onRenameSlate(trimmed);
+                }
+                setIsRenaming(false);
+              }}
+              returnKeyType="done"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+            />
+            <Pressable
+              style={[styles.keySaveBtn, !renameDraft.trim() && styles.keySaveBtnDisabled]}
+              onPress={() => {
+                const trimmed = renameDraft.trim();
+                if (trimmed && onRenameSlate) {
+                  onRenameSlate(trimmed);
+                }
+                setIsRenaming(false);
+              }}
+              disabled={!renameDraft.trim()}
+            >
+              <Text style={styles.keySaveBtnText}>Save</Text>
+            </Pressable>
+            <Pressable style={styles.keyCancelBtn} onPress={() => { setRenameDraft(slateName ?? ""); setIsRenaming(false); }}>
+              <Text style={styles.keyCancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            style={styles.renameDisplay}
+            onPress={() => { setRenameDraft(slateName ?? ""); setIsRenaming(true); }}
+          >
+            <Text style={styles.renameNameText} numberOfLines={1}>{slateName || "Untitled"}</Text>
+            <Text style={styles.renamePencil}>Rename</Text>
+          </Pressable>
+        )}
+      </View>
+      <View style={styles.exportImportRow}>
+        <Pressable
+          style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
+          onPress={handleExport}
+        >
+          <Text style={styles.exportBtnText}>Export</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
+          onPress={handleImport}
+        >
+          <Text style={styles.exportBtnText}>Import</Text>
+        </Pressable>
+      </View>
       <Pressable
         style={({ pressed }) => [styles.row, styles.projectRow, pressed && styles.projectRowPressed]}
         onPress={handleClose}
@@ -396,6 +745,24 @@ export function SettingsPage({
       >
         <Text style={styles.dangerLabel}>Delete Slate</Text>
       </Pressable>
+
+      {activeEditor && (
+        <ValueEditorModal
+          type={activeEditor.type}
+          label={activeEditor.label}
+          value={
+            activeEditor.type === 'borderRadius' ? borderRadii[activeEditor.key as keyof typeof DEFAULT_BORDER_RADII]
+            : activeEditor.type === 'spacing' ? spacing[activeEditor.key as keyof typeof DEFAULT_SPACING]
+            : fontSizes[activeEditor.key as keyof typeof DEFAULT_FONT_SIZES]
+          }
+          onValueChange={(v) => {
+            if (activeEditor.type === 'borderRadius') setBorderRadius(activeEditor.key as keyof typeof DEFAULT_BORDER_RADII, v);
+            else if (activeEditor.type === 'spacing') setSpacing(activeEditor.key as keyof typeof DEFAULT_SPACING, v);
+            else setFontSize(activeEditor.key as keyof typeof DEFAULT_FONT_SIZES, v);
+          }}
+          onClose={() => setActiveEditor(null)}
+        />
+      )}
 
       <ColorPickerModal
         visible={colorPickerTarget !== null}
@@ -460,6 +827,69 @@ const styles = StyleSheet.create({
   },
   styleGuideContent: {
     paddingBottom: 4,
+  },
+  renameRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  renameInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  renameInput: {
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: "#000",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderRadius: 8,
+    color: "#fff",
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  renameDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  renameNameText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  renamePencil: {
+    color: "#555",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  exportImportRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  exportBtn: {
+    flex: 1,
+    backgroundColor: "#0a0a0a",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  exportBtnPressed: {
+    backgroundColor: "#111",
+  },
+  exportBtnText: {
+    color: "#ccc",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   projectRow: {
     backgroundColor: "#0a0a0a",

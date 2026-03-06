@@ -20,6 +20,7 @@ import { containsComponentJson } from "../../ai/parseResponse";
 import { parseSingleComponent } from "../../ai/modifyComponent";
 import { getComponentLabel } from "../../utils/componentTree";
 import type { Component, Theme } from "../../types";
+import { summarizeResponse } from "../../ai/useChatLog";
 import type { ChatMessage } from "../../ai/types";
 
 interface ComponentRect {
@@ -37,6 +38,8 @@ interface AIChatSheetProps {
   componentRect?: ComponentRect;
   onApply: (component: Component) => void;
   onClose: () => void;
+  logInteraction?: (entry: { source: "component" | "screen"; context: string; screenId: string; userMessage: string; assistantSummary: string }) => void;
+  screenId?: string;
 }
 
 export function AIChatSheet({
@@ -47,6 +50,8 @@ export function AIChatSheet({
   componentRect,
   onApply,
   onClose,
+  logInteraction,
+  screenId,
 }: AIChatSheetProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<ScrollView>(null);
@@ -66,6 +71,11 @@ export function AIChatSheet({
     hasActionableContent: containsComponentJson,
   });
 
+  const label = useMemo(
+    () => getComponentLabel(component, { includeType: true }),
+    [component],
+  );
+
   // Auto-apply when AI responds with component JSON
   useEffect(() => {
     if (appliedRef.current || isLoading) return;
@@ -76,8 +86,19 @@ export function AIChatSheet({
       const updated = { ...parsed, id: component.id };
       appliedRef.current = true;
       onApply(updated);
+      // Log to chat history for agent context
+      const userMsg = [...messages].reverse().find((m) => m.role === "user");
+      if (userMsg && logInteraction) {
+        logInteraction({
+          source: "component",
+          context: label,
+          screenId: screenId ?? "",
+          userMessage: userMsg.content,
+          assistantSummary: summarizeResponse(lastMsg.content),
+        });
+      }
     } catch {}
-  }, [messages, isLoading, component.id, onApply]);
+  }, [messages, isLoading, component.id, onApply, logInteraction, screenId, label]);
 
   useEffect(() => {
     if (visible) {
@@ -132,11 +153,6 @@ export function AIChatSheet({
   const handleBlurPress = () => {
     if (!appliedRef.current) handleClose();
   };
-
-  const label = useMemo(
-    () => getComponentLabel(component, { includeType: true }),
-    [component],
-  );
 
   if (!visible) return null;
 
@@ -281,7 +297,7 @@ export function AIChatSheet({
               <Feather
                 name="arrow-up"
                 size={16}
-                color={input.trim() && !isLoading ? "#fff" : "rgba(255,255,255,0.2)"}
+                color={input.trim() && !isLoading ? "#000" : "rgba(255,255,255,0.2)"}
               />
             </Pressable>
           </View>
@@ -294,7 +310,7 @@ export function AIChatSheet({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 998,
+    zIndex: 1000,
   },
   dimRect: {
     position: "absolute",

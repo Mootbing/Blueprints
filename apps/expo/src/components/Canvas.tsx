@@ -9,8 +9,8 @@ import {
   Animated,
   Keyboard,
   PanResponder,
-  Alert,
 } from "react-native";
+import { crossAlert } from "../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import Svg, { Circle } from "react-native-svg";
@@ -32,6 +32,8 @@ import { ContextMenu } from "./ContextMenu";
 import { VersionHistoryModal } from "./menu/VersionHistoryModal";
 import { AIChatSheet } from "./ai/AIChatSheet";
 import { tidyLayout } from "../ai/tidyLayout";
+import { useChatLog } from "../ai/useChatLog";
+import { useAgentRunner } from "../ai/useAgentRunner";
 import type { HistoryEntry } from "../hooks/useUndoHistory";
 
 /* Circular progress ring for long-press feedback (SVG) */
@@ -196,6 +198,8 @@ interface CanvasProps {
   onAddComponent: (component: Component) => void;
   onCloseSlate?: () => void;
   onDeleteSlate?: () => void;
+  slateName?: string;
+  onRenameSlate?: (name: string) => void;
   onResetAndBuild?: () => void;
   onNavigate?: (screenId: string) => void;
   onNavigateBack?: () => void;
@@ -216,6 +220,7 @@ interface CanvasProps {
   currentId?: string;
   restoreToId?: (id: string) => void;
   createBranch?: (branchSlate: AppSlate, description: string) => string;
+  addBranchEntry?: (branchSlate: AppSlate, description: string) => string;
   startBatch?: (description: string) => void;
   endBatch?: () => void;
   // AI props
@@ -235,6 +240,8 @@ export function Canvas({
   onAddComponent,
   onCloseSlate,
   onDeleteSlate,
+  slateName,
+  onRenameSlate,
   onResetAndBuild,
   onNavigate,
   onNavigateBack,
@@ -255,6 +262,7 @@ export function Canvas({
   currentId,
   restoreToId,
   createBranch,
+  addBranchEntry,
   startBatch,
   endBatch,
   apiKey,
@@ -290,6 +298,21 @@ export function Canvas({
   const [contextMenu, setContextMenu] = useState<{ componentId: string | null; x: number; y: number } | null>(null);
   const clipboardRef = useRef<Component | null>(null);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+
+  // Chat log for agent context
+  const { chatLog, logInteraction } = useChatLog(slateId);
+
+  // Agent runner (lives here so it survives menu close)
+  const agentRunner = useAgentRunner({
+    slateId,
+    slate,
+    screenId,
+    apiKey,
+    historyEntries: entries,
+    currentHistoryId: currentId,
+    onAddBranchEntry: addBranchEntry,
+    chatLog,
+  });
 
   // AI state
   const [aiChatTarget, setAiChatTarget] = useState<Component | null>(null);
@@ -635,7 +658,7 @@ export function Canvas({
       endBatch?.();
     } catch (err) {
       endBatch?.();
-      Alert.alert("Tidy Error", err instanceof Error ? err.message : "Failed to tidy layout");
+      crossAlert("Tidy Error", err instanceof Error ? err.message : "Failed to tidy layout");
     } finally {
       setIsTidying(false);
     }
@@ -658,6 +681,12 @@ export function Canvas({
       setAiChatTarget(comp);
     }
   }, [screen, editingInfo, selectedComponentId]);
+
+  const handleAIChatFromLayer = useCallback((componentId: string) => {
+    if (!screen) return;
+    const comp = findComponent(screen.components, componentId);
+    if (comp) setAiChatTarget(comp);
+  }, [screen]);
 
   const handleAIChatApply = useCallback((component: Component) => {
     // Save original before applying so we can revert
@@ -797,9 +826,14 @@ export function Canvas({
       mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.8,
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
-      onStyleChange?.(componentId, { src: result.assets[0].uri });
+      const asset = result.assets[0];
+      const src = asset.base64
+        ? `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`
+        : asset.uri;
+      onStyleChange?.(componentId, { src });
     }
   }, [onStyleChange]);
 
@@ -1021,7 +1055,7 @@ export function Canvas({
           isEditMode={isEditMode}
           onToggleEditMode={() => {
             onToggleEditMode();
-            Alert.alert(
+            crossAlert(
               isEditMode ? "Preview Mode" : "Dev Mode",
               isEditMode
                 ? "You are now in preview mode. Long-hold the sphere to return to dev mode."
@@ -1146,6 +1180,8 @@ export function Canvas({
           }
           onApply={handleAIChatApply}
           onClose={() => setAiChatTarget(null)}
+          logInteraction={logInteraction}
+          screenId={screenId}
         />
       )}
 
@@ -1172,6 +1208,8 @@ export function Canvas({
         }}
         onCloseSlate={() => onCloseSlate?.()}
         onDeleteSlate={() => onDeleteSlate?.()}
+        slateName={slateName}
+        onRenameSlate={onRenameSlate}
         onScreenUpdate={(s) => onScreenUpdate?.(s)}
         onDeleteComponent={(id) => onDeleteComponent?.(id)}
         onTreeSelect={handleTreeSelect}
@@ -1192,9 +1230,12 @@ export function Canvas({
         onApplyComponents={handleApplyComponents}
         historyEntries={entries}
         currentHistoryId={currentId}
-        onCreateBranch={createBranch}
         onRestoreToId={restoreToId}
         slateId={slateId}
+        logInteraction={logInteraction}
+        chatLog={chatLog}
+        agentRunner={agentRunner}
+        onAIChatComponent={handleAIChatFromLayer}
       />
     </View>
   );

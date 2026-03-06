@@ -231,6 +231,25 @@ export function useUndoHistory(initialSlate: AppSlate) {
     [bump]
   );
 
+  const addBranchEntry = useCallback(
+    (branchSlate: AppSlate, description: string): string => {
+      const newId = historyId();
+      entriesRef.current = [
+        ...entriesRef.current,
+        {
+          id: newId,
+          slate: branchSlate,
+          timestamp: Date.now(),
+          description,
+          parentId: currentIdRef.current,
+        },
+      ];
+      bump();
+      return newId;
+    },
+    [bump]
+  );
+
   return {
     slate,
     setSlate,
@@ -243,6 +262,7 @@ export function useUndoHistory(initialSlate: AppSlate) {
     currentId,
     restoreToId,
     createBranch,
+    addBranchEntry,
     startBatch,
     endBatch,
     historyVersion,

@@ -1,104 +1,28 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   StyleSheet,
-  Alert,
 } from "react-native";
+import { crossAlert } from "../../utils/crossAlert";
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SwipeToDelete } from "../SwipeToDelete";
 import { ChatView } from "../ai/ChatView";
-import { callClaude } from "../../ai/anthropicClient";
-import { agentSystemPrompt } from "../../ai/prompts";
-import { containsComponentJson, parseComponentArray } from "../../ai/parseResponse";
-import {
-  parseWorkflowResult,
-  applyWorkflow,
-  containsWorkflowJson,
-} from "../../ai/buildWorkflow";
-import type { AppSlate, Component } from "../../types";
 import type {
   ChatMessage,
   AgentSession,
   AgentStatus,
 } from "../../ai/types";
 import type { HistoryEntry } from "../../hooks/useUndoHistory";
-import { uuid } from "../../utils/uuid";
 
 // ─── Cherry-pick detection ──────────────────────────────────────
 
 function extractCherryPickId(text: string): string | null {
+  if (typeof text !== "string") return null;
   const match = text.match(/<cherry-pick>([\s\S]*?)<\/cherry-pick>/);
   return match ? match[1].trim() : null;
-}
-
-function hasActionableJson(text: string): boolean {
-  return containsComponentJson(text) || containsWorkflowJson(text);
-}
-
-// ─── Agent session persistence ──────────────────────────────────
-
-function useAgentSessions(slateId: string) {
-  const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const loadedRef = useRef(false);
-  const storageKey = `agent_sessions_${slateId}`;
-
-  useEffect(() => {
-    AsyncStorage.getItem(storageKey).then((data) => {
-      if (data) {
-        try {
-          setSessions(JSON.parse(data));
-        } catch {}
-      }
-      loadedRef.current = true;
-    });
-  }, [storageKey]);
-
-  const persist = useCallback(
-    (newSessions: AgentSession[]) => {
-      setSessions(newSessions);
-      if (loadedRef.current) {
-        AsyncStorage.setItem(storageKey, JSON.stringify(newSessions)).catch(
-          () => {},
-        );
-      }
-    },
-    [storageKey],
-  );
-
-  const createSession = useCallback(
-    (name: string): AgentSession => {
-      const session: AgentSession = {
-        id: uuid(),
-        name,
-        status: "idle",
-        createdAt: Date.now(),
-        messages: [],
-      };
-      persist([...sessions, session]);
-      return session;
-    },
-    [sessions, persist],
-  );
-
-  const updateSession = useCallback(
-    (id: string, updates: Partial<AgentSession>) => {
-      persist(sessions.map((s) => (s.id === id ? { ...s, ...updates } : s)));
-    },
-    [sessions, persist],
-  );
-
-  const deleteSession = useCallback(
-    (id: string) => {
-      persist(sessions.filter((s) => s.id !== id));
-    },
-    [sessions, persist],
-  );
-
-  return { sessions, createSession, updateSession, deleteSession };
 }
 
 // ─── Status badge ───────────────────────────────────────────────
@@ -146,17 +70,6 @@ function AgentListView({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const handleDelete = (session: AgentSession) => {
-    Alert.alert("Delete Agent", `Delete "${session.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => onDelete(session.id),
-      },
-    ]);
-  };
-
   const q = searchQuery.trim().toLowerCase();
   const filtered = q
     ? sessions.filter((sess) => sess.name.toLowerCase().includes(q))
@@ -186,9 +99,6 @@ function AgentListView({
       {/* Section header */}
       <View style={s.sectionHeaderRow}>
         <Text style={s.sectionHeader}>AGENT ORCHESTRATOR</Text>
-        <Pressable onPress={onCreate} hitSlop={8}>
-          <Feather name="plus" size={14} color="#444" />
-        </Pressable>
       </View>
 
       {sessions.length === 0 && (
@@ -210,43 +120,37 @@ function AgentListView({
       {filtered.map((session) => {
         const cfg = STATUS_CONFIG[session.status];
         return (
-          <View key={session.id}>
-            <View style={s.agentRow}>
-              <Pressable
-                style={s.agentRowTap}
-                onPress={() => onSelect(session.id)}
-              >
-                <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
-                <View style={s.agentInfo}>
-                  <Text style={s.agentTitle} numberOfLines={1}>
-                    {session.name}
-                  </Text>
-                  <View style={s.agentBadgeRow}>
-                    <View style={[s.agentBadge, { backgroundColor: cfg.bg, borderColor: cfg.color + "30" }]}>
-                      <Text style={[s.agentBadgeText, { color: cfg.color }]}>
-                        {cfg.label}
-                      </Text>
-                    </View>
-                    <View style={s.agentBadge}>
-                      <Text style={s.agentBadgeText}>
-                        {session.messages.length} msgs
-                      </Text>
+          <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)}>
+            <View>
+              <View style={s.agentRow}>
+                <Pressable
+                  style={s.agentRowTap}
+                  onPress={() => onSelect(session.id)}
+                >
+                  <Feather name="cpu" size={14} color="#555" style={{ marginTop: 2 }} />
+                  <View style={s.agentInfo}>
+                    <Text style={s.agentTitle} numberOfLines={1}>
+                      {session.name}
+                    </Text>
+                    <View style={s.agentBadgeRow}>
+                      <View style={[s.agentBadge, { backgroundColor: cfg.bg, borderColor: cfg.color + "30" }]}>
+                        <Text style={[s.agentBadgeText, { color: cfg.color }]}>
+                          {cfg.label}
+                        </Text>
+                      </View>
+                      <View style={s.agentBadge}>
+                        <Text style={s.agentBadgeText}>
+                          {session.messages.length} msgs
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </Pressable>
-              <Pressable
-                onPress={() => handleDelete(session)}
-                hitSlop={12}
-                style={s.deleteBtn}
-              >
-                <Feather name="trash-2" size={14} color="#e54" />
-              </Pressable>
-              <Feather name="chevron-right" size={16} color="#333" />
-            </View>
+                </Pressable>
+                <Feather name="chevron-right" size={16} color="#333" />
+              </View>
 
-            {/* Accept/Reject for awaiting_review */}
-            {session.status === "awaiting_review" && (
+              {/* Accept/Reject for awaiting_review */}
+              {session.status === "awaiting_review" && (
               <View style={s.reviewActions}>
                 <Pressable
                   style={({ pressed }) => [
@@ -276,9 +180,17 @@ function AgentListView({
                 </Pressable>
               </View>
             )}
-          </View>
+            </View>
+          </SwipeToDelete>
         );
       })}
+
+      {!q && (
+        <Pressable style={s.addAgentBtn} onPress={onCreate}>
+          <Feather name="plus" size={14} color="#888" />
+          <Text style={s.addAgentBtnText}>Add New Agent</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -287,227 +199,63 @@ function AgentListView({
 
 interface AgentPageProps {
   width: number;
-  slate: AppSlate;
-  screenId: string;
   apiKey: string;
-  slateId: string;
-  onSlateChange?: (updater: AppSlate | ((prev: AppSlate) => AppSlate)) => void;
-  onApplyComponents: (components: Component[], mode: "replace" | "add") => void;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
-  onCreateBranch?: (branchSlate: AppSlate, description: string) => string;
   onRestoreToId?: (id: string) => void;
+  createTrigger?: number;
+  /** When set, auto-creates a new agent and sends this as the first message */
+  initialPrompt?: string;
+  agentRunner?: ReturnType<typeof import("../../ai/useAgentRunner").useAgentRunner>;
 }
 
 export function AgentPage({
   width,
-  slate,
-  screenId,
   apiKey,
-  slateId,
-  onSlateChange,
-  onApplyComponents,
   historyEntries,
   currentHistoryId,
-  onCreateBranch,
   onRestoreToId,
+  createTrigger,
+  initialPrompt,
+  agentRunner,
 }: AgentPageProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const { sessions, createSession, updateSession, deleteSession } =
-    useAgentSessions(slateId);
+  const sessions = agentRunner?.sessions ?? [];
+  const isLoading = agentRunner?.isLoading ?? false;
+  const error = agentRunner?.error ?? null;
 
   const activeSession = activeId
     ? sessions.find((s) => s.id === activeId)
     : null;
 
-  // Build history metadata for agent prompt (strip slate snapshots)
-  const historyMeta = useMemo(
-    () =>
-      historyEntries
-        ?.filter((e) => e.id !== "__root__")
-        .map((e) => ({
-          id: e.id,
-          description: e.description,
-          timestamp: e.timestamp,
-        })),
-    [historyEntries],
-  );
-
   // ─── Send message ─────────────────────────────────────────────
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!activeId || isLoading) return;
-      const session = sessions.find((s) => s.id === activeId);
-      if (!session) return;
-
-      const userMsg: ChatMessage = {
-        id: uuid(),
-        role: "user",
-        content: text.trim(),
-        timestamp: Date.now(),
-      };
-
-      const newMessages = [...session.messages, userMsg];
-      updateSession(activeId, { messages: newMessages, status: "running" });
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const system = agentSystemPrompt(
-          slate,
-          screenId,
-          slate.theme,
-          historyMeta,
-          currentHistoryId,
-        );
-        const apiMessages = newMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-        const response = await callClaude(apiKey, system, apiMessages, 8192);
-
-        const assistantMsg: ChatMessage = {
-          id: uuid(),
-          role: "assistant",
-          content: response,
-          hasComponentJson: hasActionableJson(response),
-          timestamp: Date.now(),
-        };
-
-        updateSession(activeId, {
-          messages: [...newMessages, assistantMsg],
-          status: "idle",
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        updateSession(activeId, { status: "idle" });
-      } finally {
-        setIsLoading(false);
-      }
+      if (!activeId) return;
+      agentRunner?.sendMessage(activeId, text);
     },
-    [
-      activeId,
-      isLoading,
-      sessions,
-      updateSession,
-      slate,
-      screenId,
-      historyMeta,
-      currentHistoryId,
-      apiKey,
-    ],
+    [activeId, agentRunner],
   );
 
-  // ─── Apply as branch ─────────────────────────────────────────
+  // ─── Preview / Undo handlers ─────────────────────────────────
 
-  const handleApplyAsBranch = useCallback(
-    (msg: ChatMessage) => {
-      if (!activeSession) return;
+  const handlePreview = useCallback(
+    (branchEntryId: string) => {
+      onRestoreToId?.(branchEntryId);
+    },
+    [onRestoreToId],
+  );
 
-      try {
-        // Try workflow first
-        if (containsWorkflowJson(msg.content)) {
-          const result = parseWorkflowResult(msg.content);
-          const updated = applyWorkflow(slate, screenId, result);
-          const desc = `[${activeSession.name}] ${result.description}`;
-
-          if (onCreateBranch) {
-            const entryId = onCreateBranch(updated, desc);
-            updateSession(activeSession.id, {
-              status: "awaiting_review",
-              branchEntryId: entryId,
-            });
-            Alert.alert(
-              "Branch Created",
-              `"${activeSession.name}" changes applied. Accept or reject from the agent list.`,
-            );
-          } else {
-            onSlateChange?.(updated);
-            Alert.alert("Applied", result.description);
-          }
-          return;
-        }
-
-        // Try components
-        if (containsComponentJson(msg.content)) {
-          const components = parseComponentArray(msg.content);
-          const screen = slate.screens[screenId];
-          const hasExisting = (screen?.components.length ?? 0) > 1;
-
-          const applyComponents = (mode: "replace" | "add") => {
-            if (onCreateBranch) {
-              const scr = slate.screens[screenId];
-              if (!scr) return;
-              const newComponents =
-                mode === "replace"
-                  ? components
-                  : [...scr.components, ...components];
-              const updated: AppSlate = {
-                ...slate,
-                screens: {
-                  ...slate.screens,
-                  [screenId]: { ...scr, components: newComponents },
-                },
-              };
-              const desc = `[${activeSession.name}] Generated components`;
-              const entryId = onCreateBranch(updated, desc);
-              updateSession(activeSession.id, {
-                status: "awaiting_review",
-                branchEntryId: entryId,
-              });
-              Alert.alert(
-                "Branch Created",
-                `"${activeSession.name}" changes applied. Accept or reject from the agent list.`,
-              );
-            } else {
-              onApplyComponents(components, mode);
-            }
-          };
-
-          if (!hasExisting) {
-            applyComponents("replace");
-            return;
-          }
-
-          Alert.alert("Apply Components", "This screen already has components.", [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Replace All",
-              style: "destructive",
-              onPress: () => applyComponents("replace"),
-            },
-            {
-              text: "Add to Screen",
-              onPress: () => applyComponents("add"),
-            },
-          ]);
-          return;
-        }
-
-        Alert.alert(
-          "Nothing to Apply",
-          "No actionable JSON found in this response.",
-        );
-      } catch (err) {
-        Alert.alert(
-          "Error",
-          err instanceof Error ? err.message : "Failed to apply",
-        );
+  const handleUndoPreview = useCallback(
+    (branchEntryId: string) => {
+      const branchEntry = historyEntries?.find((e) => e.id === branchEntryId);
+      if (branchEntry?.parentId) {
+        onRestoreToId?.(branchEntry.parentId);
       }
     },
-    [
-      activeSession,
-      slate,
-      screenId,
-      onCreateBranch,
-      onSlateChange,
-      onApplyComponents,
-      updateSession,
-    ],
+    [historyEntries, onRestoreToId],
   );
 
   // ─── Cherry-pick handler ──────────────────────────────────────
@@ -516,10 +264,10 @@ export function AgentPage({
     (entryId: string) => {
       const entry = historyEntries?.find((e) => e.id === entryId);
       if (!entry) {
-        Alert.alert("Not Found", `History entry "${entryId}" not found.`);
+        crossAlert("Not Found", `History entry "${entryId}" not found.`);
         return;
       }
-      Alert.alert(
+      crossAlert(
         "Cherry-pick",
         `Restore to "${entry.description}"?`,
         [
@@ -540,71 +288,108 @@ export function AgentPage({
     (sessionId: string) => {
       const session = sessions.find((s) => s.id === sessionId);
       if (!session) return;
-      // Changes are already applied (HEAD is at the branch entry)
-      updateSession(sessionId, { status: "accepted" });
+      agentRunner?.updateSession(sessionId, { status: "accepted" });
     },
-    [sessions, updateSession],
+    [sessions, agentRunner],
   );
 
   const handleReject = useCallback(
     (sessionId: string) => {
       const session = sessions.find((s) => s.id === sessionId);
       if (!session?.branchEntryId) {
-        updateSession(sessionId, { status: "rejected" });
+        agentRunner?.updateSession(sessionId, { status: "rejected" });
         return;
       }
 
-      // Find the parent of the branch entry to undo
       const branchEntry = historyEntries?.find(
         (e) => e.id === session.branchEntryId,
       );
       if (branchEntry?.parentId) {
         onRestoreToId?.(branchEntry.parentId);
       }
-      updateSession(sessionId, { status: "rejected" });
+      agentRunner?.updateSession(sessionId, { status: "rejected" });
     },
-    [sessions, historyEntries, onRestoreToId, updateSession],
+    [sessions, historyEntries, onRestoreToId, agentRunner],
   );
 
   // ─── Create new agent ─────────────────────────────────────────
 
   const handleCreate = useCallback(() => {
+    if (!agentRunner) return;
     const num = sessions.length + 1;
-    const session = createSession(`Agent ${num}`);
+    const session = agentRunner.createSession(`Agent ${num}`);
     setActiveId(session.id);
-  }, [sessions.length, createSession]);
+  }, [sessions.length, agentRunner]);
+
+  // Auto-create when triggered externally (e.g. from Workflows page)
+  const lastTrigger = useRef(createTrigger);
+  const lastPrompt = useRef(initialPrompt);
+  useEffect(() => {
+    if (createTrigger != null && createTrigger !== lastTrigger.current) {
+      lastTrigger.current = createTrigger;
+      handleCreate();
+    }
+  }, [createTrigger, handleCreate]);
+
+  // Auto-send initial prompt when it changes (from workflow edit)
+  useEffect(() => {
+    if (initialPrompt && initialPrompt !== lastPrompt.current && agentRunner) {
+      lastPrompt.current = initialPrompt;
+      const num = sessions.length + 1;
+      const session = agentRunner.createSession(`Workflow Edit ${num}`);
+      setActiveId(session.id);
+      // Send the prompt after session is created
+      setTimeout(() => {
+        agentRunner.sendMessage(session.id, initialPrompt);
+      }, 100);
+    }
+  }, [initialPrompt, agentRunner, sessions.length]);
 
   // ─── Delete agent ─────────────────────────────────────────────
 
   const handleDelete = useCallback(
     (id: string) => {
-      deleteSession(id);
+      agentRunner?.deleteSession(id);
       if (activeId === id) setActiveId(null);
     },
-    [activeId, deleteSession],
+    [activeId, agentRunner],
   );
 
-  // ─── Render message actions (branch + cherry-pick) ────────────
+  // ─── Render message actions (preview/undo + cherry-pick) ──────
 
   const renderMessageActions = useCallback(
     (msg: ChatMessage) => {
       const cherryPickId = extractCherryPickId(msg.content);
-      const hasJson = msg.hasComponentJson;
+      const branchId = msg.branchEntryId;
 
-      if (!cherryPickId && !hasJson) return null;
+      if (!cherryPickId && !branchId) return null;
+
+      const isPreviewing = branchId && currentHistoryId === branchId;
 
       return (
         <View style={s.messageActions}>
-          {hasJson && (
+          {branchId && !isPreviewing && (
             <Pressable
               style={({ pressed }) => [
-                s.branchBtn,
-                pressed && s.branchBtnPressed,
+                s.previewBtn,
+                pressed && s.previewBtnPressed,
               ]}
-              onPress={() => handleApplyAsBranch(msg)}
+              onPress={() => handlePreview(branchId)}
             >
-              <Feather name="git-branch" size={14} color="#000" />
-              <Text style={s.branchBtnText}>Branch & Apply</Text>
+              <Feather name="eye" size={14} color="#000" />
+              <Text style={s.previewBtnText}>Preview</Text>
+            </Pressable>
+          )}
+          {branchId && isPreviewing && (
+            <Pressable
+              style={({ pressed }) => [
+                s.undoBtn,
+                pressed && s.undoBtnPressed,
+              ]}
+              onPress={() => handleUndoPreview(branchId)}
+            >
+              <Feather name="rotate-ccw" size={14} color="#f59e0b" />
+              <Text style={s.undoBtnText}>Undo</Text>
             </Pressable>
           )}
           {cherryPickId && (
@@ -622,7 +407,7 @@ export function AgentPage({
         </View>
       );
     },
-    [handleApplyAsBranch, handleCherryPick],
+    [handlePreview, handleUndoPreview, handleCherryPick, currentHistoryId],
   );
 
   // ─── No API key ───────────────────────────────────────────────
@@ -663,7 +448,7 @@ export function AgentPage({
           </View>
           <Pressable
             onPress={() => {
-              Alert.alert("Delete Agent", `Delete "${activeSession.name}"?`, [
+              crossAlert("Delete Agent", `Delete "${activeSession.name}"?`, [
                 { text: "Cancel", style: "cancel" },
                 { text: "Delete", style: "destructive", onPress: () => handleDelete(activeId!) },
               ]);
@@ -827,8 +612,25 @@ const s = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.5,
   },
-  deleteBtn: {
-    padding: 4,
+  addAgentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderStyle: "dashed",
+    backgroundColor: "#0a0a0a",
+  },
+  addAgentBtnText: {
+    color: "#888",
+    fontSize: 13,
+    fontWeight: "600",
   },
   badge: {
     paddingHorizontal: 8,
@@ -918,7 +720,7 @@ const s = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
-  branchBtn: {
+  previewBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -927,11 +729,30 @@ const s = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fff",
   },
-  branchBtnPressed: {
+  previewBtnPressed: {
     backgroundColor: "#ccc",
   },
-  branchBtnText: {
+  previewBtnText: {
     color: "#000",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  undoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.3)",
+  },
+  undoBtnPressed: {
+    backgroundColor: "rgba(245,158,11,0.25)",
+  },
+  undoBtnText: {
+    color: "#f59e0b",
     fontSize: 13,
     fontWeight: "600",
   },

@@ -22,6 +22,7 @@ interface HomeScreenProps {
   onOpenSlate: (id: string) => void;
   onCreateSlate: (name: string) => void;
   onDeleteSlate: (id: string) => void;
+  onRenameSlate: (id: string, name: string) => void;
 }
 
 export function HomeScreen({
@@ -29,10 +30,13 @@ export function HomeScreen({
   onOpenSlate,
   onCreateSlate,
   onDeleteSlate,
+  onRenameSlate,
 }: HomeScreenProps) {
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SlateMeta | null>(null);
+  const [renameTarget, setRenameTarget] = useState<SlateMeta | null>(null);
+  const [renameText, setRenameText] = useState("");
 
   const handleCreate = () => {
     const trimmed = newName.trim();
@@ -144,13 +148,22 @@ export function HomeScreen({
                       <Text style={styles.cardDate}>
                         {formatDate(bp.createdAt)}
                       </Text>
-                      <Pressable
-                        onPress={() => confirmDelete(bp)}
-                        hitSlop={8}
-                        style={styles.cardDeleteBtn}
-                      >
-                        <Feather name="trash-2" size={13} color="#444" />
-                      </Pressable>
+                      <View style={styles.cardActions}>
+                        <Pressable
+                          onPress={() => { setRenameTarget(bp); setRenameText(bp.name); }}
+                          hitSlop={8}
+                          style={styles.cardActionBtn}
+                        >
+                          <Feather name="edit-2" size={13} color="#444" />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => confirmDelete(bp)}
+                          hitSlop={8}
+                          style={styles.cardActionBtn}
+                        >
+                          <Feather name="trash-2" size={13} color="#444" />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 </Pressable>
@@ -237,6 +250,65 @@ export function HomeScreen({
                   }}
                 >
                   <Text style={styles.modalDeleteLabel}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+      )}
+
+      {/* Rename modal */}
+      {renameTarget && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRenameTarget(null)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setRenameTarget(null)}
+          >
+            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.modalTitle}>Rename Slate</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Slate name"
+                placeholderTextColor="#555"
+                value={renameText}
+                onChangeText={setRenameText}
+                autoFocus
+                onSubmitEditing={() => {
+                  const trimmed = renameText.trim();
+                  if (trimmed) {
+                    onRenameSlate(renameTarget.id, trimmed);
+                  }
+                  setRenameTarget(null);
+                }}
+                returnKeyType="done"
+              />
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={styles.modalCancelBtn}
+                  onPress={() => setRenameTarget(null)}
+                >
+                  <Text style={styles.modalCancelLabel}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.modalCreateBtn,
+                    !renameText.trim() && styles.modalCreateBtnDisabled,
+                  ]}
+                  onPress={() => {
+                    const trimmed = renameText.trim();
+                    if (trimmed) {
+                      onRenameSlate(renameTarget.id, trimmed);
+                    }
+                    setRenameTarget(null);
+                  }}
+                  disabled={!renameText.trim()}
+                >
+                  <Text style={styles.modalCreateLabel}>Rename</Text>
                 </Pressable>
               </View>
             </View>
@@ -426,7 +498,12 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: 0.5,
   },
-  cardDeleteBtn: {
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  cardActionBtn: {
     padding: 4,
   },
 

@@ -16,7 +16,7 @@ export async function tidyLayout(
   const system = tidySystemPrompt(theme);
   const userMessage = `Here are the components to tidy:\n\n<json>${JSON.stringify(components, null, 2)}</json>`;
 
-  const response = await callClaude(apiKey, system, [
+  const { text: response } = await callClaude(apiKey, system, [
     { role: "user", content: userMessage },
   ]);
 

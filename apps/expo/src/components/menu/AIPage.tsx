@@ -1,5 +1,6 @@
-import React, { useCallback } from "react";
-import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import React, { useCallback, useRef, useEffect } from "react";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { crossAlert } from "../../utils/crossAlert";
 import { Feather } from "@expo/vector-icons";
 import { ChatView } from "../ai/ChatView";
 import { useAIChat } from "../../ai/useAIChat";
@@ -7,6 +8,8 @@ import { generateScreenChat, parseComponentArray } from "../../ai/generateScreen
 import { containsComponentJson } from "../../ai/parseResponse";
 import { tidyLayout } from "../../ai/tidyLayout";
 import type { Component, Theme, Screen } from "../../types";
+import { summarizeResponse } from "../../ai/useChatLog";
+import type { ChatLogEntry } from "../../ai/useChatLog";
 import type { ChatMessage } from "../../ai/types";
 
 interface AIPageProps {
@@ -18,6 +21,7 @@ interface AIPageProps {
   onApplyComponents: (components: Component[], mode: "replace" | "add") => void;
   onTidy: () => void;
   isTidying: boolean;
+  logInteraction?: (entry: Omit<ChatLogEntry, "id" | "timestamp">) => void;
 }
 
 export function AIPage({
@@ -29,6 +33,7 @@ export function AIPage({
   onApplyComponents,
   onTidy,
   isTidying,
+  logInteraction,
 }: AIPageProps) {
   const sendFn = useCallback(
     async (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
@@ -44,6 +49,27 @@ export function AIPage({
     hasActionableContent: containsComponentJson,
   });
 
+  // Log new assistant messages to chat history for agent context
+  const lastLoggedCount = useRef(0);
+  useEffect(() => {
+    if (messages.length <= lastLoggedCount.current) return;
+    const newMsgs = messages.slice(lastLoggedCount.current);
+    lastLoggedCount.current = messages.length;
+    for (const msg of newMsgs) {
+      if (msg.role !== "assistant") continue;
+      const userMsg = [...messages].slice(0, messages.indexOf(msg)).reverse().find((m) => m.role === "user");
+      if (userMsg && logInteraction) {
+        logInteraction({
+          source: "screen",
+          context: screen.name,
+          screenId: screen.id,
+          userMessage: userMsg.content,
+          assistantSummary: summarizeResponse(msg.content),
+        });
+      }
+    }
+  }, [messages, logInteraction, screen.name, screen.id]);
+
   const handleApply = useCallback(
     (msg: ChatMessage) => {
       try {
@@ -55,7 +81,7 @@ export function AIPage({
           return;
         }
 
-        Alert.alert(
+        crossAlert(
           "Apply Components",
           "This screen already has components.",
           [
@@ -72,7 +98,7 @@ export function AIPage({
           ],
         );
       } catch (err) {
-        Alert.alert("Error", err instanceof Error ? err.message : "Failed to parse components");
+        crossAlert("Error", err instanceof Error ? err.message : "Failed to parse components");
       }
     },
     [screen.components, onApplyComponents],

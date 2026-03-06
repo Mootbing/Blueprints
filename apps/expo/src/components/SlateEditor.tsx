@@ -47,7 +47,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000010",
           layout: { x: 0.06, y: 0.06, width: 0.8, height: 0.03 },
-          content: "DESIGN  \u2022  BUILD  \u2022  PREVIEW",
+          content: "CREATE  \u2022  CUSTOMIZE  \u2022  LAUNCH",
           fontSize: 11,
           color: "#444",
           fontWeight: "600",
@@ -57,7 +57,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000011",
           layout: { x: 0.06, y: 0.10, width: 0.88, height: 0.05 },
-          content: "Welcome to Slate",
+          content: "Meet Slate",
           fontSize: 36,
           color: "#ffffff",
           fontWeight: "200",
@@ -67,7 +67,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000012",
           layout: { x: 0.06, y: 0.17, width: 0.88, height: 0.05 },
-          content: "Build beautiful app interfaces visually. Drag, drop, and customize components to bring your ideas to life.",
+          content: "Your no-code app builder. Design screens, wire up logic, and see it all come together — right from your device.",
           fontSize: 15,
           color: "#666",
           fontWeight: "normal",
@@ -126,7 +126,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000050",
           layout: { x: 0.06, y: 0.56, width: 0.88, height: 0.03 },
-          content: "Quick Start",
+          content: "How It Works",
           fontSize: 20,
           color: "#ccc",
           fontWeight: "300",
@@ -136,7 +136,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000014",
           layout: { x: 0.06, y: 0.61, width: 0.88, height: 0.03 },
-          content: "1. Long-press the canvas to open the menu",
+          content: "1. Click the <> button to view components & layer tree",
           fontSize: 13,
           color: "#555",
           fontWeight: "normal",
@@ -146,7 +146,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000016",
           layout: { x: 0.06, y: 0.65, width: 0.88, height: 0.03 },
-          content: "2. Toggle Edit Mode on, then add components",
+          content: "2. Tap components from add components to add them",
           fontSize: 13,
           color: "#555",
           fontWeight: "normal",
@@ -156,7 +156,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000017",
           layout: { x: 0.06, y: 0.69, width: 0.88, height: 0.03 },
-          content: "3. Drag to move, pinch to resize, tap to edit",
+          content: "3. Drag, pinch, style, and use AI until it looks right",
           fontSize: 13,
           color: "#555",
           fontWeight: "normal",
@@ -166,7 +166,7 @@ export const defaultSlate: AppSlate = {
           type: "text",
           id: "00000000-0000-0000-0000-000000000018",
           layout: { x: 0.06, y: 0.73, width: 0.88, height: 0.03 },
-          content: "4. Toggle Edit Mode off to preview your app",
+          content: "4. Long-press the eye icon to preview",
           fontSize: 13,
           color: "#555",
           fontWeight: "normal",
@@ -176,7 +176,7 @@ export const defaultSlate: AppSlate = {
           type: "button",
           id: "00000000-0000-0000-0000-000000000020",
           layout: { x: 0.06, y: 0.80, width: 0.88, height: 0.065 },
-          label: "Start Building",
+          label: "Blankify Project (click on me in preview)",
           backgroundColor: "#ffffff",
           textColor: "#000000",
           fontSize: 16,
@@ -470,14 +470,18 @@ function collectPersistedVarNames(appVars: Variable[], screenVars: Variable[]): 
 
 interface SlateEditorProps {
   slateId: string;
+  slateName: string;
   onCloseSlate: () => void;
   onDeleteSlate: () => void;
+  onRenameSlate: (name: string) => void;
 }
 
 export function SlateEditor({
   slateId,
+  slateName,
   onCloseSlate,
   onDeleteSlate,
+  onRenameSlate,
 }: SlateEditorProps) {
   const {
     slate,
@@ -496,6 +500,7 @@ export function SlateEditor({
     loadHistory,
     getRedoMap,
     createBranch,
+    addBranchEntry,
   } = useUndoHistory(defaultSlate);
   const [isEditMode, setIsEditMode] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -873,6 +878,8 @@ export function SlateEditor({
         onAddComponent={handleAddComponent}
         onCloseSlate={handleCloseSlate}
         onDeleteSlate={onDeleteSlate}
+        slateName={slateName}
+        onRenameSlate={onRenameSlate}
         onResetAndBuild={handleResetAndBuild}
         onNavigate={handleNavigate}
         onNavigateBack={handleNavigateBack}
@@ -896,6 +903,7 @@ export function SlateEditor({
         currentId={currentId}
         restoreToId={restoreToId}
         createBranch={createBranch}
+        addBranchEntry={addBranchEntry}
         startBatch={startBatch}
         endBatch={endBatch}
         initialScreenId={slate.initial_screen_id}

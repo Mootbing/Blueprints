@@ -56,7 +56,11 @@ export function ChatView({
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === "ios" ? 120 : 80}
+    >
       {headerActions && (
         <View style={styles.headerActions}>{headerActions}</View>
       )}
@@ -67,6 +71,7 @@ export function ChatView({
         contentContainerStyle={styles.messageListContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
       >
         {messages.length === 0 && !isLoading && (
           <View style={styles.emptyState}>
@@ -141,7 +146,7 @@ export function ChatView({
           />
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

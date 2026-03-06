@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { buildContent } from "./anthropicClient";
 import type { ChatMessage, AnthropicMessage } from "./types";
 import { uuid } from "../utils/uuid";
 
@@ -47,13 +48,14 @@ export function useAIChat({ storageKey, sendFn, hasActionableContent }: UseAICha
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, images?: string[]) => {
       if (!text.trim() || isLoading) return;
 
       const userMsg: ChatMessage = {
         id: uuid(),
         role: "user",
         content: text.trim(),
+        images: images && images.length > 0 ? images : undefined,
         timestamp: Date.now(),
       };
 
@@ -63,10 +65,10 @@ export function useAIChat({ storageKey, sendFn, hasActionableContent }: UseAICha
       setError(null);
 
       try {
-        // Build conversation for API
+        // Build conversation for API (with multimodal content blocks for images)
         const apiMessages: AnthropicMessage[] = newMessages.map((m) => ({
           role: m.role,
-          content: m.content,
+          content: m.images ? buildContent(m.content, m.images) : m.content,
         }));
 
         const response = await sendFnRef.current(apiMessages);

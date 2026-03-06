@@ -2,21 +2,29 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** Base64 data URIs attached to this message */
+  images?: string[];
   /** If the assistant message contains parseable component JSON */
   hasComponentJson?: boolean;
+  /** History entry ID for the auto-created branch (created on AI response) */
+  branchEntryId?: string;
   timestamp: number;
 }
 
+export type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+
 export interface AnthropicMessage {
   role: "user" | "assistant";
-  content: string;
+  content: string | AnthropicContentBlock[];
 }
 
 export interface AnthropicRequest {
   model: string;
   max_tokens: number;
   system: string;
-  messages: AnthropicMessage[];
+  messages: Array<{ role: "user" | "assistant"; content: string | AnthropicContentBlock[] }>;
 }
 
 export interface AnthropicResponse {

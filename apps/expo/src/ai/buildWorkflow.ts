@@ -44,7 +44,8 @@ export async function buildWorkflowChat(
   theme?: Theme,
 ): Promise<string> {
   const system = workflowSystemPrompt(slate, screenId, theme);
-  return callClaude(apiKey, system, messages, 8192);
+  const result = await callClaude(apiKey, system, messages, 8192);
+  return result.text;
 }
 
 /**

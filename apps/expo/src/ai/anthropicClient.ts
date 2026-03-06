@@ -1,14 +1,42 @@
-import type { AnthropicRequest, AnthropicResponse, AnthropicError } from "./types";
+import type { AnthropicRequest, AnthropicResponse, AnthropicError, AnthropicContentBlock } from "./types";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-6";
 
+export interface ClaudeResult {
+  text: string;
+  stopReason: string;
+}
+
+/** Parse a data URI into media_type and raw base64 data */
+function parseDataUri(dataUri: string): { media_type: string; data: string } | null {
+  const match = dataUri.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) return null;
+  return { media_type: match[1], data: match[2] };
+}
+
+/** Build multimodal content blocks from text + optional images */
+function buildContent(text: string, images?: string[]): string | AnthropicContentBlock[] {
+  if (!images || images.length === 0) return text;
+  const blocks: AnthropicContentBlock[] = [];
+  for (const img of images) {
+    const parsed = parseDataUri(img);
+    if (parsed) {
+      blocks.push({ type: "image", source: { type: "base64", media_type: parsed.media_type, data: parsed.data } });
+    }
+  }
+  blocks.push({ type: "text", text });
+  return blocks;
+}
+
+export { buildContent };
+
 export async function callClaude(
   apiKey: string,
   system: string,
-  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  messages: Array<{ role: "user" | "assistant"; content: string | AnthropicContentBlock[] }>,
   maxTokens = 4096,
-): Promise<string> {
+): Promise<ClaudeResult> {
   const body: AnthropicRequest = {
     model: MODEL,
     max_tokens: maxTokens,
@@ -48,5 +76,5 @@ export async function callClaude(
     throw new Error("Empty response from Claude");
   }
 
-  return text;
+  return { text, stopReason: data.stop_reason };
 }

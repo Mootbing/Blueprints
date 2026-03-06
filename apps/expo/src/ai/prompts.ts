@@ -135,6 +135,33 @@ Given a component's current JSON, modify it according to the user's request. Pre
 Return the modified component inside <json>...</json> tags. You may include brief explanation text outside the tags.`;
 }
 
+interface ChatLogMeta {
+  source: "component" | "screen";
+  context: string;
+  userMessage: string;
+  assistantSummary: string;
+  timestamp: number;
+}
+
+function chatLogContext(log?: ChatLogMeta[]): string {
+  if (!log || log.length === 0) return "";
+
+  const recent = log
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 30);
+
+  const lines = recent.map((e) => {
+    const d = new Date(e.timestamp);
+    const time = `${d.getHours() % 12 || 12}:${d.getMinutes().toString().padStart(2, "0")} ${d.getHours() >= 12 ? "PM" : "AM"}`;
+    const src = e.source === "component" ? `Component: ${e.context}` : `Screen AI: ${e.context}`;
+    return `  - [${src}] (${time})\n    User: "${e.userMessage}"\n    AI: ${e.assistantSummary}`;
+  });
+
+  return `\n## Past Chat Interactions (most recent first)
+These are previous conversations from component-level and screen-level AI chats. Use them for context about what the user has been working on.
+${lines.join("\n")}`;
+}
+
 interface HistoryMeta {
   id: string;
   description: string;
@@ -170,83 +197,83 @@ export function agentSystemPrompt(
   theme?: Theme,
   historyEntries?: HistoryMeta[],
   currentHistoryId?: string,
+  chatLogEntries?: ChatLogMeta[],
 ): string {
   const screen = slate.screens[screenId];
-  const components = screen?.components ?? [];
-  const componentSummary = components
-    .map((c) => {
-      let label = c.type;
-      if (c.type === "text") label += `: "${c.content?.slice(0, 30)}"`;
-      if (c.type === "button") label += `: "${c.label}"`;
-      if (c.type === "textInput") label += `: "${c.placeholder ?? ""}"`;
-      return `  - ${label} (id: ${c.id})`;
-    })
-    .join("\n");
 
-  const screens = Object.values(slate.screens)
-    .map((s) => `  - "${s.name}" (id: ${s.id})`)
-    .join("\n");
+  // Build per-screen summaries for ALL screens
+  function summarizeComponent(c: Component): string {
+    let label = c.type;
+    if (c.type === "text") label += `: "${(c as any).content?.slice(0, 30)}"`;
+    if (c.type === "button") label += `: "${(c as any).label}"`;
+    if (c.type === "textInput") label += `: "${(c as any).placeholder ?? ""}"`;
+    return label;
+  }
 
-  const existingVars = [
-    ...(slate.variables ?? []),
-    ...(screen?.variables ?? []),
-  ];
-  const varSummary = existingVars.length > 0
-    ? existingVars.map((v) => `  - ${v.name}: ${v.type} = ${JSON.stringify(v.defaultValue)}`).join("\n")
-    : "  (none)";
-
-  // Summarize existing workflows (actions, bindings, visibility on components)
-  const workflowLines: string[] = [];
-  for (const c of components) {
-    const parts: string[] = [];
-    if (c.actions) {
-      for (const [event, actions] of Object.entries(c.actions)) {
-        if (actions && actions.length > 0) {
-          parts.push(`${event}: ${actions.map((a: any) => a.type === "SET_VARIABLE" ? `SET "${a.key}" = ${a.value}` : a.type === "TOGGLE_VARIABLE" ? `TOGGLE "${a.key}"` : a.type === "NAVIGATE" ? `NAVIGATE to ${a.target}` : a.type === "OPEN_URL" ? `OPEN ${a.url}` : a.type).join(", ")}`);
+  const allScreensSummary = Object.values(slate.screens)
+    .map((s) => {
+      const isCurrent = s.id === screenId;
+      const comps = s.components
+        .map((c) => `    - ${summarizeComponent(c)} (id: ${c.id})`)
+        .join("\n");
+      const screenVars = s.variables ?? [];
+      const varStr = screenVars.length > 0
+        ? "\n  Screen variables:\n" + screenVars.map((v) => `    - ${v.name}: ${v.type} = ${JSON.stringify(v.defaultValue)}`).join("\n")
+        : "";
+      // Workflows for this screen
+      const wfLines: string[] = [];
+      for (const c of s.components) {
+        const parts: string[] = [];
+        if (c.actions) {
+          for (const [event, actions] of Object.entries(c.actions)) {
+            if (actions && actions.length > 0) {
+              parts.push(`${event}: ${actions.map((a: any) => a.type === "SET_VARIABLE" ? `SET "${a.key}" = ${a.value}` : a.type === "TOGGLE_VARIABLE" ? `TOGGLE "${a.key}"` : a.type === "NAVIGATE" ? `NAVIGATE to ${a.target}` : a.type === "OPEN_URL" ? `OPEN ${a.url}` : a.type).join(", ")}`);
+            }
+          }
+        }
+        if (c.bindings && Object.keys(c.bindings).length > 0) {
+          parts.push(`bindings: ${Object.entries(c.bindings).map(([p, e]) => `${p}←${e}`).join(", ")}`);
+        }
+        if (c.visibleWhen) {
+          parts.push(`visibleWhen: ${c.visibleWhen}`);
+        }
+        if (parts.length > 0) {
+          wfLines.push(`    - ${summarizeComponent(c)} (id: ${c.id})\n      ${parts.join("\n      ")}`);
         }
       }
-    }
-    if (c.bindings && Object.keys(c.bindings).length > 0) {
-      parts.push(`bindings: ${Object.entries(c.bindings).map(([p, e]) => `${p}←${e}`).join(", ")}`);
-    }
-    if (c.visibleWhen) {
-      parts.push(`visibleWhen: ${c.visibleWhen}`);
-    }
-    if (parts.length > 0) {
-      let label = c.type;
-      if (c.type === "text") label += `: "${c.content?.slice(0, 20)}"`;
-      if (c.type === "button") label += `: "${c.label}"`;
-      if (c.type === "textInput") label += `: "${c.placeholder ?? ""}"`;
-      workflowLines.push(`  - ${label} (id: ${c.id})\n    ${parts.join("\n    ")}`);
-    }
-  }
-  const workflowSummary = workflowLines.length > 0
-    ? workflowLines.join("\n")
+      const wfStr = wfLines.length > 0
+        ? "\n  Workflows:\n" + wfLines.join("\n")
+        : "";
+      return `### ${isCurrent ? ">> " : ""}Screen: "${s.name}" (id: ${s.id})${isCurrent ? " [CURRENT]" : ""}
+  Components:\n${comps || "    (empty)"}${varStr}${wfStr}`;
+    })
+    .join("\n\n");
+
+  const appVars = slate.variables ?? [];
+  const appVarSummary = appVars.length > 0
+    ? appVars.map((v) => `  - ${v.name}: ${v.type} = ${JSON.stringify(v.defaultValue)}`).join("\n")
     : "  (none)";
 
-  return `You are a powerful AI agent for a visual mobile app builder. You can generate screens, create workflows, and modify components — whatever the user asks.
+  return `You are a powerful AI agent for a visual mobile app builder. You can generate screens, create workflows, manage pages, and modify components — whatever the user asks.
 
 ${schemaReference()}
 ${themeContext(theme)}
 
-## Current Screen: "${screen?.name ?? "Unknown"}"
-Components:
-${componentSummary || "  (empty)"}
+## App Structure
 
-All Screens:
-${screens}
+Initial Screen ID: ${slate.initial_screen_id}
 
-Existing Variables:
-${varSummary}
+App-level Variables:
+${appVarSummary}
 
-Existing Workflows (component logic):
-${workflowSummary}
+${allScreensSummary}
 ${historyContext(historyEntries, currentHistoryId)}
+${chatLogContext(chatLogEntries)}
 
 ## Capabilities
 
 ### 1. Generate Screen Components
-When the user asks to create or redesign a screen, return a component array inside <json>...</json> tags.
+When the user asks to create or redesign the CURRENT screen, return a component array inside <json>...</json> tags.
 - Always start with a full-screen background shape (type: "shape", layout: {x:0, y:0, width:1, height:1})
 - Generate proper UUIDs for all component IDs
 - Use dark theme by default unless specified
@@ -262,19 +289,41 @@ When the user asks for interactivity (e.g., "when I tap X, do Y") OR asks to cha
 }
 To remove actions/bindings from a component, set them to empty: "actions": {}, "bindings": {}, or "visibleWhen": ""
 
-### 3. Answer Questions About Workflows
-If the user asks about their existing workflows, variables, or component logic, describe them in plain text. Refer to the "Existing Workflows" section above for current state.
+### 3. Manage Screens (Pages)
+You can create, delete, and rename screens. Return a screen management object inside <json>...</json> tags:
+{
+  "screenOps": [
+    { "op": "create", "id": "new-uuid", "name": "Screen Name", "components": [...] },
+    { "op": "delete", "id": "existing-screen-uuid" },
+    { "op": "rename", "id": "existing-screen-uuid", "name": "New Name" },
+    { "op": "setComponents", "id": "existing-screen-uuid", "components": [...] },
+    { "op": "setInitial", "id": "existing-screen-uuid" }
+  ],
+  "description": "What this does"
+}
+- When creating a screen, always include a full component array with a background shape
+- You can modify ANY screen's components using "setComponents", not just the current one
+- You can combine multiple ops in one response (e.g., create a screen + add navigation to it)
+- Generate proper UUIDs for new screen IDs and all component IDs
+- Use NAVIGATE actions on buttons to link screens together
 
-### 4. Cherry-pick from History
+### 4. Answer Questions About Workflows
+If the user asks about their existing workflows, variables, or component logic, describe them in plain text.
+
+### 5. Cherry-pick from History
 When you want to suggest reverting to a previous version, include <cherry-pick>entry_id</cherry-pick> in your response. The user will see a button to restore to that point.
 
-### 5. Answer General Questions
+### 6. Answer General Questions
 If the user asks about their app, just answer in plain text with no JSON.
 
 ## Detection Rules
-- If your response JSON is an ARRAY → it's component generation
-- If your response JSON is an OBJECT with "description" → it's a workflow
+- If your response JSON is an ARRAY → it's component generation (applies to current screen)
+- If your response JSON is an OBJECT with "screenOps" → it's screen management
+- If your response JSON is an OBJECT with "description" (no "screenOps") → it's a workflow
 - If your response contains <cherry-pick>...</cherry-pick> → it's a cherry-pick suggestion
+
+## Large Output Strategy
+When modifying multiple screens at once, prefer using separate screenOps entries for each screen. If the output might be very long, focus on one screen per "setComponents" op and include all ops in a single screenOps array. If you are interrupted mid-output, you will be asked to continue — just pick up exactly where you left off with the remaining JSON.
 
 You may include explanation text outside the <json> tags.`;
 }

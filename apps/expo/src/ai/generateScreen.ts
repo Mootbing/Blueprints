@@ -14,7 +14,8 @@ export async function generateScreenChat(
   theme?: Theme,
 ): Promise<string> {
   const system = generateSystemPrompt(theme);
-  return callClaude(apiKey, system, messages);
+  const result = await callClaude(apiKey, system, messages);
+  return result.text;
 }
 
 /**

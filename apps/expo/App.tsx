@@ -96,6 +96,17 @@ export default function App() {
     [reloadList]
   );
 
+  const handleRenameSlate = useCallback(
+    async (id: string, name: string) => {
+      const newList = slateList.map((s) =>
+        s.id === id ? { ...s, name } : s
+      );
+      setSlateList(newList);
+      await storage.saveSlateList(newList);
+    },
+    [slateList]
+  );
+
   const handleCloseSlate = useCallback(async () => {
     setRoute({ screen: "home" });
     await reloadList();
@@ -114,8 +125,10 @@ export default function App() {
       <SlateEditor
         key={route.slateId}
         slateId={route.slateId}
+        slateName={slateList.find((s) => s.id === route.slateId)?.name ?? "Slate"}
         onCloseSlate={handleCloseSlate}
         onDeleteSlate={() => handleDeleteSlate(route.slateId)}
+        onRenameSlate={(name: string) => handleRenameSlate(route.slateId, name)}
       />
     );
   }
@@ -126,6 +139,7 @@ export default function App() {
       onOpenSlate={handleOpenSlate}
       onCreateSlate={handleCreateSlate}
       onDeleteSlate={handleDeleteSlate}
+      onRenameSlate={handleRenameSlate}
     />
   );
 }

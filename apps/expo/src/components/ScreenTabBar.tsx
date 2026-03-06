@@ -6,8 +6,8 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Alert,
 } from "react-native";
+import { crossAlert } from "../utils/crossAlert";
 import { Feather } from "@expo/vector-icons";
 import type { Screen } from "../types";
 
@@ -40,7 +40,7 @@ export function ScreenTabBar({
   const handleLongPress = (id: string) => {
     const screen = screens[id];
     if (!screen) return;
-    Alert.alert(screen.name, undefined, [
+    crossAlert(screen.name, undefined, [
       {
         text: "Rename",
         onPress: () => {
@@ -58,7 +58,7 @@ export function ScreenTabBar({
         style: "destructive",
         onPress: () => {
           if (screenList.length <= 1) {
-            Alert.alert("Cannot delete", "You must have at least one screen.");
+            crossAlert("Cannot delete", "You must have at least one screen.");
             return;
           }
           onDeleteScreen(id);
