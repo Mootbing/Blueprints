@@ -1,5 +1,6 @@
-import React from "react";
-import { View, Text, Image, StyleSheet, Platform } from "react-native";
+import React, { useState } from "react";
+import { View, Text, Image, Pressable, StyleSheet, Platform } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import type { ChatMessage as ChatMessageType } from "../../ai/types";
 
 interface ChatMessageProps {
@@ -8,6 +9,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
   // Strip <json>...</json> blocks from display text
   const displayText = message.content
@@ -15,9 +17,33 @@ export function ChatMessage({ message }: ChatMessageProps) {
     .trim();
 
   const images = message.images;
+  const thinking = message.thinking;
 
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
+      {/* Thinking / reasoning (shown above the bubble) */}
+      {!isUser && thinking && (
+        <Pressable
+          style={styles.thinkingContainer}
+          onPress={() => setThinkingExpanded((v) => !v)}
+        >
+          <View style={styles.thinkingHeader}>
+            <Feather
+              name={thinkingExpanded ? "chevron-down" : "chevron-right"}
+              size={10}
+              color="#444"
+            />
+            <Text style={styles.thinkingLabel}>Reasoning</Text>
+          </View>
+          <Text
+            style={styles.thinkingText}
+            numberOfLines={thinkingExpanded ? undefined : 2}
+          >
+            {thinking}
+          </Text>
+        </Pressable>
+      )}
+
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
         {images && images.length > 0 && (
           <View style={styles.imageRow}>
@@ -51,6 +77,31 @@ const styles = StyleSheet.create({
   },
   assistantContainer: {
     alignItems: "flex-start",
+  },
+  thinkingContainer: {
+    maxWidth: "85%",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 2,
+  },
+  thinkingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
+  },
+  thinkingLabel: {
+    color: "#333",
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  thinkingText: {
+    color: "#444",
+    fontSize: 11,
+    lineHeight: 16,
+    fontStyle: "italic",
   },
   bubble: {
     maxWidth: "85%",

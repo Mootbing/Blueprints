@@ -8,6 +8,8 @@ export interface ChatMessage {
   hasComponentJson?: boolean;
   /** History entry ID for the auto-created branch (created on AI response) */
   branchEntryId?: string;
+  /** Extended thinking / reasoning text from the model */
+  thinking?: string;
   timestamp: number;
 }
 

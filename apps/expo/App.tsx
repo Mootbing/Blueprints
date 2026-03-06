@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeScreen } from "./src/components/HomeScreen";
 import { SlateEditor, defaultSlate } from "./src/components/SlateEditor";
@@ -7,6 +7,7 @@ import { SupabaseStorageProvider } from "./src/storage";
 import { useSupabaseSync } from "./src/hooks/useSupabaseSync";
 import type { SlateMeta } from "./src/types";
 import { uuid } from "./src/utils/uuid";
+import { crossAlert } from "./src/utils/crossAlert";
 
 const storage = new SupabaseStorageProvider();
 
@@ -66,6 +67,60 @@ export default function App() {
     const list = await storage.listSlates();
     setSlateList(list);
   }, []);
+
+  // Deep link handling for share codes (web URLs or slate://share/CODE)
+  const handleDeepLink = useCallback(
+    async (url: string) => {
+      try {
+        const match = url.match(/\/share\/([A-Za-z0-9]+)/);
+        if (!match) return;
+        const code = match[1].toUpperCase();
+        const result = await storage.loadSharedSlate(code);
+        if (!result) {
+          crossAlert("Not Found", "No slate found for this share code, or the link has expired.");
+          return;
+        }
+        await storage.saveSlate(result.slateId, result.slate);
+        const list = await storage.listSlates();
+        const existing = list.find((s) => s.id === result.slateId);
+        if (!existing) {
+          const meta: SlateMeta = {
+            id: result.slateId,
+            name: `Shared (${code})`,
+            createdAt: Date.now(),
+            syncStatus: "synced",
+          };
+          const newList = [...list, meta];
+          await storage.saveSlateList(newList);
+          setSlateList(newList);
+        } else {
+          setSlateList(list);
+        }
+        setRoute({ screen: "editor", slateId: result.slateId });
+      } catch {
+        crossAlert("Error", "Failed to load shared slate.");
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    // On web, check the current URL path for /share/CODE
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const { pathname } = window.location;
+      if (pathname.startsWith("/share/")) {
+        handleDeepLink(pathname);
+        return;
+      }
+    }
+    // Handle deep link that launched the app (native)
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink(url);
+    });
+    // Handle deep links while app is open
+    const sub = Linking.addEventListener("url", ({ url }) => handleDeepLink(url));
+    return () => sub.remove();
+  }, [handleDeepLink]);
 
   const handleOpenSlate = useCallback((id: string) => {
     setRoute({ screen: "editor", slateId: id });

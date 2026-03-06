@@ -33,42 +33,6 @@ CREATE POLICY "user_slates_owner_delete"
   ON user_slates FOR DELETE TO authenticated
   USING (auth.uid() = owner_id);
 
--- Collaborators can read/update via share_links
-CREATE POLICY "user_slates_shared_select"
-  ON user_slates FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM share_links
-      WHERE share_links.slate_id = user_slates.id
-        AND share_links.is_active = true
-        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
-    )
-  );
-
-CREATE POLICY "user_slates_shared_update"
-  ON user_slates FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM share_links
-      WHERE share_links.slate_id = user_slates.id
-        AND share_links.role = 'editor'
-        AND share_links.is_active = true
-        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
-    )
-  );
-
--- Anon can read if active share link exists
-CREATE POLICY "user_slates_anon_select"
-  ON user_slates FOR SELECT TO anon
-  USING (
-    EXISTS (
-      SELECT 1 FROM share_links
-      WHERE share_links.slate_id = user_slates.id
-        AND share_links.is_active = true
-        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
-    )
-  );
-
 -- Auto-update updated_at (reuses function from migration 001)
 CREATE TRIGGER set_user_slates_updated_at
   BEFORE UPDATE ON user_slates
@@ -92,7 +56,7 @@ CREATE TRIGGER auto_increment_version
 -- Enable realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE user_slates;
 
--- Share links
+-- Share links (must be created before policies that reference it)
 CREATE TABLE share_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slate_id UUID NOT NULL REFERENCES user_slates(id) ON DELETE CASCADE,
@@ -148,3 +112,42 @@ BEGIN
   RETURN result;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Sharing policies on user_slates (now that share_links exists)
+
+-- Collaborators can read via share_links
+CREATE POLICY "user_slates_shared_select"
+  ON user_slates FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM share_links
+      WHERE share_links.slate_id = user_slates.id
+        AND share_links.is_active = true
+        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
+    )
+  );
+
+-- Collaborators with editor role can update via share_links
+CREATE POLICY "user_slates_shared_update"
+  ON user_slates FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM share_links
+      WHERE share_links.slate_id = user_slates.id
+        AND share_links.role = 'editor'
+        AND share_links.is_active = true
+        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
+    )
+  );
+
+-- Anon can read if active share link exists
+CREATE POLICY "user_slates_anon_select"
+  ON user_slates FOR SELECT TO anon
+  USING (
+    EXISTS (
+      SELECT 1 FROM share_links
+      WHERE share_links.slate_id = user_slates.id
+        AND share_links.is_active = true
+        AND (share_links.expires_at IS NULL OR share_links.expires_at > now())
+    )
+  );

@@ -30,6 +30,8 @@ interface ChatViewProps {
   renderMessageActions?: (message: ChatMessageType) => React.ReactNode;
   /** Pre-fill the input field */
   initialText?: string;
+  /** Live streaming thinking text from the agent */
+  streamingThinking?: string | null;
 }
 
 export function ChatView({
@@ -43,17 +45,22 @@ export function ChatView({
   headerActions,
   renderMessageActions,
   initialText,
+  streamingThinking,
 }: ChatViewProps) {
   const [input, setInput] = useState(initialText ?? "");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    // Auto-scroll to bottom on new messages
+    if (initialText) setInput(initialText);
+  }, [initialText]);
+
+  useEffect(() => {
+    // Auto-scroll to bottom on new messages or streaming thinking updates
     setTimeout(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [messages.length, isLoading]);
+  }, [messages.length, isLoading, streamingThinking]);
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
@@ -130,8 +137,17 @@ export function ChatView({
 
         {isLoading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#555" />
-            <Text style={styles.loadingText}>Thinking...</Text>
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color="#555" />
+              <Text style={styles.loadingText}>
+                {streamingThinking ? "Reasoning..." : "Thinking..."}
+              </Text>
+            </View>
+            {streamingThinking ? (
+              <Text style={styles.streamingThinkingText} numberOfLines={6}>
+                {streamingThinking.slice(-500)}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -229,15 +245,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   loadingContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  loadingRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   loadingText: {
     color: "#444",
     fontSize: 13,
+  },
+  streamingThinkingText: {
+    color: "#333",
+    fontSize: 11,
+    lineHeight: 16,
+    fontStyle: "italic",
+    paddingLeft: 24,
   },
   errorContainer: {
     flexDirection: "row",

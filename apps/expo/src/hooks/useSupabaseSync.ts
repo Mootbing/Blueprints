@@ -53,7 +53,7 @@ export function useSupabaseSync(storage: SyncableStorageProvider) {
 
   // Listen for online/offline events (web)
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
 
     const handleOnline = () => {
       setIsSyncing(true);

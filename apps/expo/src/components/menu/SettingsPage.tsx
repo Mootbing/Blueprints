@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { View, Pressable, Text, TextInput, StyleSheet, Platform, Share, Modal } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { crossAlert } from "../../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppSlateSchema } from "../../types";
@@ -250,12 +251,12 @@ interface SettingsPageProps {
   snappingEnabled: boolean;
   inspectorEnabled: boolean;
   showAdvancedCode: boolean;
-  voiceAgentEnabled: boolean;
+
   onToggleEditMode: () => void;
   onToggleSnapping: () => void;
   onToggleInspector: () => void;
   onToggleAdvancedCode: () => void;
-  onToggleVoiceAgent: () => void;
+
   onCloseSlate: () => void;
   onDeleteSlate: () => void;
   onClose: () => void;
@@ -275,12 +276,11 @@ export function SettingsPage({
   snappingEnabled,
   inspectorEnabled,
   showAdvancedCode,
-  voiceAgentEnabled,
+
   onToggleEditMode,
   onToggleSnapping,
   onToggleInspector,
   onToggleAdvancedCode,
-  onToggleVoiceAgent,
   onCloseSlate,
   onDeleteSlate,
   onClose,
@@ -600,13 +600,6 @@ export function SettingsPage({
         )}
       </View>
 
-      <Pressable style={styles.row} onPress={onToggleVoiceAgent}>
-        <Text style={styles.rowLabel}>Voice Agent</Text>
-        <View style={[styles.toggleTrack, voiceAgentEnabled && styles.toggleTrackOn]}>
-          <View style={[styles.toggleThumb, voiceAgentEnabled && styles.toggleThumbOn]} />
-        </View>
-      </Pressable>
-
       <View style={styles.divider} />
 
       {/* Design */}
@@ -679,6 +672,26 @@ export function SettingsPage({
               <NumberRow key={f.key} label={f.label} value={fontSizes[f.key]} onChange={(v) => setFontSize(f.key, v)} onPress={() => setActiveEditor({ type: 'fontSize', key: f.key, label: f.label })} />
             ))}
           </View>
+
+          <View style={styles.divider} />
+
+          <Pressable
+            style={({ pressed }) => [styles.resetStyleGuideBtn, pressed && styles.resetStyleGuideBtnPressed]}
+            onPress={() => {
+              crossAlert("Reset Style Guide", "Reset all theme values to defaults?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Reset", style: "destructive", onPress: () => {
+                  onSlateChange?.((prev) => {
+                    const { theme: _, ...rest } = prev;
+                    return rest as typeof prev;
+                  });
+                }},
+              ]);
+            }}
+          >
+            <Feather name="rotate-ccw" size={14} color="#ef4444" />
+            <Text style={styles.resetStyleGuideText}>Reset to Defaults</Text>
+          </Pressable>
         </View>
       )}
 
@@ -753,13 +766,13 @@ export function SettingsPage({
           style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
           onPress={handleExport}
         >
-          <Text style={styles.exportBtnText}>Export</Text>
+          <Text style={styles.exportBtnText}>Export Project (.json)</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
           onPress={handleImport}
         >
-          <Text style={styles.exportBtnText}>Import</Text>
+          <Text style={styles.exportBtnText}>Import Project (.json)</Text>
         </Pressable>
       </View>
       {isSyncable && slateId && (
@@ -768,7 +781,7 @@ export function SettingsPage({
             style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
             onPress={() => setShareModalOpen(true)}
           >
-            <Text style={styles.exportBtnText}>Share</Text>
+            <Text style={styles.exportBtnText}>Live Share</Text>
           </Pressable>
         </View>
       )}
@@ -880,6 +893,28 @@ const styles = StyleSheet.create({
   },
   styleGuideContent: {
     paddingBottom: 4,
+  },
+  resetStyleGuideBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    backgroundColor: "rgba(239,68,68,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.2)",
+  },
+  resetStyleGuideBtnPressed: {
+    backgroundColor: "rgba(239,68,68,0.18)",
+  },
+  resetStyleGuideText: {
+    color: "#ef4444",
+    fontSize: 13,
+    fontWeight: "500",
   },
   renameRow: {
     paddingHorizontal: 20,

@@ -116,6 +116,7 @@ interface TreeViewProps {
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
+  onReparentComponent?: (componentId: string, newParentId: string | null) => void;
   onAIChatComponent?: (id: string) => void;
 }
 
@@ -126,6 +127,7 @@ export function TreeView({
   lockedIds,
   onToggleLock,
   onMoveComponent,
+  onReparentComponent,
   onAIChatComponent,
 }: TreeViewProps) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -195,7 +197,7 @@ export function TreeView({
   }, []);
 
   const [dragFlatIndex, setDragFlatIndex] = useState<number | null>(null);
-  const [hoverSiblingIdx, setHoverSiblingIdx] = useState<number | null>(null);
+  const [hoverFlatIndex, setHoverFlatIndex] = useState<number | null>(null);
   const [dragOverTrash, setDragOverTrash] = useState(false);
   const dragY = useRef(new Animated.Value(0)).current;
   const containerRef = useRef<View>(null);
@@ -203,6 +205,8 @@ export function TreeView({
 
   const onMoveRef = useRef(onMoveComponent);
   onMoveRef.current = onMoveComponent;
+  const onReparentRef = useRef(onReparentComponent);
+  onReparentRef.current = onReparentComponent;
   const onDeleteRef = useRef(onDeleteComponent);
   onDeleteRef.current = onDeleteComponent;
   const hoverRef = useRef<number | null>(null);
@@ -212,7 +216,7 @@ export function TreeView({
     (flatIndex: number) => {
       setDragFlatIndex(flatIndex);
       hoverRef.current = null;
-      setHoverSiblingIdx(null);
+      setHoverFlatIndex(null);
       setDragOverTrash(false);
       overTrashRef.current = false;
       dragY.setValue(0);
@@ -241,27 +245,16 @@ export function TreeView({
       const draggedNode = currentNodes[flatIndex];
       if (!draggedNode) return;
 
-      // Get sibling entries (same parent, same depth)
-      const siblingEntries = currentNodes
-        .map((n, i) => ({ node: n, fi: i }))
-        .filter(({ node }) => node.parentId === draggedNode.parentId && node.depth === draggedNode.depth);
+      // Find closest flat row based on visual position
+      const targetFlatRow = Math.round(flatIndex + dy / ROW_HEIGHT);
+      const clamped = Math.max(0, Math.min(targetFlatRow, currentNodes.length - 1));
 
-      // Find which sibling we're closest to based on visual row position
-      const targetFlatRow = flatIndex + dy / ROW_HEIGHT;
-      let closestIdx = 0;
-      let closestDist = Infinity;
-      for (let i = 0; i < siblingEntries.length; i++) {
-        const dist = Math.abs(siblingEntries[i].fi - targetFlatRow);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestIdx = i;
-        }
-      }
-
-      const targetSibIdx = siblingEntries[closestIdx].node.indexInParent;
-      if (hoverRef.current !== targetSibIdx) {
-        hoverRef.current = targetSibIdx;
-        setHoverSiblingIdx(targetSibIdx);
+      if (clamped !== flatIndex && hoverRef.current !== clamped) {
+        hoverRef.current = clamped;
+        setHoverFlatIndex(clamped);
+      } else if (clamped === flatIndex && hoverRef.current !== null) {
+        hoverRef.current = null;
+        setHoverFlatIndex(null);
       }
     },
     [dragY],
@@ -278,19 +271,25 @@ export function TreeView({
       } else {
         const currentNodes = nodesRef.current;
         const draggedNode = currentNodes[flatIndex];
-        const targetIdx = hoverRef.current;
+        const targetFi = hoverRef.current;
 
-        if (
-          draggedNode &&
-          targetIdx !== null &&
-          targetIdx !== draggedNode.indexInParent
-        ) {
-          onMoveRef.current?.(draggedNode.component.id, targetIdx, draggedNode.parentId);
+        if (draggedNode && targetFi !== null) {
+          const targetNode = currentNodes[targetFi];
+          if (!targetNode) { /* no-op */ }
+          else if (targetNode.parentId === draggedNode.parentId && targetNode.depth === draggedNode.depth) {
+            // Same parent — reorder among siblings
+            if (targetNode.indexInParent !== draggedNode.indexInParent) {
+              onMoveRef.current?.(draggedNode.component.id, targetNode.indexInParent, draggedNode.parentId);
+            }
+          } else if (onReparentRef.current) {
+            // Different parent — reparent to target's parent (or root)
+            onReparentRef.current(draggedNode.component.id, targetNode.parentId);
+          }
         }
       }
 
       setDragFlatIndex(null);
-      setHoverSiblingIdx(null);
+      setHoverFlatIndex(null);
       setDragOverTrash(false);
       setTrashTop(null);
       overTrashRef.current = false;
@@ -321,17 +320,11 @@ export function TreeView({
         const isDragged = dragFlatIndex === i;
         const isLocked = lockedIds?.has(node.component.id) ?? false;
 
-        // Show insertion indicator when hovering at a sibling position
-        const draggedNode = dragFlatIndex !== null ? nodes[dragFlatIndex] : null;
-        const isSameGroup =
-          draggedNode &&
-          node.parentId === draggedNode.parentId &&
-          node.depth === draggedNode.depth;
+        // Show insertion indicator at the hovered flat position
         const showInsertBefore =
-          isSameGroup &&
-          hoverSiblingIdx === node.indexInParent &&
-          dragFlatIndex !== i &&
-          hoverSiblingIdx !== draggedNode!.indexInParent;
+          dragFlatIndex !== null &&
+          hoverFlatIndex === i &&
+          dragFlatIndex !== i;
 
         return (
           <React.Fragment key={node.component.id}>

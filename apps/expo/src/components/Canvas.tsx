@@ -38,9 +38,9 @@ import { AgentPagerModal } from "./ai/AgentPagerModal";
 import { tidyLayout } from "../ai/tidyLayout";
 import { useChatLog } from "../ai/useChatLog";
 import { useAgentRunner } from "../ai/useAgentRunner";
-import { useVoiceTranscription } from "../hooks/useVoiceTranscription";
+
 import type { HistoryEntry } from "../hooks/useUndoHistory";
-import type { ChatMessage } from "../ai/types";
+
 
 /* Circular progress ring for long-press feedback (SVG) */
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -185,248 +185,6 @@ function AddSphere({
   );
 }
 
-/* Voice bar – collapsed sphere morphs into expanded input bar, replies pop upward */
-function VoiceBar({
-  expanded,
-  isRecording,
-  onSphereTap,
-  onToggleRecording,
-  onSendText,
-  onClose,
-  messages,
-  isLoading,
-  error,
-  transcript,
-  interimTranscript,
-}: {
-  expanded: boolean;
-  isRecording: boolean;
-  onSphereTap: () => void;
-  onToggleRecording: () => void;
-  onSendText: (text: string) => void;
-  onClose: () => void;
-  messages: ChatMessage[];
-  isLoading: boolean;
-  error: string | null;
-  transcript: string;
-  interimTranscript: string;
-}) {
-  const [input, setInput] = useState("");
-  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const moved = useRef(false);
-  const onSphereTapRef = useRef(onSphereTap);
-  onSphereTapRef.current = onSphereTap;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseDot = useRef(new Animated.Value(1)).current;
-  const barSlide = useRef(new Animated.Value(60)).current;
-  const scrollRef = useRef<ScrollView>(null);
-
-  // Animate bar slide in/out
-  useEffect(() => {
-    if (expanded) {
-      barSlide.setValue(60);
-      Animated.spring(barSlide, {
-        toValue: 0,
-        tension: 80,
-        friction: 12,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [expanded, barSlide]);
-
-  // Pulse sphere when not expanded
-  useEffect(() => {
-    if (isRecording && !expanded) {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.18, duration: 700, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
-        ]),
-      );
-      pulse.start();
-      return () => pulse.stop();
-    }
-    pulseAnim.setValue(1);
-  }, [isRecording, expanded, pulseAnim]);
-
-  // Pulsing live dot
-  useEffect(() => {
-    if (isRecording) {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseDot, { toValue: 0.3, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseDot, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ]),
-      );
-      pulse.start();
-      return () => pulse.stop();
-    }
-    pulseDot.setValue(1);
-  }, [isRecording, pulseDot]);
-
-  // Auto-scroll messages
-  useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages.length, isLoading]);
-
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || isLoading) return;
-    onSendText(text);
-    setInput("");
-  };
-
-  const stripJson = (content: string) =>
-    content.replace(/<json>[\s\S]*?<\/json>/g, "").trim();
-
-  const liveText = (transcript + " " + interimTranscript).trim();
-
-  // Pan responder for collapsed sphere
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
-      onPanResponderGrant: () => {
-        moved.current = false;
-        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
-        pan.setValue({ x: 0, y: 0 });
-      },
-      onPanResponderMove: (_, g) => {
-        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) moved.current = true;
-        Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, g);
-      },
-      onPanResponderRelease: () => {
-        pan.flattenOffset();
-        if (!moved.current) onSphereTapRef.current();
-      },
-    })
-  ).current;
-
-  // --- Collapsed sphere ---
-  if (!expanded) {
-    return (
-      <Animated.View
-        style={[
-          styles.voiceSphere,
-          styles.voiceSphereInactive,
-          { transform: [...pan.getTranslateTransform(), { scale: pulseAnim }] },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <Feather name="mic-off" size={22} color="#888" />
-      </Animated.View>
-    );
-  }
-
-  // --- Expanded bar with floating messages ---
-  const visibleMsgs = messages.slice(-6);
-
-  return (
-    <View style={styles.vbWrapper} pointerEvents="box-none">
-      {/* Messages popping upward */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.vbMsgScroll}
-        contentContainerStyle={styles.vbMsgScrollContent}
-        showsVerticalScrollIndicator={false}
-        pointerEvents="box-none"
-      >
-        {visibleMsgs.map((msg) => {
-          const text = stripJson(msg.content);
-          if (!text) return null;
-          const isUser = msg.role === "user";
-          return (
-            <View
-              key={msg.id}
-              style={[
-                styles.vbBubble,
-                isUser ? styles.vbBubbleUser : styles.vbBubbleAI,
-              ]}
-            >
-              {isUser && msg.content.startsWith("\uD83C\uDFA4") && (
-                <Feather name="mic" size={10} color="#60a5fa" style={{ marginRight: 5 }} />
-              )}
-              <Text
-                style={[styles.vbBubbleText, isUser && styles.vbBubbleTextUser]}
-                numberOfLines={4}
-              >
-                {text}
-              </Text>
-            </View>
-          );
-        })}
-
-        {/* Live transcript */}
-        {isRecording && (
-          <View style={[styles.vbBubble, styles.vbBubbleLive]}>
-            <Animated.View style={[styles.vbLiveDot, { opacity: pulseDot }]} />
-            <Text style={styles.vbLiveText} numberOfLines={2}>
-              {liveText || "Listening..."}
-            </Text>
-          </View>
-        )}
-
-        {isLoading && (
-          <View style={[styles.vbBubble, styles.vbBubbleAI]}>
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
-          </View>
-        )}
-
-        {error && (
-          <View style={[styles.vbBubble, styles.vbBubbleError]}>
-            <Text style={styles.vbErrorText} numberOfLines={2}>{error}</Text>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* The bar */}
-      <Animated.View
-        style={[styles.vbBar, { transform: [{ translateY: barSlide }] }]}
-      >
-        <Pressable
-          style={[styles.vbMic, isRecording && styles.vbMicActive]}
-          onPress={onToggleRecording}
-          hitSlop={8}
-        >
-          <Feather
-            name={isRecording ? "mic" : "mic-off"}
-            size={18}
-            color={isRecording ? "#fff" : "#888"}
-          />
-        </Pressable>
-        <TextInput
-          style={styles.vbInput}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Type or speak..."
-          placeholderTextColor="rgba(255,255,255,0.25)"
-          returnKeyType="send"
-          onSubmitEditing={handleSend}
-          editable={!isLoading}
-        />
-        <Pressable
-          style={[
-            styles.vbSend,
-            (!input.trim() || isLoading) && styles.vbSendDisabled,
-          ]}
-          onPress={handleSend}
-          disabled={!input.trim() || isLoading}
-          hitSlop={8}
-        >
-          <Feather
-            name="arrow-up"
-            size={16}
-            color={input.trim() && !isLoading ? "#000" : "rgba(255,255,255,0.2)"}
-          />
-        </Pressable>
-        <Pressable onPress={onClose} hitSlop={8} style={styles.vbClose}>
-          <Feather name="x" size={16} color="rgba(255,255,255,0.4)" />
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
-}
-
 export interface ScreenActions {
   onSwitchScreen?: (id: string) => void;
   onAddScreen?: () => void;
@@ -568,78 +326,6 @@ export function Canvas({
     chatLog,
   });
 
-  // Voice agent state
-  const [voiceAgentEnabled, setVoiceAgentEnabled] = useState(false);
-  const [voiceExpanded, setVoiceExpanded] = useState(false);
-  const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
-  const voiceLoaded = useRef(false);
-  const voice = useVoiceTranscription();
-  const voiceSessionIdRef = useRef(voiceSessionId);
-  voiceSessionIdRef.current = voiceSessionId;
-
-  // Load voice agent setting
-  useEffect(() => {
-    AsyncStorage.getItem("settings_voiceAgent").then((val) => {
-      if (val !== null) setVoiceAgentEnabled(val === "true");
-      voiceLoaded.current = true;
-    });
-  }, []);
-
-  // Persist voice agent setting
-  useEffect(() => {
-    if (!voiceLoaded.current) return;
-    AsyncStorage.setItem("settings_voiceAgent", String(voiceAgentEnabled));
-  }, [voiceAgentEnabled]);
-
-  const voiceSession = voiceSessionId
-    ? agentRunner.sessions.find((s) => s.id === voiceSessionId)
-    : null;
-
-  // Tap collapsed sphere → expand + start recording
-  const handleVoiceSphereTap = useCallback(() => {
-    setVoiceExpanded(true);
-    voice.reset();
-    voice.start();
-  }, [voice]);
-
-  // Toggle mic in expanded bar
-  const handleVoiceToggle = useCallback(() => {
-    if (voice.isListening) {
-      const transcript = voice.stop();
-      if (transcript.trim()) {
-        let sid = voiceSessionIdRef.current;
-        if (!sid) {
-          const session = agentRunner.createSession("Voice Agent");
-          sid = session.id;
-          setVoiceSessionId(sid);
-        }
-        agentRunner.sendMessage(sid, "\uD83C\uDFA4 " + transcript.trim());
-      }
-      voice.reset();
-    } else {
-      voice.reset();
-      voice.start();
-    }
-  }, [voice, agentRunner]);
-
-  // Close expanded bar
-  const handleVoiceClose = useCallback(() => {
-    if (voice.isListening) voice.stop();
-    voice.reset();
-    setVoiceExpanded(false);
-  }, [voice]);
-
-  // Send typed text from bar
-  const handleVoiceSendText = useCallback((text: string) => {
-    let sid = voiceSessionIdRef.current;
-    if (!sid) {
-      const session = agentRunner.createSession("Voice Agent");
-      sid = session.id;
-      setVoiceSessionId(sid);
-    }
-    agentRunner.sendMessage(sid, text);
-  }, [agentRunner]);
-
   // AI state
   const [aiChatTarget, setAiChatTarget] = useState<Component | null>(null);
   const [isTidying, setIsTidying] = useState(false);
@@ -666,6 +352,8 @@ export function Canvas({
   editingInfoRef.current = editingInfo;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverTrash, setDragOverTrash] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const dropTargetIdRef = useRef<string | null>(null);
 
   // Locked components (cannot be selected/dragged on canvas)
   const [lockedIds, setLockedIds] = useState<Set<string>>(() => new Set([BACKGROUND_ID]));
@@ -824,6 +512,109 @@ export function Canvas({
     [onSlateChange, screenId],
   );
 
+  const handleReparentComponent = useCallback(
+    (componentId: string, newParentId: string | null) => {
+      onSlateChange?.((prev) => {
+        const scr = prev.screens[screenId];
+        if (!scr) return prev;
+
+        // Find and remove the component from its current location
+        let draggedComp: Component | null = null;
+        let oldParentId: string | null = null;
+        function removeComp(comps: Component[], parentId: string | null): Component[] {
+          return comps.reduce<Component[]>((acc, c) => {
+            if (c.id === componentId) {
+              draggedComp = c;
+              oldParentId = parentId;
+              return acc;
+            }
+            if (c.type === "container" && c.children) {
+              const newChildren = removeComp(c.children, c.id);
+              if (newChildren.length !== c.children.length) {
+                acc.push({ ...c, children: newChildren });
+                return acc;
+              }
+            }
+            acc.push(c);
+            return acc;
+          }, []);
+        }
+
+        const newComponents = removeComp(scr.components, null);
+        if (!draggedComp) return prev;
+
+        // Convert layout: first to canvas-absolute, then to new parent-relative
+        const comp = draggedComp as Component;
+        let absLayout = { ...comp.layout };
+        if (oldParentId) {
+          const oldParent = findComponent(scr.components, oldParentId);
+          if (oldParent) {
+            absLayout = {
+              ...absLayout,
+              x: oldParent.layout.x + comp.layout.x * oldParent.layout.width,
+              y: oldParent.layout.y + comp.layout.y * oldParent.layout.height,
+              width: comp.layout.width * oldParent.layout.width,
+              height: comp.layout.height * oldParent.layout.height,
+            };
+          }
+        }
+
+        let finalComp: Component;
+        if (newParentId === null) {
+          finalComp = { ...comp, layout: absLayout };
+          return {
+            ...prev,
+            screens: {
+              ...prev.screens,
+              [screenId]: { ...scr, components: [...newComponents, finalComp] },
+            },
+          };
+        }
+
+        // Convert absolute coords to new-parent-relative
+        const newParent = findComponent(newComponents, newParentId);
+        if (newParent) {
+          const pw = newParent.layout.width || 1;
+          const ph = newParent.layout.height || 1;
+          finalComp = {
+            ...comp,
+            layout: {
+              ...absLayout,
+              x: Math.max(0, Math.min((absLayout.x - newParent.layout.x) / pw, 1)),
+              y: Math.max(0, Math.min((absLayout.y - newParent.layout.y) / ph, 1)),
+              width: Math.min(absLayout.width / pw, 1),
+              height: Math.min(absLayout.height / ph, 1),
+            },
+          };
+        } else {
+          finalComp = { ...comp, layout: absLayout };
+        }
+
+        function addChild(comps: Component[]): Component[] {
+          return comps.map((c) => {
+            if (c.id === newParentId) {
+              const cont = c as any;
+              return { ...cont, children: [...(cont.children ?? []), finalComp] };
+            }
+            if (c.type === "container" && c.children) {
+              const updated = addChild(c.children);
+              if (updated !== c.children) return { ...c, children: updated };
+            }
+            return c;
+          });
+        }
+        return {
+          ...prev,
+          screens: {
+            ...prev.screens,
+            [screenId]: { ...scr, components: addChild(newComponents) },
+          },
+        };
+      });
+    },
+    [onSlateChange, screenId],
+  );
+
   const clearGuides = useCallback(() => setActiveGuides([]), []);
 
   const openStyleEditor = useCallback((componentId: string) => {
@@ -862,18 +653,19 @@ export function Canvas({
     if (!isEditMode) onToggleEditMode();
     const comp = findComponent(screen.components, componentId);
     if (!comp) return;
-    if (comp.type === "text" || comp.type === "button") {
+    if (comp.type === "text" || comp.type === "button" || comp.type === "icon") {
       const isButton = comp.type === "button";
-      const fw = comp.fontWeight;
+      const isIcon = comp.type === "icon";
+      const fw = isIcon ? "normal" : comp.fontWeight;
       const textState: TextEditingState = {
-        text: isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
-        fontSize: comp.fontSize ?? 16,
-        color: isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#ccc"),
-        backgroundColor: isButton ? (comp.backgroundColor ?? "#1a1a1a") : (comp.backgroundColor ?? "transparent"),
-        fontFamily: comp.fontFamily ?? "System",
+        text: isIcon ? (comp.name ?? "star") : isButton ? (comp.label ?? "Button") : (comp.content ?? ""),
+        fontSize: isIcon ? (comp.size ?? 24) : (comp.fontSize ?? 16),
+        color: isIcon ? (comp.color ?? "#ccc") : isButton ? (comp.textColor ?? "#ffffff") : (comp.color ?? "#ccc"),
+        backgroundColor: isButton ? (comp.backgroundColor ?? "#1a1a1a") : "transparent",
+        fontFamily: "System",
         fontWeight: (fw === "normal" || fw === "bold") ? fw : "normal",
-        textAlign: comp.textAlign ?? "left",
-        wrapMode: (!isButton && "wrapMode" in comp && comp.wrapMode) ? comp.wrapMode : "wrap-word",
+        textAlign: "left",
+        wrapMode: (!isButton && !isIcon && "wrapMode" in comp && comp.wrapMode) ? comp.wrapMode : "wrap-word",
         fontStyle: "normal",
         textDecorationLine: "none",
       };
@@ -900,7 +692,7 @@ export function Canvas({
 
     setSelectedComponentId(componentId);
     if (!comp) return;
-    if (comp.type === "text" || comp.type === "button") return;
+    if (comp.type === "text" || comp.type === "button" || comp.type === "icon") return;
     if (comp.type === "container") return; // First tap selects, second tap drills in
     openStyleEditor(componentId);
   }, [editingInfo, lockedIds, screen?.components, selectedComponentId, drillInto, openStyleEditor]);
@@ -924,11 +716,105 @@ export function Canvas({
     startBatch?.("Moved component");
   }, [lockedIds, startBatch]);
 
+  const handleDragMove = useCallback((componentId: string, centerX: number, centerY: number) => {
+    if (!screen) return;
+    // Find a container that the dragged component center is over (skip self and parents already containing it)
+    let hoveredContainer: string | null = null;
+    for (const comp of screen.components) {
+      if (comp.type !== "container" || comp.id === componentId) continue;
+      // Skip if the dragged component is already a direct child
+      if (comp.children?.some((ch) => ch.id === componentId)) continue;
+      const cx = comp.layout.x * canvasDimensions.width;
+      const cy = comp.layout.y * canvasDimensions.height;
+      const cw = comp.layout.width * canvasDimensions.width;
+      const ch = comp.layout.height * canvasDimensions.height;
+      if (centerX >= cx && centerX <= cx + cw && centerY >= cy && centerY <= cy + ch) {
+        hoveredContainer = comp.id;
+      }
+    }
+    dropTargetIdRef.current = hoveredContainer;
+    setDropTargetId(hoveredContainer);
+  }, [screen, canvasDimensions]);
+
   const handleDragEnd = useCallback(() => {
+    const currentDropTarget = dropTargetIdRef.current;
+    // Reparent into container if dropping over one
+    if (draggingId && currentDropTarget && !dragOverTrash) {
+      const targetId = currentDropTarget;
+      const sourceId = draggingId;
+      onSlateChange?.((prev) => {
+        const scr = prev.screens[screenId];
+        if (!scr) return prev;
+        // Find and remove the dragged component from its current location
+        let draggedComp: Component | null = null;
+        function removeComp(comps: Component[]): Component[] {
+          const result: Component[] = [];
+          for (const c of comps) {
+            if (c.id === sourceId) {
+              draggedComp = c;
+              continue;
+            }
+            if (c.type === "container" && c.children) {
+              const newChildren = removeComp(c.children);
+              if (newChildren.length !== c.children.length) {
+                result.push({ ...c, children: newChildren });
+                continue;
+              }
+            }
+            result.push(c);
+          }
+          return result;
+        }
+        const newComponents = removeComp(scr.components);
+        if (!draggedComp) return prev;
+        // Convert layout to be relative to the container
+        const container = findComponent(newComponents, targetId);
+        if (!container || container.type !== "container") return prev;
+        const contX = container.layout.x;
+        const contY = container.layout.y;
+        const contW = container.layout.width;
+        const contH = container.layout.height;
+        const relX = contW > 0 ? ((draggedComp as Component).layout.x - contX) / contW : 0;
+        const relY = contH > 0 ? ((draggedComp as Component).layout.y - contY) / contH : 0;
+        const relW = contW > 0 ? (draggedComp as Component).layout.width / contW : (draggedComp as Component).layout.width;
+        const relH = contH > 0 ? (draggedComp as Component).layout.height / contH : (draggedComp as Component).layout.height;
+        const reparented = {
+          ...(draggedComp as Component),
+          layout: {
+            ...(draggedComp as Component).layout,
+            x: Math.max(0, Math.min(relX, 1)),
+            y: Math.max(0, Math.min(relY, 1)),
+            width: Math.min(relW, 1),
+            height: Math.min(relH, 1),
+          },
+        };
+        // Add to container's children
+        function addChild(comps: Component[]): Component[] {
+          return comps.map((c) => {
+            if (c.id === targetId) {
+              const cont = c as any;
+              return { ...cont, children: [...(cont.children ?? []), reparented] };
+            }
+            if (c.type === "container" && c.children) {
+              const updated = addChild(c.children);
+              if (updated !== c.children) return { ...c, children: updated };
+            }
+            return c;
+          });
+        }
+        const finalComponents = addChild(newComponents);
+        return {
+          ...prev,
+          screens: { ...prev.screens, [screenId]: { ...scr, components: finalComponents } },
+        };
+      });
+    }
     setDraggingId(null);
     setDragOverTrash(false);
+    setDropTargetId(null);
+    dropTargetIdRef.current = null;
     endBatch?.();
-  }, [endBatch]);
+  }, [endBatch, draggingId, dragOverTrash, onSlateChange, screenId]);
 
   const handleDragOverTrashChange = useCallback((isOver: boolean) => {
     setDragOverTrash(isOver);
@@ -1116,6 +1002,12 @@ export function Canvas({
         fontWeight: state.fontWeight,
         textAlign: state.textAlign,
       });
+    } else if (comp?.type === "icon") {
+      onStyleChange?.(componentId, {
+        name: state.text,
+        size: state.fontSize,
+        color: state.color,
+      });
     }
     Keyboard.dismiss();
     setEditingInfo(null);
@@ -1258,7 +1150,9 @@ export function Canvas({
               onSelect={handleSelect}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onDragMove={handleDragMove}
               onDragOverTrashChange={handleDragOverTrashChange}
+              isDropTarget={dropTargetId === component.id}
               onDeleteComponent={onDeleteComponent}
               onPickImage={handlePickImage}
               isDimmed={isDimmed}
@@ -1373,23 +1267,6 @@ export function Canvas({
             onToggleEditMode();
             Vibration.vibrate(50);
           }}
-        />
-      )}
-
-      {/* Voice Agent Bar */}
-      {voiceAgentEnabled && !menuOpen && (
-        <VoiceBar
-          expanded={voiceExpanded}
-          isRecording={voice.isListening}
-          onSphereTap={handleVoiceSphereTap}
-          onToggleRecording={handleVoiceToggle}
-          onSendText={handleVoiceSendText}
-          onClose={handleVoiceClose}
-          messages={voiceSession?.messages ?? []}
-          isLoading={voiceSession?.status === "running"}
-          error={agentRunner.error}
-          transcript={voice.transcript}
-          interimTranscript={voice.interimTranscript}
         />
       )}
 
@@ -1559,6 +1436,7 @@ export function Canvas({
         lockedIds={lockedIds}
         onToggleLock={toggleLock}
         onMoveComponent={handleMoveComponent}
+        onReparentComponent={handleReparentComponent}
         currentScreenId={currentScreenId ?? screenId}
         initialScreenId={initialScreenId ?? slate.initial_screen_id}
         screenActions={screenActions}
@@ -1569,8 +1447,6 @@ export function Canvas({
         onOpenVersionHistory={() => setVersionHistoryOpen(true)}
         apiKey={apiKey}
         onApiKeyChange={onApiKeyChange}
-        voiceAgentEnabled={voiceAgentEnabled}
-        onToggleVoiceAgent={() => setVoiceAgentEnabled((v) => !v)}
         storage={storageProp}
         onApplyComponents={handleApplyComponents}
         historyEntries={entries}
@@ -1708,165 +1584,6 @@ const styles = StyleSheet.create({
   devSpherePreview: {
     backgroundColor: "#333",
     borderColor: "#555",
-  },
-  // Voice bar styles
-  voiceSphere: {
-    position: "absolute",
-    bottom: 32,
-    left: 20,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 999,
-    borderWidth: 1.5,
-    overflow: "visible",
-    backgroundColor: "#1a1a1a",
-    borderColor: "#333",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 8,
-      },
-      android: { elevation: 8 },
-      default: {},
-    }),
-  },
-  voiceSphereInactive: {
-    backgroundColor: "#1a1a1a",
-    borderColor: "#333",
-  },
-  vbWrapper: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 999,
-  },
-  vbMsgScroll: {
-    maxHeight: 260,
-  },
-  vbMsgScrollContent: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 6,
-  },
-  vbBubble: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignSelf: "flex-start" as const,
-    maxWidth: "85%",
-  },
-  vbBubbleUser: {
-    alignSelf: "flex-end" as const,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderColor: "#333",
-  },
-  vbBubbleAI: {
-    backgroundColor: "rgba(0,0,0,0.85)",
-    borderColor: "#1a1a1a",
-  },
-  vbBubbleLive: {
-    alignSelf: "flex-end" as const,
-    backgroundColor: "rgba(96,165,250,0.1)",
-    borderColor: "rgba(96,165,250,0.3)",
-    gap: 6,
-  },
-  vbBubbleError: {
-    backgroundColor: "rgba(220,38,38,0.1)",
-    borderColor: "rgba(220,38,38,0.3)",
-  },
-  vbBubbleText: {
-    color: "#ccc",
-    fontSize: 13,
-    lineHeight: 18,
-    flexShrink: 1,
-  },
-  vbBubbleTextUser: {
-    color: "#fff",
-  },
-  vbLiveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#ef4444",
-  },
-  vbLiveText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 13,
-    fontStyle: "italic" as const,
-    flexShrink: 1,
-  },
-  vbErrorText: {
-    color: "#ef4444",
-    fontSize: 12,
-    flexShrink: 1,
-  },
-  vbBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 12,
-    marginBottom: Platform.OS === "ios" ? 34 : 12,
-    backgroundColor: "rgba(0,0,0,0.92)",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    gap: 4,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: { elevation: 8 },
-      default: {},
-    }),
-  },
-  vbMic: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  vbMicActive: {
-    backgroundColor: "#ef4444",
-  },
-  vbInput: {
-    flex: 1,
-    color: "#ccc",
-    fontSize: 15,
-    paddingHorizontal: 8,
-    paddingVertical: Platform.OS === "ios" ? 6 : 4,
-  },
-  vbSend: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  vbSendDisabled: {
-    backgroundColor: "#222",
-  },
-  vbClose: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
   },
   tidyOverlay: {
     ...StyleSheet.absoluteFillObject,

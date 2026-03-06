@@ -43,12 +43,14 @@ interface SDUIComponentProps {
   onSelect?: (componentId: string) => void;
   onDragStart?: (componentId: string) => void;
   onDragEnd?: () => void;
+  onDragMove?: (componentId: string, centerX: number, centerY: number) => void;
   onDragOverTrashChange?: (isOver: boolean) => void;
   onDeleteComponent?: (componentId: string) => void;
   onPickImage?: (componentId: string) => void;
   onLongPress?: (id: string, screenX: number, screenY: number) => void;
   isDimmed?: boolean;
   locked?: boolean;
+  isDropTarget?: boolean;
   // Drill-in props (for container components)
   isDrilledInto?: boolean;
   selectedChildId?: string | null;
@@ -90,12 +92,14 @@ export function SDUIComponent({
   onSelect,
   onDragStart,
   onDragEnd,
+  onDragMove,
   onDragOverTrashChange,
   onDeleteComponent,
   onPickImage,
   onLongPress,
   isDimmed,
   locked,
+  isDropTarget,
   isDrilledInto,
   selectedChildId,
   onChildSelect,
@@ -261,6 +265,10 @@ export function SDUIComponent({
     onDragEnd?.();
   }, [onDragEnd]);
 
+  const notifyDragMove = useCallback((centerX: number, centerY: number) => {
+    onDragMove?.(component.id, centerX, centerY);
+  }, [onDragMove, component.id]);
+
   const notifyDragOverTrash = useCallback((isOver: boolean) => {
     onDragOverTrashChange?.(isOver);
   }, [onDragOverTrashChange]);
@@ -268,6 +276,26 @@ export function SDUIComponent({
   const deleteThisComponent = useCallback(() => {
     onDeleteComponent?.(component.id);
   }, [onDeleteComponent, component.id]);
+
+  // Drop target pulse animation
+  const dropPulse = useSharedValue(0);
+  useEffect(() => {
+    if (isDropTarget) {
+      dropPulse.value = withTiming(1, { duration: 300 });
+    } else {
+      dropPulse.value = withTiming(0, { duration: 200 });
+    }
+  }, [isDropTarget, dropPulse]);
+
+  const dropTargetStyle = useAnimatedStyle(() => {
+    if (dropPulse.value === 0) return {};
+    const opacity = interpolate(dropPulse.value, [0, 1], [0, 0.8]);
+    return {
+      borderWidth: interpolate(dropPulse.value, [0, 1], [0, 3]),
+      borderColor: `rgba(255,255,255,${opacity})`,
+      borderRadius: 12,
+    };
+  });
 
   const gesturesDisabled = isComponentEditing || !!isDrilledInto || !!locked;
 
@@ -313,7 +341,9 @@ export function SDUIComponent({
         }
 
         // Trash zone detection (center is unaffected by scale-from-center transform)
+        const centerX = baseX.value + translateX.value + baseW.value / 2;
         const centerY = baseY.value + translateY.value + baseH.value / 2;
+        runOnJS(notifyDragMove)(centerX, centerY);
         const overTrash = centerY > canvasHeight - TRASH_ZONE_HEIGHT;
         if (overTrash !== isOverTrashSV.value) {
           isOverTrashSV.value = overTrash;
@@ -410,7 +440,7 @@ export function SDUIComponent({
       pinchGesture,
       rotationGesture
     );
-  }, [gesturesDisabled, commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragOverTrash, deleteThisComponent, translateX, translateY, scale, rotation, savedTranslateX, savedTranslateY, savedScale, savedRotation, activeGestures, panStarted, pinchStarted, rotationStarted, trashProgress, isOverTrashSV, siblingRects, componentIndex, onGuidesChange, onGuidesEnd, canvasWidth, canvasHeight, baseX, baseY, baseW, baseH]);
+  }, [gesturesDisabled, commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragMove, notifyDragOverTrash, deleteThisComponent, translateX, translateY, scale, rotation, savedTranslateX, savedTranslateY, savedScale, savedRotation, activeGestures, panStarted, pinchStarted, rotationStarted, trashProgress, isOverTrashSV, siblingRects, componentIndex, onGuidesChange, onGuidesEnd, canvasWidth, canvasHeight, baseX, baseY, baseW, baseH]);
 
   const handleEditStart = useCallback((initialState: TextEditingState) => {
     onEditStart?.(component.id, initialState);
@@ -441,7 +471,15 @@ export function SDUIComponent({
       onEditStateChange,
     };
   } else if (component.type === "icon") {
-    rendererProps = { component, isEditMode };
+    rendererProps = {
+      component,
+      isEditMode,
+      editTapFired,
+      consumeEditTap,
+      editState: isComponentEditing ? editState : null,
+      onEditStart: handleEditStart,
+      onEditStateChange,
+    };
   } else if (component.type === "toggle" || component.type === "textInput") {
     rendererProps = { component, isEditMode };
   } else if (component.type === "list") {
@@ -503,6 +541,8 @@ export function SDUIComponent({
         isComponentEditing && { zIndex: 200 },
         isDrilledInto && sduiStyles.drilledIntoBorder,
         dimStyle,
+        isDropTarget && { borderStyle: 'dashed' as const },
+        isDropTarget && dropTargetStyle,
       ]}>
         {isContainerSelected && (
           <View style={sduiStyles.groupSelectOutline} pointerEvents="none">

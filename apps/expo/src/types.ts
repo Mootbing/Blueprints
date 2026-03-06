@@ -52,7 +52,7 @@ export {
   AppSlateSchema,
 } from "@shared/schema";
 
-import type { TextComponent, ButtonComponent } from "@shared/schema";
+import type { TextComponent, ButtonComponent, IconComponent } from "@shared/schema";
 
 export interface SlateMeta {
   id: string;
@@ -73,6 +73,7 @@ export interface ShareInfo {
 
 export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode">>;
 export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign">>;
+export type IconStyleUpdates = Partial<Pick<IconComponent, "name" | "size" | "color">>;
 export type BorderStyleUpdates = {
   borderRadius?: number;
   borderWidth?: number;
@@ -85,4 +86,4 @@ export type BorderStyleUpdates = {
   justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
 };
-export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates | BorderStyleUpdates;
+export type ComponentStyleUpdates = TextStyleUpdates | ButtonStyleUpdates | IconStyleUpdates | BorderStyleUpdates;

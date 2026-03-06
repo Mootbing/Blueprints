@@ -103,23 +103,22 @@ export function AgentPagerModal({
 }: AgentPagerModalProps) {
   const screenWidth = Dimensions.get("window").width;
   const scrollRef = useRef<ScrollView>(null);
-  // pageIndex 0 = exit page, 1..N = agents, N+1 = "+" page
-  const [pageIndex, setPageIndex] = useState(1);
+  // pageIndex 0..N-1 = agents, N = "+" page
+  const [pageIndex, setPageIndex] = useState(0);
   const createdForPageRef = useRef<number>(-1);
 
   const sessions = agentRunner?.sessions ?? [];
   const isLoading = agentRunner?.isLoading ?? false;
   const error = agentRunner?.error ?? null;
 
-  const sessionIndex = pageIndex - 1; // which agent session (0-based), -1 = exit page
-  const isOnPlusPage = pageIndex === sessions.length + 1;
-  const isOnExitPage = pageIndex === 0;
+  const sessionIndex = pageIndex; // which agent session (0-based)
+  const isOnPlusPage = pageIndex === sessions.length;
 
   // When sessions change (new one added), scroll to the new session
   const prevSessionCount = useRef(sessions.length);
   useEffect(() => {
     if (sessions.length > prevSessionCount.current) {
-      const newIdx = sessions.length; // +1 offset, last agent
+      const newIdx = sessions.length - 1; // last agent
       setTimeout(() => {
         scrollRef.current?.scrollTo({ x: newIdx * screenWidth, animated: true });
         setPageIndex(newIdx);
@@ -138,21 +137,14 @@ export function AgentPagerModal({
     }
   }, [isOnPlusPage, visible, agentRunner, sessions.length, pageIndex]);
 
-  // When landing on exit page, close the modal
-  useEffect(() => {
-    if (visible && isOnExitPage) {
-      onClose();
-    }
-  }, [visible, isOnExitPage, onClose]);
-
-  // Reset on open — scroll to initialSessionId if provided (offset by 1 for exit page)
+  // Reset on open — scroll to initialSessionId if provided
   useEffect(() => {
     if (visible) {
       createdForPageRef.current = -1;
-      let idx = 1; // default to first agent
+      let idx = 0; // default to first agent
       if (initialSessionId) {
         const found = sessions.findIndex((s) => s.id === initialSessionId);
-        if (found >= 0) idx = found + 1;
+        if (found >= 0) idx = found;
       }
       setPageIndex(idx);
       setTimeout(() => {
@@ -220,12 +212,14 @@ export function AgentPagerModal({
   const handleDelete = useCallback(
     (id: string) => {
       const idx = sessions.findIndex((s) => s.id === id);
+      // Set pageIndex synchronously BEFORE deleting so the auto-create
+      // effect doesn't see isOnPlusPage=true when sessions.length shrinks.
+      const target = idx > 0 ? idx - 1 : 0;
+      setPageIndex(target);
+      createdForPageRef.current = -1;
       agentRunner?.deleteSession(id);
-      // After delete, go to previous agent or first agent (page 1)
-      const target = idx > 0 ? idx : 1; // offset +1 already handled since idx is 0-based
       setTimeout(() => {
         scrollRef.current?.scrollTo({ x: target * screenWidth, animated: true });
-        setPageIndex(target);
       }, 50);
     },
     [sessions, agentRunner, screenWidth],
@@ -399,7 +393,7 @@ export function AgentPagerModal({
           </View>
         )}
 
-        {/* Pager: [exit page] [agent0] [agent1] ... [+ page] */}
+        {/* Pager: [agent0] [agent1] ... [+ page] */}
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -411,9 +405,6 @@ export function AgentPagerModal({
           style={s.pager}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Exit page (swipe left past first agent to close) */}
-          <View style={{ width: screenWidth }} />
-
           {sessions.map((session) => (
             <View key={session.id} style={{ width: screenWidth, flex: 1 }}>
               <ChatView
@@ -424,6 +415,7 @@ export function AgentPagerModal({
                 renderMessageActions={renderMessageActions}
                 placeholder="Ask anything -- generate screens, add logic, modify components..."
                 initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
+                streamingThinking={currentSession?.id === session.id ? agentRunner?.streamingThinking : null}
               />
             </View>
           ))}

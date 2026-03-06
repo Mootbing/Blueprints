@@ -16,7 +16,6 @@ import { Feather } from "@expo/vector-icons";
 import type { SlateMeta } from "../types";
 import type { SyncableStorageProvider } from "../storage/StorageProvider";
 import { SyncStatusBadge } from "./SyncStatusBadge";
-import { crossAlert } from "../utils/crossAlert";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -48,8 +47,6 @@ export function HomeScreen({
   const [deleteTarget, setDeleteTarget] = useState<SlateMeta | null>(null);
   const [renameTarget, setRenameTarget] = useState<SlateMeta | null>(null);
   const [renameText, setRenameText] = useState("");
-  const [shareCode, setShareCode] = useState("");
-  const [shareLoading, setShareLoading] = useState(false);
 
   const handleCreate = () => {
     const trimmed = newName.trim();
@@ -66,38 +63,6 @@ export function HomeScreen({
       }
     } else {
       setDeleteTarget(bp);
-    }
-  };
-
-  const handleOpenShared = async () => {
-    const code = shareCode.trim().toUpperCase();
-    if (!code || !storage) return;
-    setShareLoading(true);
-    try {
-      const result = await storage.loadSharedSlate(code);
-      if (!result) {
-        crossAlert("Not Found", "No slate found for this share code, or the link has expired.");
-        setShareLoading(false);
-        return;
-      }
-      setShareCode("");
-      setShareLoading(false);
-      // Save locally and open
-      await storage.saveSlate(result.slateId, result.slate);
-      const existing = slates.find((s) => s.id === result.slateId);
-      if (!existing) {
-        const meta: SlateMeta = {
-          id: result.slateId,
-          name: `Shared (${code})`,
-          createdAt: Date.now(),
-          syncStatus: 'synced',
-        };
-        await storage.saveSlateList([...slates, meta]);
-      }
-      onOpenSlate(result.slateId);
-    } catch {
-      crossAlert("Error", "Failed to load shared slate.");
-      setShareLoading(false);
     }
   };
 
@@ -145,29 +110,6 @@ export function HomeScreen({
             Design, prototype, and build interfaces visually.
           </Text>
         </View>
-
-        {/* Open Shared Slate */}
-        {storage && (
-          <View style={styles.shareCodeRow}>
-            <TextInput
-              style={styles.shareCodeInput}
-              placeholder="Enter share code"
-              placeholderTextColor="#444"
-              value={shareCode}
-              onChangeText={setShareCode}
-              autoCapitalize="characters"
-              returnKeyType="go"
-              onSubmitEditing={handleOpenShared}
-            />
-            <Pressable
-              style={[styles.shareCodeBtn, (!shareCode.trim() || shareLoading) && styles.shareCodeBtnDisabled]}
-              onPress={handleOpenShared}
-              disabled={!shareCode.trim() || shareLoading}
-            >
-              <Text style={styles.shareCodeBtnText}>{shareLoading ? '...' : 'Open'}</Text>
-            </Pressable>
-          </View>
-        )}
 
         {/* New Slate Button */}
         <Pressable
@@ -502,44 +444,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "400",
     marginTop: 1,
-  },
-
-  // Share Code
-  shareCodeRow: {
-    flexDirection: "row",
-    marginHorizontal: 24,
-    marginBottom: 20,
-    gap: 8,
-  },
-  shareCodeInput: {
-    flex: 1,
-    backgroundColor: "#0a0a0a",
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    borderRadius: 10,
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-    fontFamily: "monospace",
-    letterSpacing: 2,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    textAlign: "center",
-  },
-  shareCodeBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  shareCodeBtnDisabled: {
-    opacity: 0.3,
-  },
-  shareCodeBtnText: {
-    color: "#000",
-    fontSize: 14,
-    fontWeight: "700",
   },
 
   // Empty State

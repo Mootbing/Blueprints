@@ -54,6 +54,7 @@ interface DetailsPageProps {
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
+  onReparentComponent?: (componentId: string, newParentId: string | null) => void;
   onAIChatComponent?: (id: string) => void;
   // Workflows
   slate: AppSlate;
@@ -85,6 +86,7 @@ export function DetailsPage({
   lockedIds,
   onToggleLock,
   onMoveComponent,
+  onReparentComponent,
   onAIChatComponent,
   slate,
   currentScreen,
@@ -123,14 +125,19 @@ export function DetailsPage({
   // ─── Layers filtering ─────────────────────────────────────────
   const filteredComponents = useMemo(() => {
     if (!q) return currentComponents;
+    const matchesQuery = (c: Component): boolean => {
+      const label = getComponentLabel(c).toLowerCase();
+      const type = c.type.toLowerCase();
+      return label.includes(q) || type.includes(q);
+    };
     const filterTree = (comps: Component[]): Component[] =>
       comps
         .map((c) => {
-          const label = getComponentLabel(c).toLowerCase();
-          const childMatches = c.type === "group" && c.children ? filterTree(c.children) : [];
-          if (label.includes(q) || childMatches.length > 0) {
-            if (c.type === "group" && c.children) {
-              return { ...c, children: label.includes(q) ? c.children : childMatches };
+          const selfMatches = matchesQuery(c);
+          const childMatches = c.type === "container" && c.children ? filterTree(c.children) : [];
+          if (selfMatches || childMatches.length > 0) {
+            if (c.type === "container" && c.children) {
+              return { ...c, children: selfMatches ? c.children : childMatches };
             }
             return c;
           }
@@ -357,6 +364,7 @@ export function DetailsPage({
             lockedIds={lockedIds}
             onToggleLock={onToggleLock}
             onMoveComponent={onMoveComponent}
+            onReparentComponent={onReparentComponent}
             onAIChatComponent={
               onAIChatComponent
                 ? (id) => {
@@ -539,21 +547,6 @@ export function DetailsPage({
             </>
           )}
 
-          {onNavigateToAgent && (
-            <Pressable
-              style={({ pressed }) => [styles.aiCtaBtn, pressed && styles.aiCtaBtnPressed]}
-              onPress={onNavigateToAgent}
-            >
-              <Feather name="cpu" size={16} color="#fff" />
-              <View style={styles.aiCtaTextCol}>
-                <Text style={styles.aiCtaTitle}>Add a workflow with AI</Text>
-                <Text style={styles.aiCtaHint}>
-                  Describe the logic you want and an agent will wire it up for you.
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={16} color="#444" />
-            </Pressable>
-          )}
         </>
       )}
     </View>
@@ -898,38 +891,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     lineHeight: 14,
-  },
-  aiCtaBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    backgroundColor: "#0a0a0a",
-    gap: 12,
-  },
-  aiCtaBtnPressed: {
-    backgroundColor: "#111",
-  },
-  aiCtaTextCol: {
-    flex: 1,
-  },
-  aiCtaTitle: {
-    color: "#ccc",
-    fontSize: 14,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  aiCtaHint: {
-    color: "#444",
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 16,
   },
   expandedActions: {
     flexDirection: "row",

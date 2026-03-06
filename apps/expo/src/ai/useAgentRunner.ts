@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { callClaude, buildContent, type ClaudeResult } from "./anthropicClient";
+import { callClaude, callClaudeStreaming, buildContent, type ClaudeResult } from "./anthropicClient";
+import { generateSessionTitle } from "./generateTitle";
 import { agentSystemPrompt } from "./prompts";
 import { containsComponentJson, parseComponentArray, extractJson } from "./parseResponse";
 import { containsWorkflowJson, parseWorkflowResult, applyWorkflow } from "./buildWorkflow";
@@ -149,14 +150,20 @@ function buildBranchSlate(
 
 function useAgentSessions(slateId: string) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const sessionsRef = useRef<AgentSession[]>([]);
   const loadedRef = useRef(false);
   const storageKey = `agent_sessions_${slateId}`;
+
+  // Keep ref in sync with state
+  sessionsRef.current = sessions;
 
   useEffect(() => {
     AsyncStorage.getItem(storageKey).then((data) => {
       if (data) {
         try {
-          setSessions(JSON.parse(data));
+          const parsed = JSON.parse(data);
+          sessionsRef.current = parsed;
+          setSessions(parsed);
         } catch {}
       }
       loadedRef.current = true;
@@ -183,6 +190,7 @@ function useAgentSessions(slateId: string) {
       };
       setSessions((prev) => {
         const next = [...prev, session];
+        sessionsRef.current = next;
         persistToStorage(next);
         return next;
       });
@@ -195,6 +203,7 @@ function useAgentSessions(slateId: string) {
     (id: string, updates: Partial<AgentSession>) => {
       setSessions((prev) => {
         const next = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+        sessionsRef.current = next;
         persistToStorage(next);
         return next;
       });
@@ -206,6 +215,7 @@ function useAgentSessions(slateId: string) {
     (id: string) => {
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== id);
+        sessionsRef.current = next;
         persistToStorage(next);
         return next;
       });
@@ -213,7 +223,7 @@ function useAgentSessions(slateId: string) {
     [persistToStorage],
   );
 
-  return { sessions, createSession, updateSession, deleteSession };
+  return { sessions, sessionsRef, createSession, updateSession, deleteSession };
 }
 
 // ─── Agent runner (lives in Canvas, survives menu close) ──────
@@ -239,13 +249,14 @@ export function useAgentRunner({
   onAddBranchEntry,
   chatLog,
 }: UseAgentRunnerOptions) {
-  const { sessions, createSession, updateSession, deleteSession } =
+  const { sessions, sessionsRef, createSession, updateSession, deleteSession } =
     useAgentSessions(slateId);
 
   const [error, setError] = useState<string | null>(null);
   const loadingSessionsRef = useRef(new Set<string>());
   const [loadingCount, setLoadingCount] = useState(0);
   const isLoading = loadingCount > 0;
+  const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
 
   // Use refs for values accessed in async operations so they survive closures
   const slateRef = useRef(slate);
@@ -280,7 +291,8 @@ export function useAgentRunner({
   const sendMessage = useCallback(
     async (sessionId: string, text: string, images?: string[]) => {
       if (loadingSessionsRef.current.has(sessionId)) return;
-      const session = sessions.find((s) => s.id === sessionId);
+      // Use ref for immediate access (avoids stale closure after createSession)
+      const session = sessionsRef.current.find((s) => s.id === sessionId);
       if (!session) return;
 
       const userMsg: ChatMessage = {
@@ -314,15 +326,36 @@ export function useAgentRunner({
         // Call with auto-continuation for truncated responses
         const MAX_CONTINUATIONS = 3;
         let fullResponse = "";
+        let thinkingText = "";
         let currentMessages = apiMessages;
 
+        setStreamingThinking("");
+
         for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-          const result: ClaudeResult = await callClaude(
-            apiKeyRef.current,
-            system,
-            currentMessages,
-            16384,
-          );
+          let result: ClaudeResult;
+          if (i === 0) {
+            // First call: use streaming with extended thinking
+            result = await callClaudeStreaming(
+              apiKeyRef.current,
+              system,
+              currentMessages,
+              16384,
+              10000,
+              (chunk) => {
+                thinkingText += chunk;
+                setStreamingThinking(thinkingText);
+              },
+            );
+            if (result.thinking) thinkingText = result.thinking;
+          } else {
+            // Continuation calls: no thinking needed
+            result = await callClaude(
+              apiKeyRef.current,
+              system,
+              currentMessages,
+              16384,
+            );
+          }
           fullResponse += result.text;
 
           if (result.stopReason !== "max_tokens") break;
@@ -336,6 +369,7 @@ export function useAgentRunner({
           ];
         }
 
+        setStreamingThinking(null);
         const response = fullResponse;
 
         let branchEntryId: string | undefined;
@@ -353,14 +387,25 @@ export function useAgentRunner({
           content: response,
           hasComponentJson: actionable,
           branchEntryId,
+          thinking: thinkingText || undefined,
           timestamp: Date.now(),
         };
 
+        const updatedMessages = [...newMessages, assistantMsg];
         updateSession(sessionId, {
-          messages: [...newMessages, assistantMsg],
+          messages: updatedMessages,
           status: "idle",
         });
+
+        // Auto-retitle after the first assistant response
+        const isFirstReply = !session.messages.some((m) => m.role === "assistant");
+        if (isFirstReply) {
+          generateSessionTitle(apiKeyRef.current, updatedMessages).then((title) => {
+            if (title) updateSession(sessionId, { name: title });
+          }).catch(() => {});
+        }
       } catch (err) {
+        setStreamingThinking(null);
         setError(err instanceof Error ? err.message : "Unknown error");
         updateSession(sessionId, { status: "idle" });
       } finally {
@@ -368,12 +413,13 @@ export function useAgentRunner({
         setLoadingCount((c) => c - 1);
       }
     },
-    [sessions, updateSession],
+    [sessionsRef, updateSession],
   );
 
   return {
     sessions,
     isLoading,
+    streamingThinking,
     error,
     sendMessage,
     createSession,

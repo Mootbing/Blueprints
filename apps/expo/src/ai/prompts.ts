@@ -66,18 +66,78 @@ Available in SET_VARIABLE value and CONDITIONAL condition:
 - Comparisons: ==, !=, <, >, <=, >=
 - Logical: &&, ||, !
 - String concat: str1 + str2
-- Variable references by name directly (e.g., "count + 1" where count is a variable)`;
+- Variable references by name directly (e.g., "count + 1" where count is a variable)
+
+## Component Usage Guide
+
+### Available Components (from simplest to most complex)
+1. **text** — Static or dynamic text labels, headings, paragraphs
+2. **button** — Tappable button with label, ideal for CTAs and actions
+3. **image** — Displays an image from a URL
+4. **textInput** — User text entry field (email, password, search, etc.)
+5. **toggle** — On/off switch for boolean settings
+6. **divider** — Horizontal or vertical line separator
+7. **shape** — Decorative rectangle, circle, or rounded-rectangle (great for backgrounds)
+8. **icon** — Material, Feather, or Ionicons icon by name (e.g. "star", "home", "settings")
+9. **container** — Groups child components together. THE most important layout primitive.
+
+### Container Best Practices (IMPORTANT)
+Containers are the primary way to build structured, realistic layouts. **Always group related components inside containers** rather than placing everything as flat siblings:
+
+- **Cards**: Use a container with borderRadius, backgroundColor, and children (image + text + button)
+- **Headers/Nav bars**: Container with flexDirection "row", children: icon + text + icon
+- **List items/rows**: Container per row with flexDirection "row", repeating the pattern
+- **Form sections**: Container wrapping label text + textInput pairs
+- **Button groups**: Container with flexDirection "row" or "column" holding multiple buttons
+- **Sections**: Container wrapping a heading text + content below it
+
+Example card structure:
+  container (borderRadius: 16, backgroundColor: "#1a1a1a", children: [
+    image (layout fills top ~55%),
+    text (title below image),
+    text (subtitle below title)
+  ])
+
+Example nav bar:
+  container (flexDirection: "row", alignItems: "center", children: [
+    icon (name: "arrow-left", library: "feather"),
+    text (content: "Page Title", textAlign: "center"),
+    icon (name: "more-vertical", library: "feather")
+  ])
+
+When using **layoutMode: "flex"** on containers, children layout values are ignored — the flex engine handles positioning. Use gap, justifyContent, and alignItems instead. Children still need width/height hints for sizing in flex mode.
+
+When using **layoutMode: "absolute"** (default), children use layout x/y/width/height relative to the container (0-1 within the container bounds).
+
+### Icon Names Reference
+- **Feather** (outline style): arrow-left, arrow-right, chevron-down, chevron-up, check, x, plus, minus, search, settings, user, heart, star, home, menu, edit-2, trash-2, share, bell, camera, image, map-pin, phone, mail, lock, unlock, eye, eye-off, clock, calendar, download, upload, link, external-link, copy, bookmark, filter, grid, list, layers, maximize-2, minimize-2, more-horizontal, more-vertical, refresh-cw, send, zap
+- **Material** (filled style): star, home, settings, person, favorite, search, add, remove, close, check, arrow-back, arrow-forward, menu, more-vert, more-horiz, edit, delete, share, notifications, camera, image, place, phone, email, lock, visibility, visibility-off, schedule, event, cloud-download, cloud-upload, link, content-copy, bookmark, filter-list, dashboard, logout
+- **Ionicons**: ios-heart, ios-star, ios-settings, ios-home, ios-search, ios-add, ios-close, ios-checkmark, ios-arrow-back, ios-arrow-forward, ios-menu, ios-more, ios-camera, ios-image, ios-location, ios-call, ios-mail, ios-lock-closed, ios-eye, ios-time, ios-calendar, ios-cloud-download, ios-cloud-upload, ios-link, ios-copy, ios-bookmark, ios-filter, ios-grid, ios-list`;
 }
 
 function themeContext(theme?: Theme): string {
   if (!theme) return "";
-  const parts: string[] = ["\n### Current Theme"];
+  const parts: string[] = ["\n### Current Style Guide"];
   if (theme.colors) {
     parts.push(`Colors: ${JSON.stringify(theme.colors)}`);
   }
   if (theme.backgroundColors) {
     parts.push(`Backgrounds: ${JSON.stringify(theme.backgroundColors)}`);
   }
+  if (theme.borderRadii) {
+    parts.push(`Border Radii: ${JSON.stringify(theme.borderRadii)}`);
+  }
+  if (theme.spacing) {
+    parts.push(`Spacing: ${JSON.stringify(theme.spacing)}`);
+  }
+  if (theme.fontSizes) {
+    parts.push(`Font Sizes: ${JSON.stringify(theme.fontSizes)}`);
+  }
+  if (theme.fontFamily) {
+    parts.push(`Font Family: ${theme.fontFamily}`);
+  }
+  if (parts.length <= 1) return "";
+  parts.push("\nIMPORTANT: Use these style guide values when generating or modifying components. Match the defined colors, spacing, border radii, and font sizes.");
   return parts.join("\n");
 }
 
@@ -119,6 +179,7 @@ Guidelines:
 - Use appropriate font sizes (headers: 24-36, body: 14-16, labels: 11-13)
 - Include appropriate border radius on interactive elements (12-16)
 - Make buttons full-width with padding where appropriate
+- **Group related elements inside containers** — cards, rows, sections, form groups, nav bars, etc. should all be containers with children. Avoid flat layouts with many ungrouped siblings. A well-structured screen uses nested containers to create visual hierarchy.
 
 Return the component array inside <json>...</json> tags. You may include brief explanation text outside the tags.`;
 }
@@ -278,6 +339,7 @@ When the user asks to create or redesign the CURRENT screen, return a component 
 - Generate proper UUIDs for all component IDs
 - Use dark theme by default unless specified
 - Create visually appealing layouts with proper spacing
+- **Group related elements inside containers** — build cards, rows, nav bars, form sections, and list items as containers with children. Well-structured screens use nested containers for visual hierarchy rather than many flat siblings.
 
 ### 2. Create or Modify Workflows & Logic
 When the user asks for interactivity (e.g., "when I tap X, do Y") OR asks to change/remove existing workflows, return a workflow object inside <json>...</json> tags:

@@ -74,6 +74,7 @@ interface CanvasMenuProps {
   lockedIds?: Set<string>;
   onToggleLock?: (id: string) => void;
   onMoveComponent?: (componentId: string, toIndex: number, parentId: string | null) => void;
+  onReparentComponent?: (componentId: string, newParentId: string | null) => void;
   currentScreenId: string;
   initialScreenId: string;
   screenActions?: ScreenActions;
@@ -85,8 +86,6 @@ interface CanvasMenuProps {
   // AI props
   apiKey: string;
   onApiKeyChange: (key: string) => void;
-  voiceAgentEnabled?: boolean;
-  onToggleVoiceAgent?: () => void;
   onApplyComponents?: (components: import("../../types").Component[], mode: "replace" | "add") => void;
   storage?: import("../../storage/StorageProvider").StorageProvider;
   // Agent orchestration props
@@ -127,6 +126,7 @@ export function CanvasMenu({
   lockedIds,
   onToggleLock,
   onMoveComponent,
+  onReparentComponent,
   currentScreenId,
   initialScreenId,
   screenActions,
@@ -137,8 +137,6 @@ export function CanvasMenu({
   onOpenVersionHistory,
   apiKey,
   onApiKeyChange,
-  voiceAgentEnabled,
-  onToggleVoiceAgent,
   onApplyComponents,
   storage: storageProp,
   historyEntries,
@@ -258,6 +256,7 @@ export function CanvasMenu({
               lockedIds={lockedIds}
               onToggleLock={onToggleLock}
               onMoveComponent={onMoveComponent}
+              onReparentComponent={onReparentComponent}
               onAIChatComponent={onAIChatComponent}
               slate={slate}
               currentScreen={screen}
@@ -288,6 +287,8 @@ export function CanvasMenu({
                 onClose();
                 onOpenVersionHistory?.();
               }}
+              storage={storageProp}
+              slateId={slateId}
             />
           </RegisteredScrollView>
 
@@ -376,12 +377,10 @@ export function CanvasMenu({
               snappingEnabled={snappingEnabled}
               inspectorEnabled={inspectorEnabled}
               showAdvancedCode={showAdvancedCode}
-              voiceAgentEnabled={voiceAgentEnabled ?? false}
               onToggleEditMode={onToggleEditMode}
               onToggleSnapping={onToggleSnapping}
               onToggleInspector={onToggleInspector}
               onToggleAdvancedCode={onToggleAdvancedCode}
-              onToggleVoiceAgent={onToggleVoiceAgent ?? (() => {})}
               onCloseSlate={onCloseSlate}
               onDeleteSlate={onDeleteSlate}
               onClose={onClose}

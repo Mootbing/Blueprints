@@ -10,8 +10,11 @@ import {
   Share,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import QRCode from "react-native-qrcode-svg";
 import type { SyncableStorageProvider } from "../storage/StorageProvider";
 import type { ShareInfo } from "../types";
+
+const BASE_URL = "http://localhost:8081";
 
 interface ShareModalProps {
   visible: boolean;
@@ -25,6 +28,7 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [showRolePicker, setShowRolePicker] = useState(false);
 
   const loadLinks = useCallback(async () => {
     setLoading(true);
@@ -45,6 +49,7 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
 
   const handleCreate = async (role: 'viewer' | 'editor') => {
     setCreating(true);
+    setShowRolePicker(false);
     try {
       const info = await storage.createShareLink(slateId, role);
       setLinks((prev) => [info, ...prev]);
@@ -66,11 +71,12 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
   };
 
   const handleCopy = async (code: string) => {
+    const shareUrl = `${BASE_URL}/share/${code}`;
     try {
       if (Platform.OS === "web" && navigator?.clipboard) {
-        await navigator.clipboard.writeText(code);
+        await navigator.clipboard.writeText(shareUrl);
       } else {
-        await Share.share({ message: code });
+        await Share.share({ message: shareUrl });
       }
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 2000);
@@ -88,27 +94,38 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
     >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <View style={styles.card} onStartShouldSetResponder={() => true}>
-          <Text style={styles.title}>Share Slate</Text>
+          <Text style={styles.title}>Live Share</Text>
 
-          {/* Create buttons */}
-          <View style={styles.createRow}>
+          {/* Create button */}
+          {showRolePicker ? (
+            <View style={styles.createRow}>
+              <Pressable
+                style={[styles.createBtn, creating && styles.createBtnDisabled]}
+                onPress={() => handleCreate("viewer")}
+                disabled={creating}
+              >
+                <Feather name="eye" size={14} color="#ccc" />
+                <Text style={styles.createBtnText}>Viewer</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.createBtn, creating && styles.createBtnDisabled]}
+                onPress={() => handleCreate("editor")}
+                disabled={creating}
+              >
+                <Feather name="edit-2" size={14} color="#ccc" />
+                <Text style={styles.createBtnText}>Editor</Text>
+              </Pressable>
+            </View>
+          ) : (
             <Pressable
-              style={[styles.createBtn, creating && styles.createBtnDisabled]}
-              onPress={() => handleCreate("viewer")}
+              style={[styles.newLinkBtn, creating && styles.createBtnDisabled]}
+              onPress={() => setShowRolePicker(true)}
               disabled={creating}
             >
-              <Feather name="eye" size={14} color="#ccc" />
-              <Text style={styles.createBtnText}>Viewer Link</Text>
+              <Feather name="plus" size={14} color="#ccc" />
+              <Text style={styles.createBtnText}>New Link</Text>
             </Pressable>
-            <Pressable
-              style={[styles.createBtn, creating && styles.createBtnDisabled]}
-              onPress={() => handleCreate("editor")}
-              disabled={creating}
-            >
-              <Feather name="edit" size={14} color="#ccc" />
-              <Text style={styles.createBtnText}>Editor Link</Text>
-            </Pressable>
-          </View>
+          )}
 
           {/* Links list */}
           {loading ? (
@@ -117,43 +134,56 @@ export function ShareModal({ visible, onClose, storage, slateId }: ShareModalPro
             <Text style={styles.emptyText}>No share links yet</Text>
           ) : (
             <View style={styles.linkList}>
-              {links.map((link) => (
-                <View
-                  key={link.shareCode}
-                  style={[styles.linkRow, !link.isActive && styles.linkRowInactive]}
-                >
-                  <View style={styles.linkInfo}>
-                    <Text style={[styles.linkCode, !link.isActive && styles.linkCodeInactive]}>
-                      {link.shareCode}
-                    </Text>
-                    <Text style={styles.linkRole}>
-                      {link.role} {!link.isActive ? "(revoked)" : ""}
-                    </Text>
-                  </View>
-                  <View style={styles.linkActions}>
+              {links.map((link) => {
+                const url = `${BASE_URL}/share/${link.shareCode}`;
+                return (
+                  <View
+                    key={link.shareCode}
+                    style={[styles.linkCard, !link.isActive && styles.linkRowInactive]}
+                  >
                     {link.isActive && (
-                      <>
-                        <Pressable
-                          style={styles.linkActionBtn}
-                          onPress={() => handleCopy(link.shareCode)}
-                        >
-                          <Feather
-                            name={copiedCode === link.shareCode ? "check" : "copy"}
-                            size={14}
-                            color={copiedCode === link.shareCode ? "#22c55e" : "#888"}
-                          />
-                        </Pressable>
-                        <Pressable
-                          style={styles.linkActionBtn}
-                          onPress={() => handleRevoke(link.shareCode)}
-                        >
-                          <Feather name="x" size={14} color="#dc2626" />
-                        </Pressable>
-                      </>
+                      <View style={styles.qrContainer}>
+                        <QRCode value={url} size={80} backgroundColor="transparent" color="#fff" />
+                      </View>
                     )}
+                    <View style={styles.linkRow}>
+                      <View style={styles.linkInfo}>
+                        <Text
+                          style={[styles.linkUrl, !link.isActive && styles.linkCodeInactive]}
+                          numberOfLines={1}
+                        >
+                          {url}
+                        </Text>
+                        <Text style={styles.linkRole}>
+                          {link.role} {!link.isActive ? "(revoked)" : ""}
+                        </Text>
+                      </View>
+                      <View style={styles.linkActions}>
+                        {link.isActive && (
+                          <>
+                            <Pressable
+                              style={styles.linkActionBtn}
+                              onPress={() => handleCopy(link.shareCode)}
+                            >
+                              <Feather
+                                name={copiedCode === link.shareCode ? "check" : "copy"}
+                                size={14}
+                                color={copiedCode === link.shareCode ? "#22c55e" : "#888"}
+                              />
+                            </Pressable>
+                            <Pressable
+                              style={styles.linkActionBtn}
+                              onPress={() => handleRevoke(link.shareCode)}
+                            >
+                              <Feather name="x" size={14} color="#dc2626" />
+                            </Pressable>
+                          </>
+                        )}
+                      </View>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
 
@@ -189,6 +219,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "300",
     letterSpacing: 0.5,
+    marginBottom: 20,
+  },
+  newLinkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#0a0a0a",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    borderRadius: 10,
+    paddingVertical: 12,
     marginBottom: 20,
   },
   createRow: {
@@ -227,29 +269,34 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     maxHeight: 200,
   },
-  linkRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  linkCard: {
     backgroundColor: "#0a0a0a",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#1a1a1a",
     paddingHorizontal: 12,
     paddingVertical: 10,
+    gap: 10,
   },
   linkRowInactive: {
     opacity: 0.4,
+  },
+  qrContainer: {
+    alignItems: "center",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   linkInfo: {
     flex: 1,
     gap: 2,
   },
-  linkCode: {
+  linkUrl: {
     color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "500",
     fontFamily: "monospace",
-    letterSpacing: 2,
   },
   linkCodeInactive: {
     color: "#555",

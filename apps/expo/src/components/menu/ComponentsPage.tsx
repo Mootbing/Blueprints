@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Pressable, Text, ScrollView, StyleSheet, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import type { Component } from "../../types";
 import { uuid } from "../../utils/uuid";
+import { ShareModal } from "../ShareModal";
+import type { SyncableStorageProvider } from "../../storage/StorageProvider";
 
 export const PRESETS: { label: string; icon: string; create: (x: number, y: number) => Component }[] = [
   {
@@ -22,94 +24,51 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
     label: "Button",
     icon: "[ ]",
     create: (x, y) => ({
-      type: "container" as const,
+      type: "button" as const,
       id: uuid(),
-      layout: { x, y, width: 0.7, height: 0.07 },
+      layout: { x, y, width: 0.7, height: 0.065 },
+      label: "Button",
       backgroundColor: "#1a1a1a",
-      borderRadius: 12,
-      children: [
-        {
-          type: "text" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
-          content: "Button",
-          fontSize: 16,
-          color: "#ffffff",
-          fontWeight: "600" as const,
-          textAlign: "center" as const,
-        },
-      ],
+      textColor: "#ffffff",
+      fontSize: 16,
+      fontWeight: "600" as const,
+      textAlign: "center" as const,
     }),
   },
   {
     label: "Image",
     icon: "IMG",
     create: (x, y) => ({
-      type: "container" as const,
+      type: "image" as const,
       id: uuid(),
       layout: { x, y, width: 0.4, height: 0.25 },
-      backgroundColor: "transparent",
-      borderRadius: 12,
-      children: [
-        {
-          type: "image" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
-          src: "https://placekitten.com/400/300",
-          resizeMode: "cover" as const,
-        },
-      ],
+      src: "https://placekitten.com/400/300",
+      resizeMode: "cover" as const,
     }),
   },
   {
     label: "Input",
     icon: "___",
     create: (x, y) => ({
-      type: "container" as const,
+      type: "textInput" as const,
       id: uuid(),
       layout: { x, y, width: 0.7, height: 0.06 },
-      backgroundColor: "#111",
-      borderColor: "#333",
+      placeholder: "Enter text...",
       borderWidth: 1,
+      borderColor: "#333",
       borderRadius: 8,
-      children: [
-        {
-          type: "textInput" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
-          placeholder: "Enter text...",
-          borderWidth: 0,
-        },
-      ],
+      backgroundColor: "#111",
     }),
   },
   {
     label: "Toggle",
     icon: "ON",
     create: (x, y) => ({
-      type: "container" as const,
+      type: "toggle" as const,
       id: uuid(),
-      layout: { x, y, width: 0.5, height: 0.05 },
-      backgroundColor: "transparent",
-      borderRadius: 0,
-      children: [
-        {
-          type: "text" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 0.6, height: 1.0 },
-          content: "Toggle",
-          fontSize: 16,
-          color: "#ccc",
-          fontWeight: "500" as const,
-        },
-        {
-          type: "toggle" as const,
-          id: uuid(),
-          layout: { x: 0.65, y: 0.0, width: 0.35, height: 1.0 },
-          defaultValue: false,
-          activeColor: "#ffffff",
-        },
-      ],
+      layout: { x, y, width: 0.15, height: 0.05 },
+      defaultValue: false,
+      activeColor: "#ffffff",
     }),
   },
   {
@@ -152,116 +111,6 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
     }),
   },
   {
-    label: "List",
-    icon: "LST",
-    create: (x, y) => ({
-      type: "container" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.9, height: 0.3 },
-      backgroundColor: "#0a0a0a",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#1a1a1a",
-      children: [
-        {
-          type: "container" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 1.0, height: 0.33 },
-          backgroundColor: "transparent",
-          borderRadius: 0,
-          children: [
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
-              content: "Item 1",
-              fontSize: 16,
-              color: "#ccc",
-              fontWeight: "500" as const,
-            },
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
-              content: "Description",
-              fontSize: 13,
-              color: "#555",
-              fontWeight: "normal" as const,
-            },
-          ],
-        },
-        {
-          type: "divider" as const,
-          id: uuid(),
-          layout: { x: 0.05, y: 0.33, width: 0.9, height: 0.005 },
-          color: "#1a1a1a",
-          thickness: 1,
-        },
-        {
-          type: "container" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.34, width: 1.0, height: 0.33 },
-          backgroundColor: "transparent",
-          borderRadius: 0,
-          children: [
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
-              content: "Item 2",
-              fontSize: 16,
-              color: "#ccc",
-              fontWeight: "500" as const,
-            },
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
-              content: "Description",
-              fontSize: 13,
-              color: "#555",
-              fontWeight: "normal" as const,
-            },
-          ],
-        },
-        {
-          type: "divider" as const,
-          id: uuid(),
-          layout: { x: 0.05, y: 0.67, width: 0.9, height: 0.005 },
-          color: "#1a1a1a",
-          thickness: 1,
-        },
-        {
-          type: "container" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.67, width: 1.0, height: 0.33 },
-          backgroundColor: "transparent",
-          borderRadius: 0,
-          children: [
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.1, width: 0.9, height: 0.45 },
-              content: "Item 3",
-              fontSize: 16,
-              color: "#ccc",
-              fontWeight: "500" as const,
-            },
-            {
-              type: "text" as const,
-              id: uuid(),
-              layout: { x: 0.05, y: 0.55, width: 0.9, height: 0.35 },
-              content: "Description",
-              fontSize: 13,
-              color: "#555",
-              fontWeight: "normal" as const,
-            },
-          ],
-        },
-      ],
-    }),
-  },
-  {
     label: "Container",
     icon: "BOX",
     create: (x, y) => ({
@@ -275,79 +124,6 @@ export const PRESETS: { label: string; icon: string; create: (x: number, y: numb
       padding: 0.02,
     }),
   },
-  {
-    label: "Card",
-    icon: "CRD",
-    create: (x, y) => ({
-      type: "container" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.85, height: 0.35 },
-      backgroundColor: "#0a0a0a",
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#1a1a1a",
-      children: [
-        {
-          type: "image" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 1.0, height: 0.55 },
-          src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=400&fit=crop",
-          resizeMode: "cover" as const,
-          borderRadius: 0,
-        },
-        {
-          type: "text" as const,
-          id: uuid(),
-          layout: { x: 0.05, y: 0.6, width: 0.9, height: 0.15 },
-          content: "Card Title",
-          fontSize: 18,
-          color: "#fff",
-          fontWeight: "bold" as const,
-        },
-        {
-          type: "text" as const,
-          id: uuid(),
-          layout: { x: 0.05, y: 0.78, width: 0.9, height: 0.15 },
-          content: "Card subtitle goes here",
-          fontSize: 13,
-          color: "#555",
-          fontWeight: "normal" as const,
-        },
-      ],
-    }),
-  },
-  {
-    label: "Header",
-    icon: "HDR",
-    create: (x, y) => ({
-      type: "container" as const,
-      id: uuid(),
-      layout: { x, y, width: 0.9, height: 0.06 },
-      backgroundColor: "transparent",
-      borderRadius: 0,
-      children: [
-        {
-          type: "icon" as const,
-          id: uuid(),
-          layout: { x: 0.0, y: 0.0, width: 0.1, height: 1.0 },
-          name: "menu",
-          library: "feather" as const,
-          size: 24,
-          color: "#ccc",
-        },
-        {
-          type: "text" as const,
-          id: uuid(),
-          layout: { x: 0.15, y: 0.0, width: 0.7, height: 1.0 },
-          content: "Page Title",
-          fontSize: 18,
-          color: "#ccc",
-          fontWeight: "600" as const,
-          textAlign: "center" as const,
-        },
-      ],
-    }),
-  },
 ];
 
 interface ComponentsPageProps {
@@ -358,6 +134,8 @@ interface ComponentsPageProps {
   canUndo?: boolean;
   canRedo?: boolean;
   onOpenVersionHistory?: () => void;
+  storage?: import("../../storage/StorageProvider").StorageProvider;
+  slateId?: string;
 }
 
 export function ComponentsPage({
@@ -368,7 +146,11 @@ export function ComponentsPage({
   canUndo,
   canRedo,
   onOpenVersionHistory,
+  storage,
+  slateId,
 }: ComponentsPageProps) {
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const isSyncable = storage && 'joinCollabChannel' in storage;
   return (
     <View style={[styles.page, { width }]}>
       {/* Undo / Redo / History Row */}
@@ -408,6 +190,15 @@ export function ComponentsPage({
           <Feather name="clock" size={18} color="#fff" />
           <Text style={styles.undoLabel}>History</Text>
         </Pressable>
+        {isSyncable && slateId && (
+          <Pressable
+            style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+            onPress={() => setShareModalOpen(true)}
+          >
+            <Feather name="share" size={18} color="#fff" />
+            <Text style={styles.undoLabel}>Live Share</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <View style={styles.sectionDivider} />
@@ -430,6 +221,14 @@ export function ComponentsPage({
         </React.Fragment>
       ))}
 
+      {isSyncable && slateId && (
+        <ShareModal
+          visible={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          storage={storage as SyncableStorageProvider}
+          slateId={slateId}
+        />
+      )}
     </View>
   );
 }
