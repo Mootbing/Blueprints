@@ -3,10 +3,10 @@ import { View, Pressable, Text, TextInput, StyleSheet, Platform, Modal, Switch }
 import { Feather } from "@expo/vector-icons";
 import { crossAlert } from "../../utils/crossAlert";
 import type { AppSlate, Theme } from "../../types";
-import type { StorageProvider, SyncableStorageProvider } from "../../storage/StorageProvider";
+import type { StorageProvider } from "../../storage/StorageProvider";
 import { sharedMenuStyles } from "./sharedStyles";
 import { ColorPickerModal } from "../ColorPickerModal";
-import { ShareModal } from "../ShareModal";
+
 
 const DEFAULT_COLORS = {
   primary: "#ffffff",
@@ -139,6 +139,7 @@ function ValueEditorModal({
 }) {
   const range = SLIDER_RANGES[type];
   const trackWidthRef = useRef(0);
+  const originalValueRef = useRef(value);
   const clamped = Math.max(range.min, Math.min(range.max, value));
   const ratio = range.max > range.min ? (clamped - range.min) / (range.max - range.min) : 0;
 
@@ -148,14 +149,19 @@ function ValueEditorModal({
     onValueChange(Math.round(range.min + r * (range.max - range.min)));
   }, [range, onValueChange]);
 
+  const handleCancel = useCallback(() => {
+    onValueChange(originalValueRef.current);
+    onClose();
+  }, [onValueChange, onClose]);
+
   const Demo = type === 'borderRadius' ? BorderRadiusDemo : type === 'spacing' ? SpacingDemo : FontSizeDemo;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={handleCancel}>
       <View style={veStyles.overlay}>
         <View style={veStyles.sheet}>
           <View style={veStyles.header}>
-            <Pressable onPress={onClose} hitSlop={12}>
+            <Pressable onPress={handleCancel} hitSlop={12}>
               <Text style={veStyles.cancelText}>Cancel</Text>
             </Pressable>
             <Text style={veStyles.title}>{label}</Text>
@@ -365,8 +371,7 @@ export function SettingsPage({
     currentValue: string;
   } | null>(null);
   const [activeEditor, setActiveEditor] = useState<{ type: EditorType; key: string; label: string } | null>(null);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const isSyncable = storage && 'joinCollabChannel' in storage;
+
 
   const theme = slate.theme ?? {};
   const colors = theme.colors ?? DEFAULT_COLORS;
@@ -617,16 +622,6 @@ export function SettingsPage({
           </Pressable>
         )}
       </View>
-      {isSyncable && slateId && (
-        <View style={styles.exportImportRow}>
-          <Pressable
-            style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
-            onPress={() => setShareModalOpen(true)}
-          >
-            <Text style={styles.exportBtnText}>Live Share</Text>
-          </Pressable>
-        </View>
-      )}
       <View style={styles.divider} />
 
       {/* Danger Zone */}
@@ -669,15 +664,6 @@ export function SettingsPage({
         }}
         onClose={() => setColorPickerTarget(null)}
       />
-
-      {isSyncable && slateId && (
-        <ShareModal
-          visible={shareModalOpen}
-          onClose={() => setShareModalOpen(false)}
-          storage={storage as SyncableStorageProvider}
-          slateId={slateId}
-        />
-      )}
     </View>
   );
 }

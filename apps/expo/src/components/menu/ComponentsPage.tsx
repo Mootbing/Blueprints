@@ -189,17 +189,17 @@ export function ComponentsPage({
         )}
         <Pressable
           style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
-          onPress={onOpenSettings}
-        >
-          <Feather name="settings" size={18} color="#fff" />
-          <Text style={styles.undoLabel}>Slate Settings</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
           onPress={onCloseAndSave}
         >
           <Feather name="save" size={18} color="#fff" />
           <Text style={styles.undoLabel}>Close & Save</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+          onPress={onOpenSettings}
+        >
+          <Feather name="settings" size={18} color="#fff" />
+          <Text style={styles.undoLabel}>Settings</Text>
         </Pressable>
       </ScrollView>
 
@@ -237,7 +237,7 @@ export function ComponentsPage({
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 8,
+    paddingTop: 0,
   },
   undoRow: {
     flexDirection: "row",
