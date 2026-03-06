@@ -51,98 +51,97 @@ export const defaultSlate: AppSlate = {
       components: [
         makeBackgroundShape(),
 
-        // Decorative top rule
-        {
-          type: "shape",
-          id: "00000000-0000-0000-0000-000000001010",
-          layout: { x: 0.35, y: 0.22, width: 0.3, height: 0.002 },
-          shapeType: "rectangle" as const,
-          backgroundColor: "#222",
-          opacity: 1,
-          borderRadius: 1,
-        },
-
-        // Title
+        // Welcome title
         {
           type: "text",
-          id: "00000000-0000-0000-0000-000000001001",
-          layout: { x: 0.06, y: 0.24, width: 0.88, height: 0.06 },
-          content: "Slate away!",
-          fontSize: 32,
+          id: "00000000-0000-0000-0000-000000000011",
+          layout: { x: 0.06, y: 0.08, width: 0.88, height: 0.05 },
+          content: "Welcome to Slate",
+          fontSize: 36,
           color: "#ffffff",
-          fontWeight: "bold",
-          textAlign: "center",
+          fontWeight: "200",
+          textAlign: "left",
         },
 
         // Subtitle
         {
           type: "text",
-          id: "00000000-0000-0000-0000-000000001005",
-          layout: { x: 0.1, y: 0.30, width: 0.8, height: 0.04 },
-          content: "Describe your idea and let AI build it.",
-          fontSize: 14,
+          id: "00000000-0000-0000-0000-000000000012",
+          layout: { x: 0.06, y: 0.15, width: 0.88, height: 0.05 },
+          content: "Build beautiful app interfaces visually.\nDescribe your idea and let AI bring it to life.",
+          fontSize: 15,
           color: "#666",
           fontWeight: "normal",
-          textAlign: "center",
+          textAlign: "left",
+        },
+
+        // Hero image
+        {
+          type: "image",
+          id: "00000000-0000-0000-0000-000000000030",
+          layout: { x: 0.06, y: 0.25, width: 0.88, height: 0.3 },
+          src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80",
+          resizeMode: "cover",
+          borderRadius: 16,
         },
 
         // Prompt input
         {
           type: "textInput",
           id: "00000000-0000-0000-0000-000000001002",
-          layout: { x: 0.08, y: 0.37, width: 0.84, height: 0.18 },
-          placeholder: "e.g. A weather app with a 5-day forecast...",
+          layout: { x: 0.06, y: 0.59, width: 0.88, height: 0.12 },
+          placeholder: "Describe an app idea...",
           fontSize: 15,
           color: "#ffffff",
           placeholderColor: "#444",
-          backgroundColor: "#0a0a0f",
-          borderColor: "#1f1f2f",
+          backgroundColor: "#0a0a0a",
+          borderColor: "#1a1a1a",
           borderWidth: 1,
-          borderRadius: 12,
+          borderRadius: 14,
           boundVariable: "prompt",
         },
 
-        // Submit button
+        // Build with AI button
         {
           type: "button",
           id: "00000000-0000-0000-0000-000000001003",
-          layout: { x: 0.08, y: 0.58, width: 0.84, height: 0.06 },
+          layout: { x: 0.06, y: 0.74, width: 0.88, height: 0.065 },
           label: "Build with AI",
           backgroundColor: "#ffffff",
           textColor: "#000000",
           fontSize: 16,
-          fontWeight: "bold",
+          fontWeight: "600",
           textAlign: "center",
-          borderRadius: 12,
+          borderRadius: 14,
           actions: { onTap: [{ type: "OPEN_AGENT", promptVariable: "prompt" }] },
         },
 
-        // Divider with "or"
-        {
-          type: "text",
-          id: "00000000-0000-0000-0000-000000001006",
-          layout: { x: 0.3, y: 0.66, width: 0.4, height: 0.03 },
-          content: "or",
-          fontSize: 12,
-          color: "#333",
-          fontWeight: "normal",
-          textAlign: "center",
-        },
-
-        // "start with a blank project" link
+        // Or start blank
         {
           type: "button",
           id: "00000000-0000-0000-0000-000000001004",
-          layout: { x: 0.15, y: 0.69, width: 0.7, height: 0.04 },
+          layout: { x: 0.06, y: 0.82, width: 0.88, height: 0.05 },
           label: "Start with a blank canvas",
           backgroundColor: "transparent",
-          textColor: "#555",
+          textColor: "#444",
           fontSize: 13,
           fontWeight: "normal",
           textAlign: "center",
           borderRadius: 0,
           borderWidth: 0,
           actions: { onTap: [{ type: "RESET_CANVAS" }] },
+        },
+
+        // Footer
+        {
+          type: "text",
+          id: "00000000-0000-0000-0000-000000000015",
+          layout: { x: 0.06, y: 0.90, width: 0.88, height: 0.03 },
+          content: "v1.0  \u2022  Made with Slate",
+          fontSize: 11,
+          color: "#222",
+          fontWeight: "normal",
+          textAlign: "center",
         },
       ],
     },
