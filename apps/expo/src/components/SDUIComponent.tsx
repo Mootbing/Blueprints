@@ -4,7 +4,6 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useDerivedValue,
   withTiming,
   cancelAnimation,
   runOnJS,
@@ -326,14 +325,13 @@ export function SDUIComponent({
     const current = layoutRef.current;
     const newW = current.width + deltaW / canvasWidth;
     const newH = current.height + deltaH / canvasHeight;
-    resizeDeltaW.value = 0;
-    resizeDeltaH.value = 0;
+    // Shared values already reset on the UI thread by the worklet
     onUpdate(component.id, {
       ...current,
       width: clamp(newW, 0.02, 1),
       height: clamp(newH, 0.02, 1),
     });
-  }, [component.id, canvasWidth, canvasHeight, onUpdate, resizeDeltaW, resizeDeltaH]);
+  }, [component.id, canvasWidth, canvasHeight, onUpdate]);
 
   const hugWidth = useCallback(() => {
     onHugContent?.(component.id, "width");
