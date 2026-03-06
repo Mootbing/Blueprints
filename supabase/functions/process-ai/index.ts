@@ -15,36 +15,55 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  console.log(`[process-ai] ${req.method} request received`);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { jobId } = await req.json();
+    const body = await req.json();
+    console.log("[process-ai] Request body:", JSON.stringify(body));
+    const { jobId } = body;
     if (!jobId) {
+      console.error("[process-ai] Missing jobId in request");
       return new Response(JSON.stringify({ error: "jobId required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    console.log(`[process-ai] Processing job: ${jobId}`);
     const sb = supabaseAdmin();
 
     // 1. Read the job
+    console.log(`[process-ai] Reading job from DB...`);
     const { data: job, error: jobError } = await sb
       .from("ai_jobs")
       .select("*")
       .eq("id", jobId)
       .single();
 
-    if (jobError || !job) {
+    if (jobError) {
+      console.error("[process-ai] Job query error:", JSON.stringify(jobError));
+      return new Response(JSON.stringify({ error: "Job not found", details: jobError.message }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!job) {
+      console.error("[process-ai] Job not found (null)");
       return new Response(JSON.stringify({ error: "Job not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    console.log(`[process-ai] Job found: type=${job.job_type}, status=${job.status}, slate_id=${job.slate_id}`);
+
     if (job.status !== "pending") {
+      console.warn(`[process-ai] Job already processed: ${job.status}`);
       return new Response(JSON.stringify({ error: "Job already processed", status: job.status }), {
         status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -52,43 +71,62 @@ Deno.serve(async (req) => {
     }
 
     // 2. Mark as running
-    await sb.from("ai_jobs").update({ status: "running" }).eq("id", jobId);
+    console.log("[process-ai] Marking job as running...");
+    const { error: updateRunningError } = await sb.from("ai_jobs").update({ status: "running" }).eq("id", jobId);
+    if (updateRunningError) {
+      console.error("[process-ai] Failed to mark job as running:", JSON.stringify(updateRunningError));
+    }
 
     // 3. Process based on job_type
     const request = job.request;
+    console.log(`[process-ai] Dispatching job_type=${job.job_type}, request keys: ${Object.keys(request).join(", ")}`);
     let responsePayload: any;
 
     try {
       switch (job.job_type) {
         case "agent_message":
+          console.log("[process-ai] Processing agent_message...");
           responsePayload = await processAgentMessage(sb, job, request);
           break;
         case "generate_title":
+          console.log("[process-ai] Processing generate_title...");
           responsePayload = await processGenerateTitle(request);
           break;
         case "tidy":
+          console.log("[process-ai] Processing tidy...");
           responsePayload = await processTidy(request);
           break;
         case "generate_screen":
+          console.log("[process-ai] Processing generate_screen...");
           responsePayload = await processGenerateScreen(request);
           break;
         case "modify_component":
+          console.log("[process-ai] Processing modify_component...");
           responsePayload = await processModifyComponent(request);
           break;
         case "workflow":
+          console.log("[process-ai] Processing workflow...");
           responsePayload = await processWorkflow(request);
           break;
         default:
           throw new Error(`Unknown job type: ${job.job_type}`);
       }
 
+      console.log(`[process-ai] Job completed successfully. Response keys: ${Object.keys(responsePayload).join(", ")}, applied=${responsePayload.applied}`);
+
       // 4. Update job as completed
-      await sb.from("ai_jobs").update({
+      const { error: updateCompleteError } = await sb.from("ai_jobs").update({
         status: "completed",
         response: responsePayload,
         applied: responsePayload.applied ?? false,
         completed_at: new Date().toISOString(),
       }).eq("id", jobId);
+
+      if (updateCompleteError) {
+        console.error("[process-ai] Failed to update job as completed:", JSON.stringify(updateCompleteError));
+      } else {
+        console.log("[process-ai] Job marked as completed in DB");
+      }
 
       return new Response(JSON.stringify({ status: "completed", jobId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -96,11 +134,19 @@ Deno.serve(async (req) => {
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      await sb.from("ai_jobs").update({
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      console.error(`[process-ai] Job processing error: ${errorMessage}`);
+      if (errorStack) console.error(`[process-ai] Stack: ${errorStack}`);
+
+      const { error: updateFailError } = await sb.from("ai_jobs").update({
         status: "failed",
         error_message: errorMessage,
         completed_at: new Date().toISOString(),
       }).eq("id", jobId);
+
+      if (updateFailError) {
+        console.error("[process-ai] Failed to update job as failed:", JSON.stringify(updateFailError));
+      }
 
       return new Response(JSON.stringify({ status: "failed", error: errorMessage }), {
         status: 500,
@@ -110,6 +156,9 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    console.error(`[process-ai] Top-level error: ${errorMessage}`);
+    if (errorStack) console.error(`[process-ai] Stack: ${errorStack}`);
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

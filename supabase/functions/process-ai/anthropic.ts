@@ -1,6 +1,8 @@
 const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 
+console.log(`[anthropic] API_KEY loaded: ${API_KEY ? `${API_KEY.slice(0, 10)}...${API_KEY.slice(-4)}` : "MISSING"}`);
+
 export interface ClaudeResult {
   text: string;
   thinking?: string;
@@ -18,6 +20,8 @@ export async function callClaude(
   maxTokens = 4096,
   model = "claude-opus-4-6",
 ): Promise<ClaudeResult> {
+  console.log(`[anthropic] callClaude: model=${model}, maxTokens=${maxTokens}, messages=${messages.length}, system length=${system.length}`);
+
   const body = {
     model,
     max_tokens: maxTokens,
@@ -25,6 +29,7 @@ export async function callClaude(
     messages,
   };
 
+  console.log(`[anthropic] Sending request to ${API_URL}...`);
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -35,16 +40,21 @@ export async function callClaude(
     body: JSON.stringify(body),
   });
 
+  console.log(`[anthropic] Response status: ${res.status}`);
+
   if (!res.ok) {
     let errorMessage = `API error ${res.status}`;
     try {
       const errorBody = await res.json();
+      console.error(`[anthropic] API error body:`, JSON.stringify(errorBody));
       if (errorBody.error?.message) errorMessage = errorBody.error.message;
     } catch {}
     throw new Error(errorMessage);
   }
 
   const data = await res.json();
+  console.log(`[anthropic] Response: stop_reason=${data.stop_reason}, content blocks=${data.content?.length}`);
+
   const text = data.content
     .filter((c: any) => c.type === "text")
     .map((c: any) => c.text)
@@ -52,6 +62,7 @@ export async function callClaude(
 
   if (!text) throw new Error("Empty response from Claude");
 
+  console.log(`[anthropic] callClaude complete: text length=${text.length}`);
   return { text, stopReason: data.stop_reason };
 }
 
@@ -64,6 +75,8 @@ export async function callClaudeStreaming(
   onText?: (chunk: string) => void,
   model = "claude-opus-4-6",
 ): Promise<ClaudeResult> {
+  console.log(`[anthropic] callClaudeStreaming: model=${model}, maxTokens=${maxTokens}, thinkingBudget=${thinkingBudget}, messages=${messages.length}`);
+
   const body = {
     model,
     max_tokens: maxTokens,
@@ -73,6 +86,7 @@ export async function callClaudeStreaming(
     stream: true,
   };
 
+  console.log(`[anthropic] Sending streaming request to ${API_URL}...`);
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -83,10 +97,13 @@ export async function callClaudeStreaming(
     body: JSON.stringify(body),
   });
 
+  console.log(`[anthropic] Streaming response status: ${res.status}`);
+
   if (!res.ok) {
     let errorMessage = `API error ${res.status}`;
     try {
       const text = await res.text();
+      console.error(`[anthropic] Streaming API error body: ${text}`);
       const errorBody = JSON.parse(text);
       if (errorBody.error?.message) errorMessage = errorBody.error.message;
     } catch {}
@@ -143,6 +160,7 @@ export async function callClaudeStreaming(
 
   if (!text) throw new Error("Empty response from Claude");
 
+  console.log(`[anthropic] callClaudeStreaming complete: text length=${text.length}, thinking length=${thinking.length}, stopReason=${stopReason}`);
   return {
     text,
     thinking: thinking || undefined,

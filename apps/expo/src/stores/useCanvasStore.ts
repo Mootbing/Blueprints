@@ -13,7 +13,7 @@ export interface CanvasState {
   // Editing
   editingInfo:
     | { mode: "text"; componentId: string; state: TextEditingState }
-    | { mode: "style"; componentId: string; state: StyleEditingState; initialState: StyleEditingState }
+    | { mode: "style"; componentId: string; state: StyleEditingState; initialState: StyleEditingState; initialLayout?: { x: number; y: number; width: number; height: number; rotation?: number } }
     | null;
   selectedComponentId: string | null;
   autoEditId: string | null;
@@ -131,7 +131,7 @@ export interface CanvasActions {
 
 export type CanvasStore = CanvasState & CanvasActions;
 
-const BACKGROUND_ID = "background";
+const BACKGROUND_ID = "00000000-0000-0000-0000-00000000000b";
 
 export const createCanvasStore = (initialLockedIds?: Set<string>) =>
   createStore<CanvasStore>((set, get) => ({

@@ -23,30 +23,46 @@ export interface JobResult {
  */
 export async function submitJob(params: SubmitJobParams): Promise<string> {
   const supabase = getSupabaseClient();
+  console.log(`[aiJobClient] submitJob: type=${params.jobType}, slateId=${params.slateId}`);
+
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) {
+    console.error("[aiJobClient] Not authenticated");
+    throw new Error("Not authenticated");
+  }
+  console.log(`[aiJobClient] User: ${user.id}`);
+
+  const insertPayload = {
+    owner_id: user.id,
+    slate_id: params.slateId,
+    session_id: params.sessionId,
+    job_type: params.jobType,
+    request: params.request,
+    base_slate_version: params.baseSlateVersion,
+  };
+  console.log(`[aiJobClient] Inserting job...`, JSON.stringify({ ...insertPayload, request: `{keys: ${Object.keys(params.request).join(", ")}}` }));
 
   const { data, error } = await supabase
     .from("ai_jobs")
-    .insert({
-      owner_id: user.id,
-      slate_id: params.slateId,
-      session_id: params.sessionId,
-      job_type: params.jobType,
-      request: params.request,
-      base_slate_version: params.baseSlateVersion,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
 
-  if (error) throw new Error(`Failed to create job: ${error.message}`);
+  if (error) {
+    console.error(`[aiJobClient] Insert error:`, JSON.stringify(error));
+    throw new Error(`Failed to create job: ${error.message}`);
+  }
   const jobId = data.id;
+  console.log(`[aiJobClient] Job created: ${jobId}`);
 
   // Fire-and-forget: invoke edge function
+  console.log(`[aiJobClient] Invoking edge function process-ai with jobId=${jobId}...`);
   supabase.functions.invoke("process-ai", {
     body: { jobId },
+  }).then((res) => {
+    console.log(`[aiJobClient] Edge function response:`, JSON.stringify({ status: res.data?.status, error: res.error?.message }));
   }).catch((err) => {
-    console.warn("Edge function invoke failed (will rely on polling):", err);
+    console.error("[aiJobClient] Edge function invoke failed:", err);
   });
 
   return jobId;

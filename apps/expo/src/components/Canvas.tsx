@@ -626,6 +626,7 @@ function CanvasInner({
       componentId,
       state: { ...initialState },
       initialState,
+      initialLayout: { ...comp.layout },
     });
   }, [screen?.components, setEditingInfo]);
 
@@ -1104,12 +1105,23 @@ function CanvasInner({
       if (Object.keys(revert).length > 0) {
         onStyleChange?.(componentId, revert);
       }
+      // Revert layout if it was changed by resize handles
+      if (info.initialLayout) {
+        const comp = findComponent(screen?.components ?? [], componentId);
+        if (comp) {
+          const il = info.initialLayout;
+          const cl = comp.layout;
+          if (cl.width !== il.width || cl.height !== il.height || cl.x !== il.x || cl.y !== il.y) {
+            onComponentUpdate(componentId, il);
+          }
+        }
+      }
     }
     Keyboard.dismiss();
     setEditingInfo(null);
     setSelectedComponentId(null);
     setInspectorOpen(false);
-  }, [onStyleChange, setEditingInfo, setSelectedComponentId, setInspectorOpen]);
+  }, [onStyleChange, onComponentUpdate, setEditingInfo, setSelectedComponentId, setInspectorOpen]);
 
   const handlePickImage = useCallback(async (componentId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
