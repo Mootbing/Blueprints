@@ -63,7 +63,7 @@ export const ImageRenderer = React.memo(function ImageRenderer({ component, onPi
     <Image
       source={{ uri: component.src }}
       resizeMode={component.resizeMode ?? "cover"}
-      style={{ flex: 1, width: "100%", height: "100%", borderRadius: component.borderRadius ?? 0 }}
+      style={{ flex: 1, width: "100%", height: "100%", borderRadius: component.borderRadius ?? 0, opacity: component.opacity ?? 1 }}
       onError={() => setHasError(true)}
     />
   );

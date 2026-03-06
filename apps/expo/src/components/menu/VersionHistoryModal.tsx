@@ -12,10 +12,10 @@ import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
 import type { HistoryEntry } from "../../hooks/useUndoHistory";
 import { ROOT_ID } from "../../hooks/useUndoHistory";
-import type { Component } from "../../types";
+import type { Component, AppSlate, Screen } from "../../types";
 import { rendererRegistry } from "../renderers";
 
-// ─── Diff helpers ────────────────────────────────────────────────
+// ─── Component Diff helpers ─────────────────────────────────────
 
 interface DiffResult {
   added: Component[];
@@ -56,17 +56,80 @@ function computeDiff(before: Component[], after: Component[]): DiffResult {
   return { added, removed, changed, unchanged };
 }
 
+// ─── Screen/Page Diff helpers ───────────────────────────────────
+
+interface ScreenDiffItem {
+  id: string;
+  name: string;
+  status: "added" | "removed" | "modified" | "unchanged";
+  screen?: Screen;
+  beforeScreen?: Screen;
+  afterScreen?: Screen;
+}
+
+interface ScreenDiffResult {
+  items: ScreenDiffItem[];
+  addedCount: number;
+  removedCount: number;
+  modifiedCount: number;
+}
+
+function computeScreenDiff(
+  beforeSlate: AppSlate,
+  afterSlate: AppSlate
+): ScreenDiffResult {
+  const beforeScreens = beforeSlate.screens;
+  const afterScreens = afterSlate.screens;
+  const items: ScreenDiffItem[] = [];
+  let addedCount = 0;
+  let removedCount = 0;
+  let modifiedCount = 0;
+
+  for (const [id, screen] of Object.entries(afterScreens)) {
+    const prev = beforeScreens[id];
+    if (!prev) {
+      items.push({ id, name: screen.name, status: "added", screen });
+      addedCount++;
+    } else if (JSON.stringify(prev.components) !== JSON.stringify(screen.components)) {
+      items.push({
+        id,
+        name: screen.name,
+        status: "modified",
+        beforeScreen: prev,
+        afterScreen: screen,
+      });
+      modifiedCount++;
+    } else {
+      items.push({ id, name: screen.name, status: "unchanged", screen });
+    }
+  }
+
+  for (const [id, screen] of Object.entries(beforeScreens)) {
+    if (!afterScreens[id]) {
+      items.push({ id, name: screen.name, status: "removed", screen });
+      removedCount++;
+    }
+  }
+
+  // Sort: added first, then removed, modified, unchanged
+  const order = { added: 0, removed: 1, modified: 2, unchanged: 3 };
+  items.sort((a, b) => order[a.status] - order[b.status]);
+
+  return { items, addedCount, removedCount, modifiedCount };
+}
+
 // ─── Display list builder ────────────────────────────────────────
 
 type ItemStatus = "head" | "active" | "future" | "branch";
 
 interface DisplayItem {
   entry: HistoryEntry;
+  parentEntry: HistoryEntry | undefined;
   status: ItemStatus;
   depth: number;
   isFirst: boolean;
   isLast: boolean;
-  branchCount: number; // how many branches fork from this node
+  branchCount: number;
 }
 
 function buildDisplayList(
@@ -139,11 +202,16 @@ function buildDisplayList(
     const it = allItems[i];
     const ch = childrenMap.get(it.entry.id) || [];
     const branchCount = ch.filter((c) => !activeIds.has(c.id)).length;
+    const parentEntry = it.entry.parentId
+      ? lookup.get(it.entry.parentId)
+      : undefined;
     items.push({
       ...it,
+      parentEntry,
       isFirst: i === 0,
       isLast: i === allItems.length - 1,
-      branchCount: it.status === "head" || it.status === "active" ? branchCount : 0,
+      branchCount:
+        it.status === "head" || it.status === "active" ? branchCount : 0,
     });
   }
   return items;
@@ -161,6 +229,53 @@ function formatTime(ts: number): string {
   const m = d.getMinutes().toString().padStart(2, "0");
   return `${h}:${m} ${d.getHours() >= 12 ? "PM" : "AM"}`;
 }
+
+// ─── Page change badges for timeline rows ────────────────────────
+
+function PageChangeBadges({ entry, parentEntry }: { entry: HistoryEntry; parentEntry?: HistoryEntry }) {
+  const diff = useMemo(() => {
+    if (!parentEntry) return null;
+    const sd = computeScreenDiff(parentEntry.slate, entry.slate);
+    if (sd.addedCount === 0 && sd.removedCount === 0) return null;
+    return sd;
+  }, [entry, parentEntry]);
+
+  if (!diff) return null;
+
+  return (
+    <View style={{ flexDirection: "row", gap: 4 }}>
+      {diff.addedCount > 0 && (
+        <View style={pgBadge.badge}>
+          <Feather name="file-plus" size={9} color="#22c55e" />
+          <Text style={[pgBadge.text, { color: "#22c55e" }]}>
+            +{diff.addedCount}
+          </Text>
+        </View>
+      )}
+      {diff.removedCount > 0 && (
+        <View style={pgBadge.badge}>
+          <Feather name="file-minus" size={9} color="#ef4444" />
+          <Text style={[pgBadge.text, { color: "#ef4444" }]}>
+            -{diff.removedCount}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const pgBadge = StyleSheet.create({
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  text: { fontSize: 9, fontWeight: "700" },
+});
 
 // ─── Preview component renderer ──────────────────────────────────
 
@@ -233,19 +348,175 @@ function PreviewComponent({
   );
 }
 
+// ─── Page dropdown selector ──────────────────────────────────────
+
+function PageDropdown({
+  screenDiffItems,
+  selectedPageId,
+  onSelect,
+}: {
+  screenDiffItems: ScreenDiffItem[];
+  selectedPageId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = screenDiffItems.find((s) => s.id === selectedPageId);
+  const selectedName = selected?.name ?? "Select page";
+
+  const statusColor = (status: ScreenDiffItem["status"]) => {
+    switch (status) {
+      case "added": return "#22c55e";
+      case "removed": return "#ef4444";
+      case "modified": return "#f59e0b";
+      default: return "#555";
+    }
+  };
+
+  const statusLabel = (status: ScreenDiffItem["status"]) => {
+    switch (status) {
+      case "added": return "NEW";
+      case "removed": return "DEL";
+      case "modified": return "MOD";
+      default: return "";
+    }
+  };
+
+  return (
+    <View style={dd.wrapper}>
+      <Pressable
+        style={({ pressed }) => [dd.trigger, pressed && dd.triggerPressed]}
+        onPress={() => setOpen(!open)}
+      >
+        <Feather name="layers" size={14} color="#999" />
+        <Text style={dd.triggerText} numberOfLines={1}>
+          {selectedName}
+        </Text>
+        {selected && selected.status !== "unchanged" && (
+          <View style={[dd.statusDot, { backgroundColor: statusColor(selected.status) }]} />
+        )}
+        <Feather
+          name={open ? "chevron-up" : "chevron-down"}
+          size={14}
+          color="#666"
+        />
+      </Pressable>
+
+      {open && (
+        <View style={dd.dropdown}>
+          <ScrollView
+            style={{ maxHeight: 200 }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {screenDiffItems.map((item) => {
+              const isSelected = item.id === selectedPageId;
+              return (
+                <Pressable
+                  key={item.id}
+                  style={({ pressed }) => [
+                    dd.option,
+                    isSelected && dd.optionSelected,
+                    pressed && dd.optionPressed,
+                  ]}
+                  onPress={() => {
+                    onSelect(item.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      dd.optionText,
+                      isSelected && dd.optionTextSelected,
+                      item.status === "removed" && dd.optionTextRemoved,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
+                  {item.status !== "unchanged" && (
+                    <View
+                      style={[
+                        dd.statusBadge,
+                        { backgroundColor: statusColor(item.status) + "20" },
+                      ]}
+                    >
+                      <Text
+                        style={[dd.statusBadgeText, { color: statusColor(item.status) }]}
+                      >
+                        {statusLabel(item.status)}
+                      </Text>
+                    </View>
+                  )}
+                  {isSelected && (
+                    <Feather name="check" size={14} color="#fff" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const dd = StyleSheet.create({
+  wrapper: { position: "relative", zIndex: 50, marginHorizontal: 20, marginBottom: 10 },
+  trigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  triggerPressed: { backgroundColor: "rgba(255,255,255,0.1)" },
+  triggerText: { flex: 1, color: "#fff", fontSize: 14, fontWeight: "600" },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  dropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    backgroundColor: "rgba(20,20,20,0.98)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+  },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  optionSelected: { backgroundColor: "rgba(255,255,255,0.08)" },
+  optionPressed: { backgroundColor: "rgba(255,255,255,0.05)" },
+  optionText: { flex: 1, color: "#ccc", fontSize: 14, fontWeight: "500" },
+  optionTextSelected: { color: "#fff", fontWeight: "600" },
+  optionTextRemoved: { textDecorationLine: "line-through", opacity: 0.6 },
+  statusBadge: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  statusBadgeText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
+});
+
 // ─── Detail panel (bottom sheet with diff) ───────────────────────
 
 function DetailPanel({
   entry,
   currentEntry,
-  screenId,
   onRestore,
   onClose,
   isHead,
 }: {
   entry: HistoryEntry;
   currentEntry: HistoryEntry;
-  screenId: string;
   onRestore: () => void;
   onClose: () => void;
   isHead: boolean;
@@ -253,13 +524,42 @@ function DetailPanel({
   const [previewOpen, setPreviewOpen] = useState(false);
   const screenWidth = Dimensions.get("window").width;
 
-  // Compare current HEAD state to the selected entry (what would change on restore)
-  const currentScreen = currentEntry.slate.screens[screenId];
-  const selectedScreen = entry.slate.screens[screenId];
-  const diff = useMemo(() => {
+  // Screen-level diff: compare HEAD to the selected entry
+  const screenDiff = useMemo(
+    () => computeScreenDiff(currentEntry.slate, entry.slate),
+    [currentEntry.slate, entry.slate]
+  );
+
+  // Pick a default page to show: first modified, then first added, then initial_screen_id
+  const defaultPageId = useMemo(() => {
+    const firstModified = screenDiff.items.find((s) => s.status === "modified");
+    if (firstModified) return firstModified.id;
+    const firstAdded = screenDiff.items.find((s) => s.status === "added");
+    if (firstAdded) return firstAdded.id;
+    return entry.slate.initial_screen_id;
+  }, [screenDiff, entry.slate.initial_screen_id]);
+
+  const [selectedPageId, setSelectedPageId] = useState(defaultPageId);
+
+  // Component-level diff for the selected page
+  const componentDiff = useMemo(() => {
+    const pageItem = screenDiff.items.find((s) => s.id === selectedPageId);
+    if (!pageItem) return null;
+
+    if (pageItem.status === "added") {
+      const comps = pageItem.screen?.components ?? [];
+      return { added: flattenComponents(comps), removed: [], changed: [], unchanged: [] } as DiffResult;
+    }
+    if (pageItem.status === "removed") {
+      const comps = pageItem.screen?.components ?? [];
+      return { added: [], removed: flattenComponents(comps), changed: [], unchanged: [] } as DiffResult;
+    }
+
+    const currentScreen = currentEntry.slate.screens[selectedPageId];
+    const selectedScreen = entry.slate.screens[selectedPageId];
     if (!currentScreen || !selectedScreen) return null;
     return computeDiff(currentScreen.components, selectedScreen.components);
-  }, [currentScreen, selectedScreen]);
+  }, [screenDiff, selectedPageId, currentEntry.slate, entry.slate]);
 
   const isRoot = entry.id === ROOT_ID;
   const d = new Date(entry.timestamp);
@@ -271,14 +571,65 @@ function DetailPanel({
     .toString()
     .padStart(2, "0")} ${d.getHours() >= 12 ? "PM" : "AM"}`;
 
-  // Preview canvas dimensions (scaled to fit with padding)
+  const hasPageChanges =
+    screenDiff.addedCount > 0 ||
+    screenDiff.removedCount > 0;
+
+  const hasComponentChanges = componentDiff
+    ? componentDiff.added.length > 0 ||
+      componentDiff.removed.length > 0 ||
+      componentDiff.changed.length > 0
+    : false;
+
+  const hasAnyChanges = hasPageChanges || hasComponentChanges || screenDiff.modifiedCount > 0;
+
+  // Preview canvas dimensions
   const previewPadding = 16;
   const previewWidth = screenWidth - previewPadding * 2;
-  const previewAspect = 1.6; // approximate phone aspect ratio
+  const previewAspect = 1.6;
   const previewHeight = previewWidth * previewAspect;
 
-  if (previewOpen && diff && selectedScreen) {
-    // Full-screen preview mode
+  // Get the components to render in preview for the selected page
+  const previewComponents = useMemo(() => {
+    if (!componentDiff) return null;
+    const pageItem = screenDiff.items.find((s) => s.id === selectedPageId);
+    if (!pageItem) return null;
+
+    // For added pages, show all components as "added"
+    if (pageItem.status === "added") {
+      const screen = pageItem.screen ?? entry.slate.screens[selectedPageId];
+      return {
+        unchanged: [] as Component[],
+        removed: [] as Component[],
+        added: screen?.components ?? [],
+        changed: [] as { before: Component; after: Component }[],
+      };
+    }
+
+    // For removed pages, show all components as "removed"
+    if (pageItem.status === "removed") {
+      const screen = pageItem.screen ?? currentEntry.slate.screens[selectedPageId];
+      return {
+        unchanged: [] as Component[],
+        removed: screen?.components ?? [],
+        added: [] as Component[],
+        changed: [] as { before: Component; after: Component }[],
+      };
+    }
+
+    // For modified/unchanged, use the component diff
+    const selectedScreen = entry.slate.screens[selectedPageId];
+    return {
+      unchanged: selectedScreen?.components.filter((c) =>
+        componentDiff.unchanged.some((u) => u.id === c.id)
+      ) ?? [],
+      removed: componentDiff.removed,
+      added: componentDiff.added,
+      changed: componentDiff.changed,
+    };
+  }, [componentDiff, screenDiff, selectedPageId, entry.slate, currentEntry.slate]);
+
+  if (previewOpen) {
     return (
       <View style={[StyleSheet.absoluteFill, dp.previewOverlay]}>
         <SafeAreaView style={{ flex: 1 }}>
@@ -292,30 +643,63 @@ function DetailPanel({
             </Pressable>
           </View>
 
-          {/* Diff summary */}
-          <View style={dp.previewChips}>
-            {diff.added.length > 0 && (
-              <View style={[dp.previewChip, { backgroundColor: "rgba(34,197,94,0.15)" }]}>
-                <Text style={[dp.previewChipText, { color: "#22c55e" }]}>
-                  +{diff.added.length} added
-                </Text>
-              </View>
-            )}
-            {diff.removed.length > 0 && (
-              <View style={[dp.previewChip, { backgroundColor: "rgba(239,68,68,0.15)" }]}>
-                <Text style={[dp.previewChipText, { color: "#ef4444" }]}>
-                  -{diff.removed.length} removed
-                </Text>
-              </View>
-            )}
-            {diff.changed.length > 0 && (
-              <View style={[dp.previewChip, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
-                <Text style={[dp.previewChipText, { color: "#f59e0b" }]}>
-                  ~{diff.changed.length} changed
-                </Text>
-              </View>
-            )}
-          </View>
+          {/* Page dropdown */}
+          {screenDiff.items.length > 1 && (
+            <PageDropdown
+              screenDiffItems={screenDiff.items}
+              selectedPageId={selectedPageId}
+              onSelect={setSelectedPageId}
+            />
+          )}
+
+          {/* Page-level diff chips */}
+          {hasPageChanges && (
+            <View style={dp.previewChips}>
+              {screenDiff.addedCount > 0 && (
+                <View style={[dp.previewChip, { backgroundColor: "rgba(34,197,94,0.15)" }]}>
+                  <Feather name="file-plus" size={10} color="#22c55e" />
+                  <Text style={[dp.previewChipText, { color: "#22c55e" }]}>
+                    +{screenDiff.addedCount} page{screenDiff.addedCount > 1 ? "s" : ""}
+                  </Text>
+                </View>
+              )}
+              {screenDiff.removedCount > 0 && (
+                <View style={[dp.previewChip, { backgroundColor: "rgba(239,68,68,0.15)" }]}>
+                  <Feather name="file-minus" size={10} color="#ef4444" />
+                  <Text style={[dp.previewChipText, { color: "#ef4444" }]}>
+                    -{screenDiff.removedCount} page{screenDiff.removedCount > 1 ? "s" : ""}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Component-level diff chips for selected page */}
+          {componentDiff && (
+            <View style={dp.previewChips}>
+              {componentDiff.added.length > 0 && (
+                <View style={[dp.previewChip, { backgroundColor: "rgba(34,197,94,0.15)" }]}>
+                  <Text style={[dp.previewChipText, { color: "#22c55e" }]}>
+                    +{componentDiff.added.length} added
+                  </Text>
+                </View>
+              )}
+              {componentDiff.removed.length > 0 && (
+                <View style={[dp.previewChip, { backgroundColor: "rgba(239,68,68,0.15)" }]}>
+                  <Text style={[dp.previewChipText, { color: "#ef4444" }]}>
+                    -{componentDiff.removed.length} removed
+                  </Text>
+                </View>
+              )}
+              {componentDiff.changed.length > 0 && (
+                <View style={[dp.previewChip, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
+                  <Text style={[dp.previewChipText, { color: "#f59e0b" }]}>
+                    ~{componentDiff.changed.length} changed
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Legend */}
           <View style={dp.previewLegend}>
@@ -335,54 +719,56 @@ function DetailPanel({
             contentContainerStyle={{ alignItems: "center", paddingBottom: 40 }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={[dp.previewCanvas, { width: previewWidth, height: previewHeight }]}>
-              {/* Render unchanged components normally */}
-              {diff.unchanged.map((comp) => (
-                <PreviewComponent
-                  key={comp.id}
-                  component={comp}
-                  canvasWidth={previewWidth}
-                  canvasHeight={previewHeight}
-                />
-              ))}
-              {/* Render removed components with red highlight */}
-              {diff.removed.map((comp) => (
-                <PreviewComponent
-                  key={comp.id + "_removed"}
-                  component={comp}
-                  canvasWidth={previewWidth}
-                  canvasHeight={previewHeight}
-                  highlight="removed"
-                />
-              ))}
-              {/* Render added components with green highlight */}
-              {diff.added.map((comp) => (
-                <PreviewComponent
-                  key={comp.id + "_added"}
-                  component={comp}
-                  canvasWidth={previewWidth}
-                  canvasHeight={previewHeight}
-                  highlight="added"
-                />
-              ))}
-              {/* Render changed: old (red) and new (green) side by side */}
-              {diff.changed.map(({ before, after }) => (
-                <React.Fragment key={before.id + "_changed"}>
+            {previewComponents ? (
+              <View style={[dp.previewCanvas, { width: previewWidth, height: previewHeight }]}>
+                {previewComponents.unchanged.map((comp) => (
                   <PreviewComponent
-                    component={before}
+                    key={comp.id}
+                    component={comp}
                     canvasWidth={previewWidth}
                     canvasHeight={previewHeight}
-                    highlight="changed-old"
                   />
+                ))}
+                {previewComponents.removed.map((comp) => (
                   <PreviewComponent
-                    component={after}
+                    key={comp.id + "_removed"}
+                    component={comp}
                     canvasWidth={previewWidth}
                     canvasHeight={previewHeight}
-                    highlight="changed-new"
+                    highlight="removed"
                   />
-                </React.Fragment>
-              ))}
-            </View>
+                ))}
+                {previewComponents.added.map((comp) => (
+                  <PreviewComponent
+                    key={comp.id + "_added"}
+                    component={comp}
+                    canvasWidth={previewWidth}
+                    canvasHeight={previewHeight}
+                    highlight="added"
+                  />
+                ))}
+                {previewComponents.changed.map(({ before, after }) => (
+                  <React.Fragment key={before.id + "_changed"}>
+                    <PreviewComponent
+                      component={before}
+                      canvasWidth={previewWidth}
+                      canvasHeight={previewHeight}
+                      highlight="changed-old"
+                    />
+                    <PreviewComponent
+                      component={after}
+                      canvasWidth={previewWidth}
+                      canvasHeight={previewHeight}
+                      highlight="changed-new"
+                    />
+                  </React.Fragment>
+                ))}
+              </View>
+            ) : (
+              <View style={[dp.previewCanvas, { width: previewWidth, height: previewHeight, justifyContent: "center", alignItems: "center" }]}>
+                <Text style={{ color: "#999", fontSize: 14 }}>No preview available for this page</Text>
+              </View>
+            )}
           </ScrollView>
 
           {/* Restore button at bottom */}
@@ -422,40 +808,111 @@ function DetailPanel({
         </View>
       </View>
 
-      {/* Diff summary */}
-      {diff && (
+      {/* Page-level changes */}
+      {hasPageChanges && (
+        <View style={dp.pageChangesSection}>
+          <Text style={dp.sectionLabel}>Pages</Text>
+          <View style={dp.chips}>
+            {screenDiff.addedCount > 0 && (
+              <View style={[dp.chip, { borderColor: "rgba(34,197,94,0.4)" }]}>
+                <Feather name="file-plus" size={11} color="#22c55e" />
+                <Text style={[dp.chipText, { color: "#22c55e" }]}>
+                  +{screenDiff.addedCount} page{screenDiff.addedCount > 1 ? "s" : ""}
+                </Text>
+              </View>
+            )}
+            {screenDiff.removedCount > 0 && (
+              <View style={[dp.chip, { borderColor: "rgba(239,68,68,0.4)" }]}>
+                <Feather name="file-minus" size={11} color="#ef4444" />
+                <Text style={[dp.chipText, { color: "#ef4444" }]}>
+                  -{screenDiff.removedCount} page{screenDiff.removedCount > 1 ? "s" : ""}
+                </Text>
+              </View>
+            )}
+          </View>
+          {/* List individual page changes */}
+          {screenDiff.items
+            .filter((s) => s.status !== "unchanged")
+            .map((item) => (
+              <View key={item.id} style={dp.pageChangeRow}>
+                <Feather
+                  name={
+                    item.status === "added"
+                      ? "plus-circle"
+                      : item.status === "removed"
+                      ? "minus-circle"
+                      : "edit-3"
+                  }
+                  size={12}
+                  color={
+                    item.status === "added"
+                      ? "#22c55e"
+                      : item.status === "removed"
+                      ? "#ef4444"
+                      : "#f59e0b"
+                  }
+                />
+                <Text
+                  style={[
+                    dp.pageChangeName,
+                    item.status === "removed" && dp.pageChangeNameRemoved,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.name}
+                </Text>
+                <Text
+                  style={[
+                    dp.pageChangeStatus,
+                    {
+                      color:
+                        item.status === "added"
+                          ? "#22c55e"
+                          : item.status === "removed"
+                          ? "#ef4444"
+                          : "#f59e0b",
+                    },
+                  ]}
+                >
+                  {item.status}
+                </Text>
+              </View>
+            ))}
+        </View>
+      )}
+
+      {/* Component-level diff summary */}
+      {componentDiff && (
         <View style={dp.chips}>
-          {diff.added.length > 0 && (
+          {componentDiff.added.length > 0 && (
             <View style={[dp.chip, { borderColor: "rgba(34,197,94,0.4)" }]}>
               <Text style={[dp.chipText, { color: "#22c55e" }]}>
-                +{diff.added.length} added
+                +{componentDiff.added.length} added
               </Text>
             </View>
           )}
-          {diff.removed.length > 0 && (
+          {componentDiff.removed.length > 0 && (
             <View style={[dp.chip, { borderColor: "rgba(239,68,68,0.4)" }]}>
               <Text style={[dp.chipText, { color: "#ef4444" }]}>
-                -{diff.removed.length} removed
+                -{componentDiff.removed.length} removed
               </Text>
             </View>
           )}
-          {diff.changed.length > 0 && (
+          {componentDiff.changed.length > 0 && (
             <View style={[dp.chip, { borderColor: "rgba(245,158,11,0.4)" }]}>
               <Text style={[dp.chipText, { color: "#f59e0b" }]}>
-                ~{diff.changed.length} changed
+                ~{componentDiff.changed.length} changed
               </Text>
             </View>
           )}
-          {diff.added.length === 0 &&
-            diff.removed.length === 0 &&
-            diff.changed.length === 0 && (
-              <Text style={dp.noChanges}>No component changes</Text>
-            )}
+          {!hasAnyChanges && (
+            <Text style={dp.noChanges}>No changes</Text>
+          )}
         </View>
       )}
 
       {/* Preview changes button */}
-      {diff && (diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0) && (
+      {hasAnyChanges && (
         <Pressable
           style={({ pressed }) => [dp.previewBtn, pressed && dp.previewBtnPressed]}
           onPress={() => setPreviewOpen(true)}
@@ -523,6 +980,40 @@ const dp = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  sectionLabel: {
+    color: "#555",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  pageChangesSection: {
+    marginBottom: 12,
+  },
+  pageChangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+    paddingLeft: 4,
+  },
+  pageChangeName: {
+    flex: 1,
+    color: "#ccc",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  pageChangeNameRemoved: {
+    textDecorationLine: "line-through",
+    opacity: 0.6,
+  },
+  pageChangeStatus: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   chips: {
     flexDirection: "row",
     gap: 8,
@@ -530,6 +1021,9 @@ const dp = StyleSheet.create({
     flexWrap: "wrap",
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 8,
@@ -599,6 +1093,9 @@ const dp = StyleSheet.create({
     marginBottom: 8,
   },
   previewChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -723,15 +1220,18 @@ function TimelineRow({
             </View>
           )}
         </View>
-        <Text
-          style={[
-            tl.time,
-            isFuture && tl.timeFuture,
-            isBranch && tl.timeBranch,
-          ]}
-        >
-          {isHead ? "current" : formatTime(item.entry.timestamp)}
-        </Text>
+        <View style={tl.metaRow}>
+          <Text
+            style={[
+              tl.time,
+              isFuture && tl.timeFuture,
+              isBranch && tl.timeBranch,
+            ]}
+          >
+            {isHead ? "current" : formatTime(item.entry.timestamp)}
+          </Text>
+          <PageChangeBadges entry={item.entry} parentEntry={item.parentEntry} />
+        </View>
       </View>
 
       {/* Selection indicator */}
@@ -825,10 +1325,15 @@ const tl = StyleSheet.create({
     fontSize: 9,
     fontWeight: "700",
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 1,
+  },
   time: {
     color: "#333",
     fontSize: 11,
-    marginTop: 1,
     fontVariant: ["tabular-nums"],
   },
   timeFuture: { color: "#222" },
@@ -942,7 +1447,6 @@ export function VersionHistoryModal({
           <DetailPanel
             entry={selectedEntry}
             currentEntry={currentEntry}
-            screenId={selectedEntry.slate.initial_screen_id}
             onRestore={handleRestore}
             onClose={() => setSelectedId(null)}
             isHead={selectedId === currentId}

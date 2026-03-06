@@ -80,6 +80,11 @@ export const ButtonRenderer = React.memo(function ButtonRenderer({
     alignItems: "center" as const,
     justifyContent: "center" as const,
     borderRadius: btnBorderRadius,
+    borderColor: component.borderColor ?? "transparent",
+    borderWidth: component.borderWidth ?? 0,
+    paddingHorizontal: component.paddingHorizontal,
+    paddingVertical: component.paddingVertical,
+    opacity: component.opacity ?? 1,
     ...(shadowEnabled
       ? {
           shadowColor: component.shadowColor ?? "#000000",

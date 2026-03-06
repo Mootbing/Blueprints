@@ -71,8 +71,8 @@ export interface ShareInfo {
   expiresAt?: number;
 }
 
-export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode">>;
-export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign">>;
+export type TextStyleUpdates = Partial<Pick<TextComponent, "fontSize" | "color" | "backgroundColor" | "fontFamily" | "fontWeight" | "textAlign" | "wrapMode" | "letterSpacing" | "lineHeight" | "textTransform" | "opacity">>;
+export type ButtonStyleUpdates = Partial<Pick<ButtonComponent, "label" | "textColor" | "backgroundColor" | "fontSize" | "fontFamily" | "fontWeight" | "textAlign" | "borderColor" | "borderWidth" | "paddingHorizontal" | "paddingVertical" | "opacity">>;
 export type IconStyleUpdates = Partial<Pick<IconComponent, "name" | "size" | "color">>;
 export type BorderStyleUpdates = {
   borderRadius?: number;
@@ -85,6 +85,10 @@ export type BorderStyleUpdates = {
   gap?: number;
   justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
+  flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
+  paddingHorizontal?: number;
+  paddingVertical?: number;
+  opacity?: number;
   // Scroll
   scrollable?: boolean;
   scrollDirection?: "vertical" | "horizontal";

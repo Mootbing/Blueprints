@@ -25,7 +25,7 @@ export const ListRenderer = React.memo(function ListRenderer({ component }: List
     imageShape === "circle" ? imageSize / 2 : imageShape === "rounded" ? 6 : 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor, borderRadius, overflow: "hidden" }}>
+    <View style={{ flex: 1, backgroundColor, borderRadius, overflow: "hidden", opacity: component.opacity ?? 1 }}>
       <ScrollView nestedScrollEnabled>
         {component.items.map((item, index) => (
           <View

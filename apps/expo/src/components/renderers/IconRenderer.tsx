@@ -24,7 +24,7 @@ export const IconRenderer = React.memo(function IconRenderer({
 }: IconRendererProps) {
   const library = component.library ?? "material";
   const size = editState?.fontSize ?? component.size ?? 24;
-  const color = editState?.color ?? component.color ?? "#1a1a1a";
+  const color = editState?.color ?? component.color ?? "#ffffff";
   const iconName = editState?.text ?? component.name;
 
   const didFireRef = useRef(false);
@@ -63,7 +63,7 @@ export const IconRenderer = React.memo(function IconRenderer({
   }
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", opacity: component.opacity ?? 1 }}>
       {/* Icon libraries have incompatible name type unions; `as any` is unavoidable here */}
       <IconComp name={iconName as any} size={size} color={color} />
     </View>

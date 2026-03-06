@@ -9,7 +9,7 @@ export interface DividerRendererProps {
 export const DividerRenderer = React.memo(function DividerRenderer({ component }: DividerRendererProps) {
   const direction = component.direction ?? "horizontal";
   const thickness = component.thickness ?? 1;
-  const color = component.color ?? "#1a1a1a";
+  const color = component.color ?? "#333333";
   const lineStyle = component.lineStyle ?? "solid";
 
   const isHorizontal = direction === "horizontal";

@@ -19,10 +19,10 @@ export const TextInputRenderer = React.memo(function TextInputRenderer({ compone
   const [value, setValue] = useState(component.defaultValue ?? "");
 
   const fontSize = component.fontSize ?? 16;
-  const color = component.color ?? "#1a1a1a";
-  const placeholderColor = component.placeholderColor ?? "#999999";
-  const backgroundColor = component.backgroundColor ?? "#ffffff";
-  const borderColor = component.borderColor ?? "#cccccc";
+  const color = component.color ?? "#ffffff";
+  const placeholderColor = component.placeholderColor ?? "#666666";
+  const backgroundColor = component.backgroundColor ?? "#1a1a1a";
+  const borderColor = component.borderColor ?? "#333333";
   const borderWidth = component.borderWidth ?? 1;
   const borderRadius = component.borderRadius ?? 8;
   const keyboardType = KEYBOARD_TYPE_MAP[component.keyboardType ?? "default"] ?? "default";

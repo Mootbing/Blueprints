@@ -389,7 +389,7 @@ function CanvasInner({
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const screen = slate.screens[screenId];
+  const screen = slate.screens[screenId] ?? Object.values(slate.screens)[0];
 
   const currentContainerComp = isDrilledIn && currentContainerId && screen
     ? findComponent(screen.components, currentContainerId)
@@ -1529,6 +1529,14 @@ function CanvasInner({
           setAgentPagerSessionId(null);
           setAgentPagerInitialMessage(null);
           openMenu();
+        }}
+        onPreviewDismiss={() => {
+          setAgentPagerOpen(false);
+          setAgentPagerSessionId(null);
+          setAgentPagerInitialMessage(null);
+          // Go to preview mode: close menu and exit edit mode
+          closeMenu();
+          if (isEditMode) onToggleEditMode();
         }}
         agentRunner={agentRunner}
         historyEntries={entries}

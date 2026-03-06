@@ -152,6 +152,44 @@ export function useAgentRunner({
   const currentHistoryIdRef = useRef(currentHistoryId);
   currentHistoryIdRef.current = currentHistoryId;
 
+  // Helper: build assistant message and create branch entry if changes were applied server-side
+  const buildAssistantMessage = useCallback(
+    async (response: any): Promise<ChatMessage> => {
+      const msg: ChatMessage = {
+        id: uuid(),
+        role: "assistant",
+        content: response?.text ?? "",
+        hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
+        thinking: response?.thinking || undefined,
+        thinkingSignature: response?.thinkingSignature,
+        timestamp: Date.now(),
+      };
+
+      // If the server applied changes, fetch the updated slate and create a local undo branch entry
+      if (response?.applied && onAddBranchEntryRef.current) {
+        try {
+          const supabase = getSupabaseClient();
+          const { data: slateRow } = await supabase
+            .from("user_slates")
+            .select("slate")
+            .eq("id", slateId)
+            .single();
+
+          if (slateRow?.slate) {
+            const description = response.description ?? "AI changes";
+            const entryId = onAddBranchEntryRef.current(slateRow.slate, description);
+            msg.branchEntryId = entryId;
+          }
+        } catch (err) {
+          console.warn("[useAgentRunner] Failed to create branch entry for applied changes:", err);
+        }
+      }
+
+      return msg;
+    },
+    [slateId],
+  );
+
   const historyMeta = useMemo(
     () =>
       historyEntries
@@ -258,20 +296,12 @@ export function useAgentRunner({
             thinkingTextRef.current += chunk;
             if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
           },
-          onComplete: (job) => {
+          onComplete: async (job) => {
             if (!mountedRef.current) return;
             setStreamingThinking(null);
 
             const response = job.response;
-            const assistantMsg: ChatMessage = {
-              id: uuid(),
-              role: "assistant",
-              content: response.text ?? "",
-              hasComponentJson: response.hasActionableJson ?? response.applied ?? false,
-              thinking: response.thinking || undefined,
-              thinkingSignature: response.thinkingSignature,
-              timestamp: Date.now(),
-            };
+            const assistantMsg = await buildAssistantMessage(response);
 
             const updatedMessages = [...newMessages, assistantMsg];
             updateSession(sessionId, {
@@ -335,16 +365,7 @@ export function useAgentRunner({
 
             if (mountedRef.current) {
               setStreamingThinking(null);
-              const response = result.response;
-              const assistantMsg: ChatMessage = {
-                id: uuid(),
-                role: "assistant",
-                content: response?.text ?? "",
-                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
-                thinking: response?.thinking || undefined,
-                thinkingSignature: response?.thinkingSignature,
-                timestamp: Date.now(),
-              };
+              const assistantMsg = await buildAssistantMessage(result.response);
               updateSession(sessionId, {
                 messages: [...newMessages, assistantMsg],
                 status: "idle",
@@ -382,7 +403,7 @@ export function useAgentRunner({
         if (mountedRef.current) setLoadingCount((c) => c - 1);
       }
     },
-    [sessionsRef, updateSession, slateId, getSlateVersion],
+    [sessionsRef, updateSession, slateId, getSlateVersion, buildAssistantMessage],
   );
 
   // ─── Mount-time reconciliation: resume tracking in-progress jobs, apply completed ones ───
@@ -421,7 +442,7 @@ export function useAgentRunner({
             thinkingTextRef.current += chunk;
             if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
           },
-          onComplete: (completedJob) => {
+          onComplete: async (completedJob) => {
             if (!mountedRef.current) return;
             setStreamingThinking(null);
 
@@ -433,15 +454,7 @@ export function useAgentRunner({
             if (alreadyHasReply) {
               console.log(`[useAgentRunner] Session ${sessionId} already has reply, skipping`);
             } else {
-              const assistantMsg: ChatMessage = {
-                id: uuid(),
-                role: "assistant",
-                content: response?.text ?? "",
-                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
-                thinking: response?.thinking || undefined,
-                thinkingSignature: response?.thinkingSignature,
-                timestamp: Date.now(),
-              };
+              const assistantMsg = await buildAssistantMessage(response);
               updateSession(sessionId, {
                 messages: [...(currentSession?.messages ?? []), assistantMsg],
                 status: "idle",
@@ -480,16 +493,7 @@ export function useAgentRunner({
                 (m) => m.role === "assistant" && m.timestamp > (job.created_at ? new Date(job.created_at).getTime() : 0)
               );
               if (!alreadyHasReply) {
-                const response = result.response;
-                const assistantMsg: ChatMessage = {
-                  id: uuid(),
-                  role: "assistant",
-                  content: response?.text ?? "",
-                  hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
-                  thinking: response?.thinking || undefined,
-                  thinkingSignature: response?.thinkingSignature,
-                  timestamp: Date.now(),
-                };
+                const assistantMsg = await buildAssistantMessage(result.response);
                 updateSession(sessionId, {
                   messages: [...(currentSession?.messages ?? []), assistantMsg],
                   status: "idle",
@@ -539,15 +543,7 @@ export function useAgentRunner({
         if (!lastMsg || lastMsg.role !== "user") continue;
 
         console.log(`[useAgentRunner] Applying completed job ${job.id} to session ${sessionId}`);
-        const assistantMsg: ChatMessage = {
-          id: uuid(),
-          role: "assistant",
-          content: job.response.text ?? "",
-          hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
-          thinking: job.response.thinking || undefined,
-          thinkingSignature: job.response.thinkingSignature,
-          timestamp: Date.now(),
-        };
+        const assistantMsg = await buildAssistantMessage(job.response);
         updateSession(sessionId, {
           messages: [...session.messages, assistantMsg],
           status: "idle",
@@ -567,7 +563,7 @@ export function useAgentRunner({
       Promise.all([
         getActiveJobs(slateId).catch(() => []),
         checkCompletedJobs(slateId).catch(() => []),
-      ]).then(([activeJobs, completedJobs]) => {
+      ]).then(async ([activeJobs, completedJobs]) => {
         // For active jobs that we're not already tracking, start polling
         for (const job of activeJobs) {
           const sessionId = job.session_id;
@@ -586,20 +582,12 @@ export function useAgentRunner({
           }
 
           const cleanup = subscribeToJob(job.id, {
-            onComplete: (completedJob) => {
+            onComplete: async (completedJob) => {
               if (!mountedRef.current) return;
               setStreamingThinking(null);
               const response = completedJob.response;
               const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
-              const assistantMsg: ChatMessage = {
-                id: uuid(),
-                role: "assistant",
-                content: response?.text ?? "",
-                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
-                thinking: response?.thinking || undefined,
-                thinkingSignature: response?.thinkingSignature,
-                timestamp: Date.now(),
-              };
+              const assistantMsg = await buildAssistantMessage(response);
               updateSession(sessionId, {
                 messages: [...(currentSession?.messages ?? []), assistantMsg],
                 status: "idle",
@@ -632,15 +620,7 @@ export function useAgentRunner({
           const session = sessionsRef.current.find((s) => s.id === sessionId);
           if (!session || session.status !== "running") continue;
 
-          const assistantMsg: ChatMessage = {
-            id: uuid(),
-            role: "assistant",
-            content: job.response.text ?? "",
-            hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
-            thinking: job.response.thinking || undefined,
-            thinkingSignature: job.response.thinkingSignature,
-            timestamp: Date.now(),
-          };
+          const assistantMsg = await buildAssistantMessage(job.response);
           updateSession(sessionId, {
             messages: [...session.messages, assistantMsg],
             status: "idle",
@@ -656,7 +636,7 @@ export function useAgentRunner({
       }).catch(() => {});
     });
     return () => subscription.remove();
-  }, [slateId, sessionsRef, updateSession]);
+  }, [slateId, sessionsRef, updateSession, buildAssistantMessage]);
 
   const deleteSessionWithAbort = useCallback(
     (id: string) => {

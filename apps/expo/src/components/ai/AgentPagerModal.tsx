@@ -75,6 +75,8 @@ function NewAgentPage({ width }: { width: number }) {
 interface AgentPagerModalProps {
   visible: boolean;
   onClose: () => void;
+  /** Called when Preview is tapped — dismisses pane and goes straight to preview mode */
+  onPreviewDismiss?: () => void;
   agentRunner?: ReturnType<typeof useAgentRunner>;
   historyEntries?: HistoryEntry[];
   currentHistoryId?: string;
@@ -90,6 +92,7 @@ interface AgentPagerModalProps {
 export function AgentPagerModal({
   visible,
   onClose,
+  onPreviewDismiss,
   agentRunner,
   historyEntries,
   currentHistoryId,
@@ -174,10 +177,13 @@ export function AgentPagerModal({
   const handlePreview = useCallback(
     (branchEntryId: string) => {
       onRestoreToId?.(branchEntryId);
-      if (isEditMode) onToggleEditMode?.();
-      onClose();
+      if (onPreviewDismiss) {
+        onPreviewDismiss();
+      } else {
+        onClose();
+      }
     },
-    [onRestoreToId, isEditMode, onToggleEditMode, onClose],
+    [onRestoreToId, onPreviewDismiss, onClose],
   );
 
   const handleUndoPreview = useCallback(

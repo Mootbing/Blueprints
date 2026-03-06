@@ -28,8 +28,19 @@ interface ScreenOp {
   components?: Component[];
 }
 
+interface ScreenVariable {
+  id: string;
+  name: string;
+  type: string;
+  defaultValue: unknown;
+  scope: "app" | "screen";
+  screenId?: string;
+  persist?: boolean;
+}
+
 interface ScreenMgmtResult {
   screenOps: ScreenOp[];
+  variables?: ScreenVariable[];
   description: string;
 }
 
@@ -55,10 +66,21 @@ function parseScreenOps(text: string): ScreenMgmtResult {
     }
     ops.push(op);
   }
-  return { screenOps: ops, description: parsed.description ?? "Screen management" };
+  const variables: ScreenVariable[] | undefined = Array.isArray(parsed.variables)
+    ? parsed.variables.map((v: any) => ({
+        id: v.id,
+        name: v.name,
+        type: v.type,
+        defaultValue: v.defaultValue,
+        scope: v.scope ?? "screen",
+        screenId: v.screenId,
+        persist: v.persist,
+      }))
+    : undefined;
+  return { screenOps: ops, variables, description: parsed.description ?? "Screen management" };
 }
 
-function applyScreenOps(slate: AppSlate, result: ScreenMgmtResult): AppSlate {
+function applyScreenOps(slate: AppSlate, screenId: string, result: ScreenMgmtResult): AppSlate {
   let updated = { ...slate, screens: { ...slate.screens } };
   for (const op of result.screenOps) {
     switch (op.op) {
@@ -103,6 +125,30 @@ function applyScreenOps(slate: AppSlate, result: ScreenMgmtResult): AppSlate {
       }
     }
   }
+
+  // Apply variables if present
+  if (result.variables && result.variables.length > 0) {
+    for (const v of result.variables) {
+      const variable = { id: v.id, name: v.name, type: v.type, defaultValue: v.defaultValue, persist: v.persist };
+      if (v.scope === "app") {
+        const existing = updated.variables ?? [];
+        if (!existing.some((e: any) => e.name === v.name)) {
+          updated = { ...updated, variables: [...existing, variable] };
+        }
+      } else {
+        // Screen-scoped: use explicit screenId from the variable, or fall back to the current screen
+        const targetScreenId = v.screenId || screenId;
+        const screen = updated.screens[targetScreenId];
+        if (screen) {
+          const existing = screen.variables ?? [];
+          if (!existing.some((e: any) => e.name === v.name)) {
+            updated.screens[targetScreenId] = { ...screen, variables: [...existing, variable] };
+          }
+        }
+      }
+    }
+  }
+
   return updated;
 }
 
@@ -121,7 +167,7 @@ export function buildBranchSlate(
     if (containsScreenOps(responseText)) {
       const result = parseScreenOps(responseText);
       return {
-        slate: applyScreenOps(slate, result),
+        slate: applyScreenOps(slate, screenId, result),
         description: result.description,
       };
     }

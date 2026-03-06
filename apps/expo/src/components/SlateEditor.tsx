@@ -1018,20 +1018,26 @@ export function SlateEditor({
         const loadedBp = bp ?? defaultSlate;
 
         // Restore history if available, otherwise just set the raw slate
+        let activeSlate: AppSlate;
         if (savedHistory && savedHistory.entries.length > 0) {
           loadHistory(savedHistory.entries, savedHistory.currentId, savedHistory.redoMap);
+          // Derive screen ID from the active history entry's slate (not loadedBp),
+          // because the server may have modified the slate since history was saved.
+          const currentEntry = savedHistory.entries.find((e: any) => e.id === savedHistory.currentId);
+          activeSlate = currentEntry?.slate ?? loadedBp;
         } else {
           setSlateRaw(loadedBp);
+          activeSlate = loadedBp;
         }
-        setCurrentScreenId(loadedBp.initial_screen_id);
+        setCurrentScreenId(activeSlate.initial_screen_id);
 
         if (editMode !== null) setIsEditMode(editMode === "true");
         isEditModeLoaded.current = true;
 
-        // Init runtime store
-        const screenId = loadedBp.initial_screen_id;
-        const screen = loadedBp.screens[screenId];
-        const appVars = loadedBp.variables ?? [];
+        // Init runtime store from the active slate (which may differ from loadedBp if history was restored)
+        const screenId = activeSlate.initial_screen_id;
+        const screen = activeSlate.screens[screenId];
+        const appVars = activeSlate.variables ?? [];
         const screenVars = screen?.variables ?? [];
         const persisted = persistedJson ? JSON.parse(persistedJson) : {};
         initFromSlate(appVars, screenVars, persisted);
@@ -1297,20 +1303,22 @@ export function SlateEditor({
 
   const handleAddScreen = useCallback(() => {
     const newId = uuid();
+    const screenName = `Screen ${Object.keys(slateRef.current.screens).length + 1}`;
     const newScreen: Screen = {
       id: newId,
-      name: `Screen ${Object.keys(slateRef.current.screens).length + 1}`,
+      name: screenName,
       components: [makeBackgroundShape()],
     };
     setSlate((prev) => ({
       ...prev,
       screens: { ...prev.screens, [newId]: newScreen },
-    }), "Added screen");
+    }), `Added page '${screenName}'`);
     setCurrentScreenId(newId);
     setNavStack([]);
   }, [setSlate]);
 
   const handleDeleteScreen = useCallback((screenId: string) => {
+    const screenName = slateRef.current.screens[screenId]?.name ?? "Unknown";
     setSlate((prev) => {
       const ids = Object.keys(prev.screens);
       if (ids.length <= 1) return prev;
@@ -1320,7 +1328,7 @@ export function SlateEditor({
         ? remainingIds[0]
         : prev.initial_screen_id;
       return { ...prev, screens: rest, initial_screen_id: newInitial };
-    }, "Deleted screen");
+    }, `Deleted page '${screenName}'`);
     if (currentScreenIdRef.current === screenId) {
       const bp = slateRef.current;
       const ids = Object.keys(bp.screens).filter((id) => id !== screenId);
@@ -1330,6 +1338,7 @@ export function SlateEditor({
   }, [setSlate]);
 
   const handleRenameScreen = useCallback((screenId: string, name: string) => {
+    const oldName = slateRef.current.screens[screenId]?.name ?? "Unknown";
     setSlate((prev) => {
       const screen = prev.screens[screenId];
       if (!screen) return prev;
@@ -1337,11 +1346,12 @@ export function SlateEditor({
         ...prev,
         screens: { ...prev.screens, [screenId]: { ...screen, name } },
       };
-    }, "Renamed screen");
+    }, `Renamed page '${oldName}' to '${name}'`);
   }, [setSlate]);
 
   const handleSetInitialScreen = useCallback((screenId: string) => {
-    setSlate((prev) => ({ ...prev, initial_screen_id: screenId }), "Set initial screen");
+    const screenName = slateRef.current.screens[screenId]?.name ?? "Unknown";
+    setSlate((prev) => ({ ...prev, initial_screen_id: screenId }), `Set '${screenName}' as home page`);
   }, [setSlate]);
 
 

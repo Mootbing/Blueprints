@@ -232,6 +232,7 @@ async function processAgentMessage(
 
   // Apply changes to slate if actionable
   let applied = false;
+  let description: string | undefined;
   const actionable = hasActionableJson(fullResponse);
 
   if (actionable && slateId && screenId) {
@@ -245,6 +246,7 @@ async function processAgentMessage(
     if (slateRow) {
       const branchResult = buildBranchSlate(slateRow.slate, screenId, fullResponse);
       if (branchResult) {
+        description = branchResult.description;
         // CAS write: only update if version matches
         const baseVersion = job.base_slate_version;
         const { error: updateError } = await sb
@@ -262,7 +264,7 @@ async function processAgentMessage(
             stopReason: "end_turn",
             applied: false,
             conflict: true,
-            description: branchResult.description,
+            description,
           };
         }
         applied = true;
@@ -277,6 +279,7 @@ async function processAgentMessage(
     stopReason: "end_turn",
     applied,
     hasActionableJson: actionable,
+    description,
   };
 }
 

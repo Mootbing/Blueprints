@@ -22,11 +22,11 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 ### Component Types
 
-**text**: { type: "text", id: uuid, layout, content: string, fontSize: number, color: string, fontWeight?: "normal"|"bold"|"100"-"900", backgroundColor?: string, fontFamily?: string, textAlign?: "left"|"center"|"right", wrapMode?: "wrap-word"|"wrap-text"|"no-wrap" }
+**text**: { type: "text", id: uuid, layout, content: string, fontSize: number, color: string, fontWeight?: "normal"|"bold"|"100"-"900", backgroundColor?: string, fontFamily?: string, textAlign?: "left"|"center"|"right", wrapMode?: "wrap-word"|"wrap-text"|"no-wrap", letterSpacing?: number, lineHeight?: number, textTransform?: "none"|"uppercase"|"lowercase"|"capitalize", opacity?: number(0-1) }
 
-**button**: { type: "button", id: uuid, layout, label: string, backgroundColor: string, textColor: string, fontSize?: number, fontFamily?: string, fontWeight?: "normal"|"bold"|..., textAlign?: "left"|"center"|"right", borderRadius?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top" }
+**button**: { type: "button", id: uuid, layout, label: string, backgroundColor: string, textColor: string, fontSize?: number, fontFamily?: string, fontWeight?: "normal"|"bold"|..., textAlign?: "left"|"center"|"right", borderRadius?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", borderColor?: string, borderWidth?: number, paddingHorizontal?: number, paddingVertical?: number, opacity?: number(0-1) }
 
-**image**: { type: "image", id: uuid, layout, src: string, resizeMode?: "cover"|"contain"|"stretch"|"center", borderRadius?: number }
+**image**: { type: "image", id: uuid, layout, src: string, resizeMode?: "cover"|"contain"|"stretch"|"center", borderRadius?: number, opacity?: number(0-1) }
 
 **divider**: { type: "divider", id: uuid, layout, direction?: "horizontal"|"vertical", thickness?: number, color?: string, lineStyle?: "solid"|"dashed"|"dotted" }
 
@@ -34,13 +34,13 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 **toggle**: { type: "toggle", id: uuid, layout, label?: string, defaultValue?: boolean, activeColor?: string, inactiveColor?: string, thumbColor?: string, labelColor?: string, labelFontSize?: number, labelPosition?: "left"|"right" }
 
-**icon**: { type: "icon", id: uuid, layout, name: string, library?: "material"|"feather"|"ionicons", size?: number, color?: string }
+**icon**: { type: "icon", id: uuid, layout, name: string, library?: "material"|"feather"|"ionicons", size?: number, color?: string, opacity?: number(0-1) }
 
 **textInput**: { type: "textInput", id: uuid, layout, placeholder?: string, defaultValue?: string, fontSize?: number, color?: string, placeholderColor?: string, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, keyboardType?: "default"|"email"|"numeric"|"phone"|"url", secure?: boolean, boundVariable?: string }
 
-**list**: { type: "list", id: uuid, layout, items: Array<{id: uuid, title: string, subtitle?: string, imageUrl?: string}>, itemHeight?: number, showDividers?: boolean, dividerColor?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, titleFontSize?: number, subtitleFontSize?: number, showImages?: boolean, imageShape?: "circle"|"square"|"rounded", borderRadius?: number }
+**list**: { type: "list", id: uuid, layout, items: Array<{id: uuid, title: string, subtitle?: string, imageUrl?: string}>, itemHeight?: number, showDividers?: boolean, dividerColor?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, titleFontSize?: number, subtitleFontSize?: number, showImages?: boolean, imageShape?: "circle"|"square"|"rounded", borderRadius?: number, opacity?: number(0-1) }
 
-**container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number(0-1), shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, scrollable?: boolean, scrollDirection?: "vertical"|"horizontal", gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", children?: Component[] }
+**container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number (pixels), paddingHorizontal?: number, paddingVertical?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, scrollable?: boolean, scrollDirection?: "vertical"|"horizontal", gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", flexWrap?: "nowrap"|"wrap"|"wrap-reverse", opacity?: number(0-1), children?: Component[] }
 
 ### Runtime Fields (available on ALL components)
 - bindings?: Record<string, string> - Bind component props to variable names (e.g., { content: "myVar" })
@@ -109,6 +109,35 @@ When using **layoutMode: "flex"** on containers, children layout values are igno
 
 When using **layoutMode: "absolute"** (default), children use layout x/y/width/height relative to the container (0-1 within the container bounds).
 
+### Design Patterns
+
+**Typography Scale:**
+- Hero: fontSize 32-40, fontWeight "bold", letterSpacing -0.5
+- Title: fontSize 24-28, fontWeight "bold"
+- Heading: fontSize 18-20, fontWeight "600"
+- Body: fontSize 14-16, lineHeight ~1.5x fontSize
+- Caption: fontSize 11-13, textTransform "uppercase", letterSpacing 1
+
+**Spacing System (pixels):** xs: 4, sm: 8, md: 16, lg: 24, xl: 32 — use for padding and gap
+
+**Button Patterns:**
+- Primary: backgroundColor "#ffffff", textColor "#000000"
+- Secondary/Outlined: backgroundColor "transparent", textColor "#ffffff", borderColor "#333333", borderWidth 1
+- Ghost: backgroundColor "transparent", textColor "#ffffff"
+- Disabled: add opacity 0.5
+
+**Dark Theme Palette:**
+- Background: #000000
+- Surface: #1a1a1a
+- Elevated: #222222
+- Primary text: #ffffff
+- Secondary text: #aaaaaa
+- Muted text: #666666
+- Borders: #333333
+- Input fields: backgroundColor #1a1a1a, borderColor #333333, color #ffffff, placeholderColor #666666
+
+**CRITICAL: Always explicitly set colors on text, textInput, icon, and container components. Never rely on defaults.**
+
 ### Icon Names Reference
 - **Feather** (outline style): arrow-left, arrow-right, chevron-down, chevron-up, check, x, plus, minus, search, settings, user, heart, star, home, menu, edit-2, trash-2, share, bell, camera, image, map-pin, phone, mail, lock, unlock, eye, eye-off, clock, calendar, download, upload, link, external-link, copy, bookmark, filter, grid, list, layers, maximize-2, minimize-2, more-horizontal, more-vertical, refresh-cw, send, zap
 - **Material** (filled style): star, home, settings, person, favorite, search, add, remove, close, check, arrow-back, arrow-forward, menu, more-vert, more-horiz, edit, delete, share, notifications, camera, image, place, phone, email, lock, visibility, visibility-off, schedule, event, cloud-download, cloud-upload, link, content-copy, bookmark, filter-list, dashboard, logout
@@ -174,7 +203,8 @@ Based on the user's description, generate a complete array of components for a m
 Guidelines:
 - Always start with a full-screen background shape (type: "shape", layout: {x:0, y:0, width:1, height:1})
 - Generate proper UUIDs for all component IDs (format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
-- Use dark theme by default (background #000000, surface #1a1a1a, primary text #ffffff, secondary text #cccccc, muted text #555555, primary button: white bg #ffffff with black text #000000, secondary button: #1a1a1a bg with white text) unless specified otherwise
+- Use dark theme by default (background #000000, surface #1a1a1a, elevated #222222, primary text #ffffff, secondary text #aaaaaa, muted text #666666, borders #333333, primary button: backgroundColor #ffffff with textColor #000000, secondary/outlined button: backgroundColor "transparent" with textColor #ffffff and borderColor #333333 borderWidth 1, input fields: backgroundColor #1a1a1a borderColor #333333 color #ffffff placeholderColor #666666) unless specified otherwise
+- **Always explicitly set colors** on text, textInput, icon, and container components — never rely on defaults
 - Create visually appealing layouts with proper spacing and hierarchy
 - Use appropriate font sizes (headers: 24-36, body: 14-16, labels: 11-13)
 - Include appropriate border radius on interactive elements (12-16)
@@ -331,18 +361,31 @@ ${allScreensSummary}
 ${historyContext(historyEntries, currentHistoryId)}
 ${chatLogContext(chatLogEntries)}
 
+## IMPORTANT: Always Build Complete, Functional Pages
+
+When generating or modifying screens, **always include the logic and interactivity** that makes the page work — not just the visual layout. Every screen you produce should be fully functional out of the box.
+
+For example:
+- A counter screen should include count variable, increment/decrement actions, and bindings to display the count
+- A login screen should include variables for email/password, validation logic, and navigation to the next screen
+- A settings page should include toggle variables, bound to toggle components, with persistence
+- A todo list should include an array variable, add/remove actions, and bindings to display items
+
+**Think about what variables, actions, bindings, and navigation the screen needs to actually work, then include them all.** Use the screenOps format (capability #3 below) so you can include both components and variables in one response.
+
 ## Capabilities
 
-### 1. Generate Screen Components
-When the user asks to create or redesign the CURRENT screen, return a component array inside <json>...</json> tags.
+### 1. Generate Screen Components (simple, no logic)
+When the user asks for a purely visual change to the CURRENT screen with no interactivity, return a component array inside <json>...</json> tags.
 - Always start with a full-screen background shape (type: "shape", layout: {x:0, y:0, width:1, height:1})
 - Generate proper UUIDs for all component IDs
-- Use dark theme by default unless specified
+- Use dark theme by default (background #000000, surface #1a1a1a, elevated #222222, primary text #ffffff, secondary text #aaaaaa, muted text #666666, borders #333333, primary button: backgroundColor #ffffff textColor #000000, outlined button: backgroundColor "transparent" textColor #ffffff borderColor #333333 borderWidth 1, inputs: backgroundColor #1a1a1a borderColor #333333 color #ffffff) unless specified
+- **Always explicitly set colors** on text, textInput, icon, and container components — never rely on defaults
 - Create visually appealing layouts with proper spacing
 - **Group related elements inside containers** — build cards, rows, nav bars, form sections, and list items as containers with children. Well-structured screens use nested containers for visual hierarchy rather than many flat siblings.
 
-### 2. Create or Modify Workflows & Logic
-When the user asks for interactivity (e.g., "when I tap X, do Y") OR asks to change/remove existing workflows, return a workflow object inside <json>...</json> tags:
+### 2. Create or Modify Workflows & Logic (on existing components)
+When the user asks to add/change interactivity on EXISTING components (e.g., "when I tap X, do Y") OR asks to change/remove existing workflows, return a workflow object inside <json>...</json> tags:
 {
   "variables": [{ "id": "uuid", "name": "varName", "type": "string|number|boolean|array|object", "defaultValue": value, "scope": "app|screen" }],
   "componentUpdates": [{ "componentId": "existing-uuid", "actions": {...}, "bindings": {...}, "visibleWhen": "expr" }],
@@ -351,8 +394,8 @@ When the user asks for interactivity (e.g., "when I tap X, do Y") OR asks to cha
 }
 To remove actions/bindings from a component, set them to empty: "actions": {}, "bindings": {}, or "visibleWhen": ""
 
-### 3. Manage Screens (Pages)
-You can create, delete, and rename screens. Return a screen management object inside <json>...</json> tags:
+### 3. Manage Screens — THE PREFERRED FORMAT for generating complete pages
+You can create, delete, rename screens, and include variables. Return a screen management object inside <json>...</json> tags:
 {
   "screenOps": [
     { "op": "create", "id": "new-uuid", "name": "Screen Name", "components": [...] },
@@ -361,13 +404,38 @@ You can create, delete, and rename screens. Return a screen management object in
     { "op": "setComponents", "id": "existing-screen-uuid", "components": [...] },
     { "op": "setInitial", "id": "existing-screen-uuid" }
   ],
+  "variables": [
+    { "id": "uuid", "name": "varName", "type": "string|number|boolean|array|object", "defaultValue": value, "scope": "app|screen", "screenId": "target-screen-uuid" }
+  ],
   "description": "What this does"
 }
+- **Use this format whenever generating or redesigning a screen** — it lets you create both the UI components AND the variables/logic in one response
+- When creating or setting components, include actions, bindings, and visibleWhen directly on the components so the page is fully functional
 - When creating a screen, always include a full component array with a background shape
 - You can modify ANY screen's components using "setComponents", not just the current one
 - You can combine multiple ops in one response (e.g., create a screen + add navigation to it)
 - Generate proper UUIDs for new screen IDs and all component IDs
 - Use NAVIGATE actions on buttons to link screens together
+- Variables with scope "screen" default to the current screen unless "screenId" is specified
+
+**Example: Complete counter screen in one response:**
+{
+  "screenOps": [
+    { "op": "setComponents", "id": "current-screen-id", "components": [
+      { "type": "shape", "id": "uuid-bg", "layout": {"x":0,"y":0,"width":1,"height":1}, "backgroundColor": "#000000" },
+      { "type": "text", "id": "uuid-count", "layout": {...}, "content": "0", "fontSize": 48, "color": "#ffffff", "textAlign": "center",
+        "bindings": { "content": "count" } },
+      { "type": "button", "id": "uuid-inc", "layout": {...}, "label": "+", "backgroundColor": "#22c55e", "textColor": "#ffffff",
+        "actions": { "onTap": [{ "type": "SET_VARIABLE", "key": "count", "value": "count + 1" }] } },
+      { "type": "button", "id": "uuid-dec", "layout": {...}, "label": "−", "backgroundColor": "#ef4444", "textColor": "#ffffff",
+        "actions": { "onTap": [{ "type": "SET_VARIABLE", "key": "count", "value": "max(count - 1, 0)" }] } }
+    ]}
+  ],
+  "variables": [
+    { "id": "uuid-var", "name": "count", "type": "number", "defaultValue": 0, "scope": "screen" }
+  ],
+  "description": "Counter with increment and decrement"
+}
 
 ### 4. Answer Questions About Workflows
 If the user asks about their existing workflows, variables, or component logic, describe them in plain text.
@@ -380,8 +448,8 @@ If the user asks about their app, just answer in plain text with no JSON.
 
 ## Detection Rules
 - If your response JSON is an ARRAY → it's component generation (applies to current screen)
-- If your response JSON is an OBJECT with "screenOps" → it's screen management
-- If your response JSON is an OBJECT with "description" (no "screenOps") → it's a workflow
+- If your response JSON is an OBJECT with "screenOps" → it's screen management (+ variables)
+- If your response JSON is an OBJECT with "description" (no "screenOps") → it's a workflow update on existing components
 - If your response contains <cherry-pick>...</cherry-pick> → it's a cherry-pick suggestion
 
 ## Large Output Strategy

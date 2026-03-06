@@ -122,6 +122,10 @@ export const TextComponentSchema = z.object({
   fontFamily: z.string().optional(),
   textAlign: z.enum(["left", "center", "right"]).optional(),
   wrapMode: z.enum(["wrap-word", "wrap-text", "no-wrap"]).optional(),
+  letterSpacing: z.number().optional(),
+  lineHeight: z.number().positive().optional(),
+  textTransform: z.enum(["none", "uppercase", "lowercase", "capitalize"]).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   ...runtimeFields,
 });
 export type TextComponent = z.infer<typeof TextComponentSchema>;
@@ -148,6 +152,11 @@ export const ButtonComponentSchema = z.object({
   gradientEnabled: z.boolean().optional(),
   gradientColors: z.array(z.string().min(1)).optional(),
   gradientDirection: z.enum(["to-bottom", "to-right", "to-bottom-right", "to-top"]).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  paddingHorizontal: z.number().min(0).optional(),
+  paddingVertical: z.number().min(0).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   ...runtimeFields,
 });
 export type ButtonComponent = z.infer<typeof ButtonComponentSchema>;
@@ -159,6 +168,7 @@ export const ImageComponentSchema = z.object({
   src: z.string(),
   resizeMode: z.enum(["cover", "contain", "stretch", "center"]).optional(),
   borderRadius: z.number().min(0).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   ...runtimeFields,
 });
 export type ImageComponent = z.infer<typeof ImageComponentSchema>;
@@ -220,6 +230,7 @@ export const IconComponentSchema = z.object({
   library: z.enum(["material", "feather", "ionicons"]).optional(),
   size: z.number().positive().optional(),
   color: z.string().min(1).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   ...runtimeFields,
 });
 export type IconComponent = z.infer<typeof IconComponentSchema>;
@@ -269,6 +280,7 @@ export const ListComponentSchema = z.object({
   showImages: z.boolean().optional(),
   imageShape: z.enum(["circle", "square", "rounded"]).optional(),
   borderRadius: z.number().min(0).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   ...runtimeFields,
 });
 export type ListComponent = z.infer<typeof ListComponentSchema>;
@@ -311,6 +323,10 @@ export interface ContainerComponent {
   gap?: number;
   justifyContent?: "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly";
   alignItems?: "flex-start" | "center" | "flex-end" | "stretch";
+  flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
+  paddingHorizontal?: number;
+  paddingVertical?: number;
+  opacity?: number;
   children?: Component[];
   bindings?: Record<string, string>;
   actions?: Record<string, Action[]>;
@@ -327,7 +343,7 @@ export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object(
   borderColor: z.string().min(1).optional(),
   borderWidth: z.number().min(0).optional(),
   borderRadius: z.number().min(0).optional(),
-  padding: NormalizedFloat.optional(),
+  padding: z.number().min(0).optional(),
   shadowEnabled: z.boolean().optional(),
   shadowColor: z.string().min(1).optional(),
   shadowOpacity: z.number().min(0).max(1).optional(),
@@ -342,6 +358,10 @@ export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object(
   gap: z.number().min(0).optional(),
   justifyContent: z.enum(["flex-start", "center", "flex-end", "space-between", "space-around", "space-evenly"]).optional(),
   alignItems: z.enum(["flex-start", "center", "flex-end", "stretch"]).optional(),
+  flexWrap: z.enum(["nowrap", "wrap", "wrap-reverse"]).optional(),
+  paddingHorizontal: z.number().min(0).optional(),
+  paddingVertical: z.number().min(0).optional(),
+  opacity: z.number().min(0).max(1).optional(),
   children: z.lazy(() => z.array(ComponentSchema)).optional(),
   ...runtimeFields,
 });

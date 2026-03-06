@@ -41,11 +41,11 @@ export const ContainerRenderer = React.memo(function ContainerRenderer({
   onChildPickImage,
 }: ContainerRendererProps) {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const backgroundColor = component.backgroundColor ?? "#ffffff";
+  const backgroundColor = component.backgroundColor ?? "transparent";
   const borderColor = component.borderColor;
   const borderWidth = component.borderWidth ?? 0;
   const borderRadius = component.borderRadius ?? 12;
-  const padding = (component.padding ?? 0) * 100;
+  const padding = component.padding ?? 0;
   const shadowEnabled = component.shadowEnabled ?? false;
   const isFlexLayout = component.layoutMode === "flex";
   const scrollable = component.scrollable ?? false;
@@ -141,6 +141,9 @@ export const ContainerRenderer = React.memo(function ContainerRenderer({
         borderWidth,
         borderColor: borderColor ?? "transparent",
         padding,
+        paddingHorizontal: component.paddingHorizontal,
+        paddingVertical: component.paddingVertical,
+        opacity: component.opacity ?? 1,
         overflow: "hidden",
         ...(isFlexLayout
           ? {
@@ -148,6 +151,7 @@ export const ContainerRenderer = React.memo(function ContainerRenderer({
               gap: component.gap ?? 0,
               justifyContent: component.justifyContent ?? "flex-start",
               alignItems: component.alignItems ?? "stretch",
+              flexWrap: component.flexWrap ?? "nowrap",
             }
           : {}),
         ...(shadowEnabled
