@@ -130,6 +130,8 @@ interface DisplayItem {
   isFirst: boolean;
   isLast: boolean;
   branchCount: number;
+  isBranchStart: boolean;
+  isBranchEnd: boolean;
 }
 
 function buildDisplayList(
@@ -205,6 +207,8 @@ function buildDisplayList(
     const parentEntry = it.entry.parentId
       ? lookup.get(it.entry.parentId)
       : undefined;
+    const prevIt = i > 0 ? allItems[i - 1] : null;
+    const nextIt = i < allItems.length - 1 ? allItems[i + 1] : null;
     items.push({
       ...it,
       parentEntry,
@@ -212,6 +216,10 @@ function buildDisplayList(
       isLast: i === allItems.length - 1,
       branchCount:
         it.status === "head" || it.status === "active" ? branchCount : 0,
+      isBranchStart:
+        it.status === "branch" && (!prevIt || prevIt.status !== "branch"),
+      isBranchEnd:
+        it.status === "branch" && (!nextIt || nextIt.status !== "branch"),
     });
   }
   return items;
@@ -1168,6 +1176,9 @@ function TimelineRow({
     ? "rgba(245,158,11,0.2)"
     : "#1a1a1a";
 
+  // Trunk center = base padding (12) + half gutter width (16) = 28
+  const TRUNK_CENTER = 28;
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1178,9 +1189,56 @@ function TimelineRow({
       ]}
       onPress={onSelect}
     >
+      {/* Trunk continuation line through branch rows */}
+      {isBranch && (
+        <View
+          style={{
+            position: "absolute",
+            left: TRUNK_CENTER - 1,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            backgroundColor: "#1a1a1a",
+            borderRadius: 1,
+          }}
+        />
+      )}
+
+      {/* Fork connector: horizontal line from trunk to branch gutter on first branch item */}
+      {isBranch && item.isBranchStart && (
+        <View
+          style={{
+            position: "absolute",
+            left: TRUNK_CENTER,
+            top: "50%",
+            marginTop: -1,
+            width: item.depth * 28,
+            height: 2,
+            backgroundColor: "rgba(245,158,11,0.35)",
+            borderRadius: 1,
+          }}
+        />
+      )}
+
+      {/* Merge connector: horizontal line from branch back to trunk on last branch item */}
+      {isBranch && item.isBranchEnd && (
+        <View
+          style={{
+            position: "absolute",
+            left: TRUNK_CENTER,
+            top: "50%",
+            marginTop: -1,
+            width: item.depth * 28,
+            height: 2,
+            backgroundColor: "rgba(245,158,11,0.35)",
+            borderRadius: 1,
+          }}
+        />
+      )}
+
       {/* Gutter: line + dot */}
       <View style={tl.gutter}>
-        {!item.isFirst && (
+        {!item.isFirst && !(isBranch && item.isBranchStart) && (
           <View style={[tl.lineTop, { backgroundColor: lineColor }]} />
         )}
         <View
@@ -1190,7 +1248,7 @@ function TimelineRow({
             dotBorder,
           ]}
         />
-        {!item.isLast && (
+        {!item.isLast && !(isBranch && item.isBranchEnd) && (
           <View style={[tl.lineBottom, { backgroundColor: lineColor }]} />
         )}
       </View>

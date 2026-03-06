@@ -38,11 +38,27 @@ export function ContextMenu({
 }: ContextMenuProps) {
   const { width: screenW } = Dimensions.get("window");
 
-  const hasUndoRedo = onUndo != null || onRedo != null;
-  let itemCount = hasComponent ? (onAIChat ? 4 : 3) : 1;
-  const menuHeight = itemCount * ITEM_HEIGHT + (itemCount - 1) * StyleSheet.hairlineWidth;
+  const showUndoBar = onUndo != null || onRedo != null;
+
+  // Build items list based on context
+  const items: Array<{ key: string; icon: React.ReactNode; label: string; color?: string; disabled?: boolean; onPress?: () => void }> = [];
+
+  if (hasComponent) {
+    items.push({ key: "copy", icon: <Feather name="copy" size={18} color="#ccc" />, label: "Copy", onPress: onCopy });
+    items.push({ key: "paste", icon: <Feather name="clipboard" size={18} color={hasClipboard ? "#ccc" : "#333"} />, label: "Paste", disabled: !hasClipboard, onPress: hasClipboard ? onPaste : undefined });
+    items.push({ key: "duplicate", icon: <Feather name="layers" size={18} color="#ccc" />, label: "Duplicate", onPress: onDuplicate });
+    if (onAIChat) {
+      items.push({ key: "ai", icon: <MaterialCommunityIcons name="creation" size={20} color="#f5c542" />, label: "Change with AI", color: "#f5c542", onPress: onAIChat });
+    }
+  } else {
+    items.push({ key: "paste", icon: <Feather name="clipboard" size={18} color={hasClipboard ? "#ccc" : "#333"} />, label: "Paste", disabled: !hasClipboard, onPress: hasClipboard ? onPaste : undefined });
+  }
+
+
   const UNDO_BAR_HEIGHT = 44;
-  const totalHeight = menuHeight + (hasUndoRedo ? UNDO_BAR_HEIGHT + 6 : 0);
+  const UNDO_BAR_GAP = 6;
+  const menuHeight = items.length * ITEM_HEIGHT + (items.length - 1) * StyleSheet.hairlineWidth;
+  const totalHeight = menuHeight + (showUndoBar ? UNDO_BAR_HEIGHT + UNDO_BAR_GAP : 0);
 
   // Adjust position to stay within screen bounds
   let left = x - MENU_WIDTH / 2;
@@ -54,94 +70,48 @@ export function ContextMenu({
   return (
     <>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={{ position: "absolute", left, top, zIndex: 1001 }}>
-        {hasUndoRedo && (
+      <View style={{ position: "absolute", left, top, zIndex: 1001, alignItems: "center" }}>
+        {showUndoBar && (
           <View style={styles.undoBar}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.undoBtn,
-                !canUndo && styles.menuItemDisabled,
-                pressed && canUndo && styles.menuItemPressed,
-              ]}
-              onPress={canUndo ? onUndo : undefined}
-              disabled={!canUndo}
-            >
-              <Feather name="corner-up-left" size={20} color={canUndo ? "#ccc" : "#444"} />
-            </Pressable>
-            <View style={styles.undoDivider} />
-            <Pressable
-              style={({ pressed }) => [
-                styles.undoBtn,
-                !canRedo && styles.menuItemDisabled,
-                pressed && canRedo && styles.menuItemPressed,
-              ]}
-              onPress={canRedo ? onRedo : undefined}
-              disabled={!canRedo}
-            >
-              <Feather name="corner-up-right" size={20} color={canRedo ? "#ccc" : "#444"} />
-            </Pressable>
+            {onUndo != null && (
+              <Pressable
+                style={({ pressed }) => [styles.undoBtn, !canUndo && styles.menuItemDisabled, pressed && canUndo && styles.menuItemPressed]}
+                onPress={canUndo ? onUndo : undefined}
+                disabled={!canUndo}
+              >
+                <Feather name="corner-up-left" size={20} color={canUndo ? "#ccc" : "#555"} />
+              </Pressable>
+            )}
+            {onUndo != null && onRedo != null && <View style={styles.undoDivider} />}
+            {onRedo != null && (
+              <Pressable
+                style={({ pressed }) => [styles.undoBtn, !canRedo && styles.menuItemDisabled, pressed && canRedo && styles.menuItemPressed]}
+                onPress={canRedo ? onRedo : undefined}
+                disabled={!canRedo}
+              >
+                <Feather name="corner-up-right" size={20} color={canRedo ? "#ccc" : "#555"} />
+              </Pressable>
+            )}
           </View>
         )}
         <View style={styles.menu}>
-          {hasComponent && (
-            <>
+          {items.map((item, i) => (
+            <React.Fragment key={item.key}>
+              {i > 0 && <View style={styles.divider} />}
               <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={onCopy}
+                style={({ pressed }) => [
+                  styles.menuItem,
+                  item.disabled && styles.menuItemDisabled,
+                  pressed && !item.disabled && styles.menuItemPressed,
+                ]}
+                onPress={item.onPress}
+                disabled={item.disabled}
               >
-                <Feather name="copy" size={18} color="#ccc" />
-                <Text style={styles.menuLabel}>Copy</Text>
+                {item.icon}
+                <Text style={[styles.menuLabel, item.disabled && styles.menuLabelDisabled, item.color ? { color: item.color } : null]}>{item.label}</Text>
               </Pressable>
-              <View style={styles.divider} />
-            </>
-          )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.menuItem,
-              !hasClipboard && styles.menuItemDisabled,
-              pressed && hasClipboard && styles.menuItemPressed,
-            ]}
-            onPress={hasClipboard ? onPaste : undefined}
-            disabled={!hasClipboard}
-          >
-            <Feather
-              name="clipboard"
-              size={18}
-              color={hasClipboard ? "#ccc" : "#333"}
-            />
-            <Text
-              style={[
-                styles.menuLabel,
-                !hasClipboard && styles.menuLabelDisabled,
-              ]}
-            >
-              Paste
-            </Text>
-          </Pressable>
-          {hasComponent && (
-            <>
-              <View style={styles.divider} />
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={onDuplicate}
-              >
-                <Feather name="layers" size={18} color="#ccc" />
-                <Text style={styles.menuLabel}>Duplicate</Text>
-              </Pressable>
-            </>
-          )}
-          {hasComponent && onAIChat && (
-            <>
-              <View style={styles.divider} />
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={onAIChat}
-              >
-                <MaterialCommunityIcons name="creation" size={20} color="#f5c542" />
-                <Text style={[styles.menuLabel, { color: "#f5c542" }]}>Change with AI</Text>
-              </Pressable>
-            </>
-          )}
+            </React.Fragment>
+          ))}
         </View>
       </View>
     </>

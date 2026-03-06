@@ -39,10 +39,10 @@ export class SyncEngine {
     await AsyncStorage.removeItem(SYNC_QUEUE_KEY);
   }
 
-  async flush(): Promise<Map<string, 'synced' | 'conflict'>> {
+  async flush(): Promise<Map<string, { status: 'synced' | 'conflict'; version?: number }>> {
     if (this.flushing) return new Map();
     this.flushing = true;
-    const results = new Map<string, 'synced' | 'conflict'>();
+    const results = new Map<string, { status: 'synced' | 'conflict'; version?: number }>();
 
     try {
       const queue = await this.getQueue();
@@ -58,7 +58,7 @@ export class SyncEngine {
               .from("user_slates")
               .update({ deleted_at: new Date().toISOString() })
               .eq("id", op.slateId);
-            results.set(op.slateId, 'synced');
+            results.set(op.slateId, { status: 'synced' });
           } else if (op.type === "upsert") {
             // Try update first with version check
             if (op.expectedVersion && op.expectedVersion > 0) {
@@ -77,17 +77,17 @@ export class SyncEngine {
 
               if (!data) {
                 // Version mismatch = conflict
-                results.set(op.slateId, 'conflict');
+                results.set(op.slateId, { status: 'conflict' });
                 remaining.push(op);
               } else {
-                results.set(op.slateId, 'synced');
+                results.set(op.slateId, { status: 'synced', version: data.version });
               }
             } else {
               // First sync — upsert
               const { data: { user } } = await supabase.auth.getUser();
               if (!user) throw new Error("Not authenticated");
 
-              const { error } = await supabase
+              const { data, error } = await supabase
                 .from("user_slates")
                 .upsert({
                   id: op.slateId,
@@ -95,10 +95,12 @@ export class SyncEngine {
                   name: op.slateName ?? "Untitled",
                   slate: op.slate,
                   created_at: op.createdAt ?? Date.now(),
-                }, { onConflict: "id" });
+                }, { onConflict: "id" })
+                .select("version")
+                .single();
 
               if (error) throw error;
-              results.set(op.slateId, 'synced');
+              results.set(op.slateId, { status: 'synced', version: data?.version });
             }
           }
         } catch {

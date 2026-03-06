@@ -3,6 +3,7 @@ import {
   View,
   Pressable,
   Text,
+  TextInput,
   ScrollView,
   StyleSheet,
   Animated,
@@ -23,7 +24,7 @@ import { DetailsPage } from "./ScreensPage";
 import type { ScreenActions } from "../Canvas";
 import { PagerScrollProvider, usePagerScroll } from "../PagerScrollContext";
 
-const PAGE_LABELS = ["Details", "Canvas", "Agent"] as const;
+const PAGE_LABELS = ["Details", "Toolbox", "Agent"] as const;
 const INITIAL_PAGE = 1; // Start on Canvas
 
 function PagerScrollRegistrar({ scrollRef }: { scrollRef: React.RefObject<ScrollView | null> }) {
@@ -48,6 +49,37 @@ const RegisteredScrollView = React.forwardRef<ScrollView, React.ComponentProps<t
     return <ScrollView ref={ref} {...props} />;
   },
 );
+
+function NewAgentInput({ onSend }: { onSend: (text: string) => void }) {
+  const [text, setText] = React.useState("");
+  const canSend = text.trim().length > 0;
+
+  return (
+    <View style={styles.newAgentInputContainer}>
+      <TextInput
+        style={styles.newAgentInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="Start a new agent conversation..."
+        placeholderTextColor="#333"
+        multiline
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <Pressable
+        style={[styles.newAgentSendBtn, !canSend && styles.newAgentSendBtnDisabled]}
+        onPress={() => {
+          if (!canSend) return;
+          onSend(text.trim());
+          setText("");
+        }}
+        disabled={!canSend}
+      >
+        <Feather name="arrow-up" size={16} color={canSend ? "#000" : "#555"} />
+      </Pressable>
+    </View>
+  );
+}
 
 interface CanvasMenuProps {
   visible: boolean;
@@ -177,10 +209,6 @@ export function CanvasMenu({
     onOpenAgentPager?.();
   }, [onOpenAgentPager]);
 
-  const handleEditWorkflow = useCallback((_comp: Component) => {
-    onOpenAgentPager?.();
-  }, [onOpenAgentPager]);
-
   const handleNavigateToCanvas = useCallback(() => {
     scrollRef.current?.scrollTo({ x: 1 * screenWidth, animated: true });
     setPageIndex(1);
@@ -262,7 +290,6 @@ export function CanvasMenu({
                 currentScreen={screen}
                 showAdvancedCode={showAdvancedCode}
                 onNavigateToAgent={handleNavigateToAgent}
-                onEditWorkflow={handleEditWorkflow}
                 onNavigateToCanvas={handleNavigateToCanvas}
                 onOpenAgentPager={onOpenAgentPager}
                 onClose={onClose}
@@ -290,6 +317,7 @@ export function CanvasMenu({
                 storage={storageProp}
                 slateId={slateId}
                 onOpenSettings={() => setSettingsOpen(true)}
+                onCloseAndSave={() => { onClose(); onCloseSlate(); }}
               />
             </RegisteredScrollView>
           ) : (
@@ -356,16 +384,15 @@ export function CanvasMenu({
                   );
                 })}
 
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.agentAddBtn,
-                    pressed && styles.agentAddBtnPressed,
-                  ]}
-                  onPress={() => onOpenAgentPager?.()}
-                >
-                  <Feather name="plus" size={14} color="#888" />
-                  <Text style={styles.agentAddBtnText}>New Agent</Text>
-                </Pressable>
+                <NewAgentInput
+                  onSend={(text) => {
+                    if (!agentRunner) return;
+                    const num = agentRunner.sessions.length + 1;
+                    const newSession = agentRunner.createSession(`Agent ${num}`);
+                    onOpenAgentPager?.(newSession.id);
+                    setTimeout(() => agentRunner.sendMessage(newSession.id, text), 100);
+                  }}
+                />
               </View>
             </RegisteredScrollView>
           ) : (
@@ -553,28 +580,38 @@ const styles = StyleSheet.create({
     color: "#444",
     fontSize: 11,
   },
-  agentAddBtn: {
+  newAgentInputContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    alignItems: "flex-end",
     marginHorizontal: 20,
     marginTop: 12,
     marginBottom: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    backgroundColor: "#0a0a0a",
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#1a1a1a",
-    borderStyle: "dashed",
-    backgroundColor: "#0a0a0a",
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
+    gap: 8,
   },
-  agentAddBtnPressed: {
-    backgroundColor: "#111",
+  newAgentInput: {
+    flex: 1,
+    color: "#ccc",
+    fontSize: 14,
+    maxHeight: 80,
+    paddingVertical: 6,
   },
-  agentAddBtnText: {
-    color: "#888",
-    fontSize: 13,
-    fontWeight: "600",
+  newAgentSendBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newAgentSendBtnDisabled: {
+    backgroundColor: "#1a1a1a",
   },
   settingsModal: {
     flex: 1,

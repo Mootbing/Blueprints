@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, Platform } from "react-native";
 import { crossAlert } from "../../utils/crossAlert";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
-import type { Screen, Component, AppSlate, Action } from "../../types";
+import type { Screen, Component, AppSlate, Action, Workflow, WorkflowBlock } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { TreeView } from "./TreeView";
 import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
@@ -61,7 +61,6 @@ interface DetailsPageProps {
   currentScreen?: Screen;
   showAdvancedCode: boolean;
   onNavigateToAgent?: () => void;
-  onEditWorkflow?: (component: Component) => void;
   // Navigation
   onNavigateToCanvas?: () => void;
   onOpenAgentPager?: (sessionId?: string, initialMessage?: string) => void;
@@ -92,7 +91,7 @@ export function DetailsPage({
   currentScreen,
   showAdvancedCode,
   onNavigateToAgent,
-  onEditWorkflow,
+
   onNavigateToCanvas,
   onOpenAgentPager,
   onClose,
@@ -104,6 +103,12 @@ export function DetailsPage({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
   const [expandedWorkflowId, setExpandedWorkflowId] = useState<string | null>(null);
+
+  // Screen-level workflows (AI-generated)
+  const screenWorkflows: Workflow[] = useMemo(
+    () => currentScreen?.workflows ?? [],
+    [currentScreen?.workflows],
+  );
 
   const toggleSection = (key: string) => {
     setOpenSections((prev) => {
@@ -392,7 +397,7 @@ export function DetailsPage({
         trailing={
           onOpenAgentPager ? (
             <Pressable
-              onPress={() => onOpenAgentPager(undefined, "make a workflow for the following: ")}
+              onPress={() => onOpenAgentPager("__new__", "Create a workflow that ")}
               hitSlop={8}
             >
               <Feather name="plus" size={14} color="#555" />
@@ -402,151 +407,110 @@ export function DetailsPage({
       />
       {openSections.has("workflows") && (
         <>
-          {allLogicComponents.length === 0 && allVariables.length === 0 ? (
+          {screenWorkflows.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Feather name="zap" size={24} color="#222" />
-              <Text style={styles.emptyText}>No workflows configured</Text>
+              <Text style={styles.emptyText}>No workflows yet</Text>
               <Text style={styles.emptyHint}>
-                Add actions, bindings, or visibility rules to components to see them here.
+                Ask the AI agent to create workflows — they'll appear here as interactive blocks.
               </Text>
+              {onOpenAgentPager && (
+                <Pressable
+                  style={styles.wfCreateBtn}
+                  onPress={() => onOpenAgentPager("__new__", "Create a workflow that ")}
+                >
+                  <MaterialIcons name="auto-awesome" size={14} color="#000" />
+                  <Text style={styles.wfCreateBtnText}>Create with AI</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
-            <>
-              {variables.length > 0 && (
-                <>
-                  <Text style={styles.sectionHeader}>VARIABLES</Text>
-                  {variables.map((v) => (
-                    <View key={v.id} style={styles.varRow}>
-                      <View style={styles.varDot} />
-                      <Text style={styles.varName}>{v.name}</Text>
-                      <Text style={styles.varType}>{v.type}</Text>
-                      <Text style={styles.varDefault}>
-                        = {JSON.stringify(v.defaultValue)}
+            screenWorkflows.map((wf) => {
+              const isExpanded = expandedWorkflowId === wf.id;
+
+              return (
+                <View key={wf.id} style={styles.wfCard}>
+                  <Pressable
+                    style={styles.wfCardHeader}
+                    onPress={() => setExpandedWorkflowId(isExpanded ? null : wf.id)}
+                  >
+                    <View style={styles.wfCardIcon}>
+                      <Feather name="zap" size={14} color="#f59e0b" />
+                    </View>
+                    <View style={styles.wfCardInfo}>
+                      <Text style={styles.wfCardTitle}>{wf.title}</Text>
+                      <Text style={styles.wfCardDesc} numberOfLines={isExpanded ? undefined : 2}>
+                        {wf.description}
                       </Text>
                     </View>
-                  ))}
-                </>
-              )}
+                    <Feather
+                      name={isExpanded ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color="#333"
+                    />
+                  </Pressable>
 
-              {logicComponents.length === 0 && variables.length > 0 && (
-                <Text style={styles.wfEmptyText}>
-                  Variables defined but no component logic yet.
-                </Text>
-              )}
-
-              {logicComponents.length > 0 && (
-                <>
-                  {variables.length > 0 && <View style={styles.sectionDivider} />}
-                </>
-              )}
-
-              {logicComponents.map(({ component: comp }) => {
-                const isExpanded = expandedWorkflowId === comp.id;
-                const pseudocode = generatePseudocode(comp, slate);
-
-                return (
-                  <View key={comp.id}>
-                    <Pressable
-                      style={styles.workflowRow}
-                      onPress={() => setExpandedWorkflowId(isExpanded ? null : comp.id)}
-                    >
-                      <Feather name="zap" size={14} color="#555" style={{ marginTop: 2 }} />
-                      <View style={styles.workflowInfo}>
-                        <Text style={styles.workflowTitle}>
-                          {getComponentLabel(comp, { includeType: true })}
-                        </Text>
-                        <View style={styles.wfBadgeRow}>
-                          {comp.actions &&
-                            Object.keys(comp.actions).length > 0 && (
-                              <View style={styles.wfBadge}>
-                                <Text style={styles.wfBadgeText}>Actions</Text>
-                              </View>
-                            )}
-                          {comp.bindings &&
-                            Object.keys(comp.bindings).length > 0 && (
-                              <View style={styles.wfBadge}>
-                                <Text style={styles.wfBadgeText}>Bindings</Text>
-                              </View>
-                            )}
-                          {comp.visibleWhen && (
-                            <View style={styles.wfBadge}>
-                              <Text style={styles.wfBadgeText}>Visibility</Text>
+                  {isExpanded && (
+                    <View style={styles.wfBlocksContainer}>
+                      {wf.blocks.map((block) => (
+                        <View key={block.id} style={styles.wfBlock}>
+                          <View style={styles.wfBlockLeft}>
+                            <View style={styles.wfBlockDot}>
+                              <Feather
+                                name={(block.icon as any) ?? "box"}
+                                size={12}
+                                color="#888"
+                              />
                             </View>
-                          )}
-                        </View>
-                      </View>
-                      <Feather
-                        name={isExpanded ? "chevron-up" : "chevron-down"}
-                        size={16}
-                        color="#333"
-                      />
-                    </Pressable>
-
-                    {isExpanded && (
-                      <View style={styles.expandedSection}>
-                        <Text style={styles.explanationText}>
-                          {generateExplanation(comp, slate)}
-                        </Text>
-                        <Text style={styles.pseudoHeader}>LOGIC</Text>
-                        {pseudocode.map((line, i) => (
-                          <Text key={i} style={styles.pseudoLine}>
-                            {line}
-                          </Text>
-                        ))}
-                        {showAdvancedCode && (
-                          <>
-                            <Text style={styles.pseudoHeader}>CODE</Text>
-                            <View style={styles.codeBlock}>
-                              <Text style={styles.codeText}>
-                                {JSON.stringify(
-                                  {
-                                    actions: comp.actions,
-                                    bindings: comp.bindings,
-                                    visibleWhen: comp.visibleWhen,
-                                  },
-                                  null,
-                                  2,
-                                )}
-                              </Text>
-                            </View>
-                          </>
-                        )}
-                        <View style={styles.expandedActions}>
-                          {onEditWorkflow && (
+                            <View style={styles.wfBlockConnector} />
+                          </View>
+                          <View style={styles.wfBlockContent}>
+                            <Text style={styles.wfBlockTitle}>{block.title}</Text>
+                            <Text style={styles.wfBlockDesc}>{block.description}</Text>
+                          </View>
+                          {onOpenAgentPager && (
                             <Pressable
                               style={({ pressed }) => [
-                                styles.expandedActionBtn,
-                                styles.expandedAiBtn,
-                                pressed && styles.expandedAiBtnPressed,
+                                styles.wfBlockSparkle,
+                                pressed && styles.wfBlockSparklePressed,
                               ]}
-                              onPress={() => onEditWorkflow(comp)}
+                              onPress={() =>
+                                onOpenAgentPager(
+                                  "__new__",
+                                  `Modify the "${block.title}" block in the "${wf.title}" workflow: `,
+                                )
+                              }
+                              hitSlop={6}
                             >
                               <MaterialIcons name="auto-awesome" size={14} color="#f59e0b" />
-                              <Text style={styles.expandedAiBtnText}>Modify with AI</Text>
-                            </Pressable>
-                          )}
-                          {onDeleteComponent && (
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.expandedActionBtn,
-                                styles.expandedDeleteBtn,
-                                pressed && styles.expandedDeleteBtnPressed,
-                              ]}
-                              onPress={() => onDeleteComponent(comp.id)}
-                            >
-                              <Feather name="trash-2" size={14} color="#ef4444" />
-                              <Text style={styles.expandedDeleteBtnText}>Delete</Text>
                             </Pressable>
                           )}
                         </View>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </>
-          )}
+                      ))}
 
+                      <View style={styles.wfCardActions}>
+                        {onOpenAgentPager && (
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.expandedActionBtn,
+                              styles.expandedAiBtn,
+                              pressed && styles.expandedAiBtnPressed,
+                            ]}
+                            onPress={() =>
+                              onOpenAgentPager("__new__", `Modify the "${wf.title}" workflow: `)
+                            }
+                          >
+                            <MaterialIcons name="auto-awesome" size={14} color="#f59e0b" />
+                            <Text style={styles.expandedAiBtnText}>Modify</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
         </>
       )}
     </View>
@@ -579,6 +543,8 @@ function generateExplanation(comp: Component, slate: AppSlate): string {
           }
           case "OPEN_URL": summaries.push(`opens a URL`); break;
           case "RESET_CANVAS": summaries.push(`resets the canvas`); break;
+          case "FETCH": summaries.push(`fetches data from API`); break;
+          case "RUN_CODE": summaries.push(`runs custom code`); break;
           case "CONDITIONAL": summaries.push(`runs conditional logic`); break;
         }
       }
@@ -624,6 +590,10 @@ function describeAction(action: Action, slate: AppSlate, indent: string): string
       return [`${indent}OPEN URL: ${action.url}`];
     case "RESET_CANVAS":
       return [`${indent}RESET CANVAS`];
+    case "FETCH":
+      return [`${indent}FETCH ${action.method ?? "GET"} ${action.url} → "${action.resultVariable}"`];
+    case "RUN_CODE":
+      return [`${indent}RUN CODE (${action.code.length} chars)`];
     case "CONDITIONAL": {
       const lines = [`${indent}IF ${action.condition}:`];
       for (const a of action.then) {
@@ -930,5 +900,126 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontSize: 12,
     fontWeight: "600",
+  },
+
+  // New workflow card styles
+  wfCreateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  wfCreateBtnText: {
+    color: "#000",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  wfCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: "#0d0d0d",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    overflow: "hidden",
+  },
+  wfCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: 12,
+    gap: 10,
+  },
+  wfCardIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(245,158,11,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  wfCardInfo: {
+    flex: 1,
+  },
+  wfCardTitle: {
+    color: "#ddd",
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
+  wfCardDesc: {
+    color: "#666",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  wfBlocksContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 0,
+  },
+  wfBlock: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    minHeight: 44,
+  },
+  wfBlockLeft: {
+    alignItems: "center",
+    width: 28,
+  },
+  wfBlockDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#151515",
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wfBlockConnector: {
+    width: 1,
+    flex: 1,
+    backgroundColor: "#1a1a1a",
+    minHeight: 8,
+  },
+  wfBlockContent: {
+    flex: 1,
+    paddingBottom: 10,
+  },
+  wfBlockTitle: {
+    color: "#bbb",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  wfBlockDesc: {
+    color: "#555",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  wfBlockSparkle: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wfBlockSparklePressed: {
+    backgroundColor: "rgba(245,158,11,0.2)",
+  },
+  wfCardActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+    paddingLeft: 38,
   },
 });

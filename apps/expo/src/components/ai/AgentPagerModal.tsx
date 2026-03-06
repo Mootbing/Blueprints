@@ -2,11 +2,14 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
+  TextInput,
   Pressable,
   ScrollView,
   StyleSheet,
   Dimensions,
   SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
@@ -54,19 +57,53 @@ function StatusBadge({ status }: { status: AgentStatus }) {
 
 // ─── New agent page (the "+" page) ─────────────────────────────
 
-function NewAgentPage({ width }: { width: number }) {
+function NewAgentPage({
+  width,
+  onSend,
+}: {
+  width: number;
+  onSend: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const canSend = text.trim().length > 0;
+
   return (
-    <View style={[s.newAgentPage, { width }]}>
+    <KeyboardAvoidingView
+      style={[s.newAgentPage, { width }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={100}
+    >
       <View style={s.newAgentContent}>
-        <View style={s.newAgentIconCircle}>
-          <Feather name="plus" size={32} color="#555" />
-        </View>
+        <Feather name="cpu" size={28} color="#333" />
         <Text style={s.newAgentTitle}>New Agent</Text>
         <Text style={s.newAgentSubtitle}>
-          Swipe here to create a new agent conversation
+          Start a conversation to create a new agent
         </Text>
+        <View style={s.newAgentInputRow}>
+          <TextInput
+            style={s.newAgentInput}
+            value={text}
+            onChangeText={setText}
+            placeholder="Ask anything..."
+            placeholderTextColor="#333"
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[s.newAgentSendBtn, !canSend && s.newAgentSendBtnDisabled]}
+            onPress={() => {
+              if (!canSend) return;
+              onSend(text.trim());
+              setText("");
+            }}
+            disabled={!canSend}
+          >
+            <Feather name="arrow-up" size={18} color={canSend ? "#000" : "#555"} />
+          </Pressable>
+        </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -106,11 +143,8 @@ export function AgentPagerModal({
   const scrollRef = useRef<ScrollView>(null);
   // pageIndex 0..N-1 = agents, N = "+" page
   const [pageIndex, setPageIndex] = useState(0);
-  const createdForPageRef = useRef<number>(-1);
 
   const sessions = agentRunner?.sessions ?? [];
-  const isLoading = agentRunner?.isLoading ?? false;
-  const error = agentRunner?.error ?? null;
 
   const sessionIndex = pageIndex; // which agent session (0-based)
   const isOnPlusPage = pageIndex === sessions.length;
@@ -128,20 +162,22 @@ export function AgentPagerModal({
     prevSessionCount.current = sessions.length;
   }, [sessions.length, screenWidth]);
 
-  // When landing on "+" page, auto-create a new agent
+  // Clean up empty sessions (no messages) when closing
+  const prevVisible = useRef(visible);
   useEffect(() => {
-    if (!visible || !agentRunner) return;
-    if (isOnPlusPage && sessions.length > 0 && createdForPageRef.current !== pageIndex) {
-      createdForPageRef.current = pageIndex;
-      const num = sessions.length + 1;
-      agentRunner.createSession(`Agent ${num}`);
+    if (prevVisible.current && !visible && agentRunner) {
+      for (const session of sessions) {
+        if (session.messages.length === 0) {
+          agentRunner.deleteSession(session.id);
+        }
+      }
     }
-  }, [isOnPlusPage, visible, agentRunner, sessions.length, pageIndex]);
+    prevVisible.current = visible;
+  }, [visible, agentRunner, sessions]);
 
   // Reset on open — scroll to initialSessionId if provided
   useEffect(() => {
     if (visible) {
-      createdForPageRef.current = -1;
       let idx = 0; // default to first agent
       if (initialSessionId) {
         const found = sessions.findIndex((s) => s.id === initialSessionId);
@@ -216,11 +252,8 @@ export function AgentPagerModal({
   const handleDelete = useCallback(
     (id: string) => {
       const idx = sessions.findIndex((s) => s.id === id);
-      // Set pageIndex synchronously BEFORE deleting so the auto-create
-      // effect doesn't see isOnPlusPage=true when sessions.length shrinks.
       const target = idx > 0 ? idx - 1 : 0;
       setPageIndex(target);
-      createdForPageRef.current = -1;
       agentRunner?.deleteSession(id);
       setTimeout(() => {
         scrollRef.current?.scrollTo({ x: target * screenWidth, animated: true });
@@ -273,45 +306,14 @@ export function AgentPagerModal({
     [handlePreview, handleUndoPreview, handleCherryPick, currentHistoryId],
   );
 
-  // ─── Create first agent if none exist ─────────────────────────
+  // Auto-create first agent when opening with none
+  useEffect(() => {
+    if (visible && sessions.length === 0 && agentRunner) {
+      agentRunner.createSession("Agent 1");
+    }
+  }, [visible, sessions.length, agentRunner]);
 
-  const handleCreateFirst = useCallback(() => {
-    if (!agentRunner) return;
-    const num = sessions.length + 1;
-    agentRunner.createSession(`Agent ${num}`);
-  }, [agentRunner, sessions.length]);
-
-  if (!visible) return null;
-
-  // No sessions yet - show empty state with create button
-  if (sessions.length === 0) {
-    return (
-      <View style={[StyleSheet.absoluteFill, s.overlay]}>
-        <Pressable style={[StyleSheet.absoluteFill, s.overlayBg]} onPress={onClose}>
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        </Pressable>
-        <SafeAreaView style={s.sheet} pointerEvents="box-none">
-          <View style={s.header}>
-            <Pressable style={s.backBtn} onPress={onClose}>
-              <Feather name="chevron-left" size={22} color="#fff" />
-              <Text style={s.headerTitle}>Agents</Text>
-            </Pressable>
-          </View>
-          <View style={s.emptyState}>
-            <Feather name="cpu" size={32} color="#222" />
-            <Text style={s.emptyTitle}>No agents yet</Text>
-            <Text style={s.emptySubtitle}>
-              Create an agent to generate screens, add logic, or modify your app
-            </Text>
-            <Pressable style={s.createFirstBtn} onPress={handleCreateFirst}>
-              <Feather name="plus" size={16} color="#000" />
-              <Text style={s.createFirstBtnText}>New Agent</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
+  if (!visible || sessions.length === 0) return null;
 
   const currentSession = sessionIndex >= 0 && sessionIndex < sessions.length
     ? sessions[sessionIndex]
@@ -388,13 +390,14 @@ export function AgentPagerModal({
               {Math.abs(sessionIndex - i) <= 1 ? (
                 <ChatView
                   messages={session.messages}
-                  isLoading={isLoading && currentSession?.id === session.id}
-                  error={currentSession?.id === session.id ? error : null}
+                  isLoading={agentRunner?.loadingSessions?.has(session.id) ?? false}
+                  error={agentRunner?.errorMap?.[session.id] ?? null}
                   onSend={(text, images) => sendMessage(session.id, text, images)}
                   renderMessageActions={renderMessageActions}
                   placeholder="Ask anything -- generate screens, add logic, modify components..."
                   initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
-                  streamingThinking={currentSession?.id === session.id ? agentRunner?.streamingThinking : null}
+                  autoSend={!!(initialMessage && currentSession?.id === session.id && session.messages.length === 0)}
+                  streamingThinking={agentRunner?.streamingThinkingMap?.[session.id] ?? null}
                 />
               ) : (
                 <View style={{ width: screenWidth, flex: 1 }} />
@@ -403,7 +406,16 @@ export function AgentPagerModal({
           ))}
 
           {/* "+" page */}
-          <NewAgentPage width={screenWidth} />
+          <NewAgentPage
+            width={screenWidth}
+            onSend={(text) => {
+              if (!agentRunner) return;
+              const num = sessions.length + 1;
+              const newSession = agentRunner.createSession(`Agent ${num}`);
+              // Send message to the new session after it's created
+              setTimeout(() => agentRunner.sendMessage(newSession.id, text), 50);
+            }}
+          />
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -494,6 +506,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minWidth: 32,
+    marginLeft: "auto",
   },
   statusRow: {
     flexDirection: "row",
@@ -514,62 +527,17 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingBottom: 80,
-  },
-  emptyTitle: {
-    color: "#444",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  emptySubtitle: {
-    color: "#333",
-    fontSize: 13,
-    textAlign: "center",
-    lineHeight: 18,
-    paddingHorizontal: 40,
-  },
-  createFirstBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-  },
-  createFirstBtnText: {
-    color: "#000",
-    fontSize: 14,
-    fontWeight: "600",
-  },
 
   // New agent "+" page
   newAgentPage: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
   },
   newAgentContent: {
     alignItems: "center",
     gap: 10,
+    paddingHorizontal: 24,
     paddingBottom: 80,
-  },
-  newAgentIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    borderStyle: "dashed",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
   },
   newAgentTitle: {
     color: "#444",
@@ -581,6 +549,38 @@ const s = StyleSheet.create({
     fontSize: 13,
     textAlign: "center",
     paddingHorizontal: 40,
+    marginBottom: 8,
+  },
+  newAgentInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    width: "100%",
+    backgroundColor: "#0a0a0a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  newAgentInput: {
+    flex: 1,
+    color: "#ccc",
+    fontSize: 15,
+    maxHeight: 100,
+    paddingVertical: 6,
+  },
+  newAgentSendBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newAgentSendBtnDisabled: {
+    backgroundColor: "#1a1a1a",
   },
 
   // Message actions (preview/undo/cherry-pick)

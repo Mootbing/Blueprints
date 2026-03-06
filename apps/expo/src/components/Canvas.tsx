@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Pressable,
@@ -11,12 +11,11 @@ import {
   Keyboard,
   PanResponder,
   Vibration,
-  ActivityIndicator,
 } from "react-native";
 import { crossAlert } from "../utils/crossAlert";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Rect } from "react-native-svg";
 import { useSharedValue } from "react-native-reanimated";
 import type { AppSlate, Layout, Component, ComponentStyleUpdates, Screen } from "../types";
 import { ComponentSchema } from "../types";
@@ -118,6 +117,12 @@ function AddSphere({
   onToggleRef.current = onToggleEditMode;
   const longPressProgress = useRef(new Animated.Value(0)).current;
 
+  const panEvent = useRef(
+    Animated.event([null, { dx: pan.x, dy: pan.y }], {
+      useNativeDriver: false,
+    })
+  ).current;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -151,9 +156,7 @@ function AddSphere({
             longPressProgress.setValue(0);
           }
         }
-        Animated.event([null, { dx: pan.x, dy: pan.y }], {
-          useNativeDriver: false,
-        })(_, g);
+        panEvent(_, g);
       },
       onPanResponderRelease: () => {
         if (longPressTimer.current) {
@@ -219,8 +222,6 @@ interface CanvasProps {
   onRenameSlate?: (name: string) => void;
   onResetAndBuild?: () => void;
   onNavigate?: (screenId: string) => void;
-  onNavigateBack?: () => void;
-  navStack?: string[];
   onScreenUpdate?: (screen: Screen) => void;
   onDeleteComponent?: (id: string) => void;
   onComponentReplace?: (id: string, replacement: Component) => void;
@@ -247,6 +248,8 @@ interface CanvasProps {
   isPreviewOnly?: boolean;
   // Current user ID for "You" badge in history
   currentUserId?: string;
+  // Whether this is a newly created slate (show onboarding)
+  isNew?: boolean;
 }
 
 export function Canvas(props: CanvasProps) {
@@ -272,8 +275,6 @@ function CanvasInner({
   onRenameSlate,
   onResetAndBuild,
   onNavigate,
-  onNavigateBack,
-  navStack,
   onScreenUpdate,
   onDeleteComponent,
   onComponentReplace,
@@ -297,6 +298,7 @@ function CanvasInner({
   storage: storageProp,
   isPreviewOnly,
   currentUserId,
+  isNew,
 }: CanvasProps) {
   const keyboardHeight = useKeyboardHeight();
   const store = useCanvasStoreApi();
@@ -366,24 +368,17 @@ function CanvasInner({
     clearMultiSelect,
   } = store.getState();
 
-  const clipboardRef = useRef<Component | null>(null);
+  const clipboardRef = useRef<Component[]>([]);
   const dropTargetIdRef = useRef<string | null>(null);
   const editingInfoRef = useRef(editingInfo);
   editingInfoRef.current = editingInfo;
 
+  // Shared value for multi-select group drag — all selected components read this offset
+  const multiDragOffsetX = useSharedValue(0);
+  const multiDragOffsetY = useSharedValue(0);
+
   // Chat log for agent context
   const { chatLog, logInteraction } = useChatLog(slateId);
-
-  // Agent runner (lives here so it survives menu close)
-  const agentRunner = useAgentRunner({
-    slateId,
-    slate,
-    screenId,
-    historyEntries: entries,
-    currentHistoryId: currentId,
-    onAddBranchEntry: addBranchEntry,
-    chatLog,
-  });
 
   const dropPoint = { normX: 0.1, normY: 0.3 };
 
@@ -434,6 +429,35 @@ function CanvasInner({
       setMenuOpen(false);
     });
   }, [fadeAnim, setMenuOpen]);
+
+  // Agent runner (lives here so it survives menu close)
+  const handleChangesApplied = useCallback(() => {
+    setAgentPagerOpen(false);
+    setAgentPagerSessionId(null);
+    setAgentPagerInitialMessage(null);
+    closeMenu();
+    if (isEditMode) onToggleEditMode();
+  }, [setAgentPagerOpen, setAgentPagerSessionId, setAgentPagerInitialMessage, closeMenu, isEditMode, onToggleEditMode]);
+
+  const agentRunner = useAgentRunner({
+    slateId,
+    slate,
+    screenId,
+    historyEntries: entries,
+    currentHistoryId: currentId,
+    onAddBranchEntry: createBranch,
+    chatLog,
+    onChangesApplied: handleChangesApplied,
+  });
+
+  // Open agent from an OPEN_AGENT action (e.g. onboarding submit button)
+  const handleOpenAgentFromAction = useCallback((prompt: string) => {
+    if (!agentRunner) return;
+    const session = agentRunner.createSession("Agent 1");
+    setAgentPagerSessionId(session.id);
+    setAgentPagerInitialMessage(prompt);
+    setAgentPagerOpen(true);
+  }, [agentRunner, setAgentPagerSessionId, setAgentPagerInitialMessage, setAgentPagerOpen]);
 
   const handleAdd = (preset: (typeof PRESETS)[number]) => {
     if (isDrilledIn && currentContainerId) {
@@ -814,39 +838,61 @@ function CanvasInner({
 
   // --- Context menu handlers ---
   const handleLongPress = useCallback((componentId: string, screenX: number, screenY: number) => {
-    if (lockedIds.has(componentId)) return;
     if (editingInfo) return;
-    // Enter multi-select mode
     Vibration.vibrate(50);
-    toggleMultiSelectId(componentId);
-  }, [lockedIds, editingInfo, toggleMultiSelectId]);
+    // Treat locked components as canvas long press (no component context)
+    const isLocked = lockedIds.has(componentId);
+    // Auto-enter multi-select mode and select the long-pressed component
+    if (!isLocked) {
+      toggleMultiSelectId(componentId);
+    }
+    setContextMenu({ componentId: isLocked ? null : componentId, x: screenX, y: screenY });
+  }, [lockedIds, editingInfo, setContextMenu, toggleMultiSelectId]);
 
   const handleCopy = useCallback(() => {
-    if (!contextMenu?.componentId || !screen) return;
-    const comp = findComponent(screen.components, contextMenu.componentId);
-    if (comp) clipboardRef.current = comp;
+    if (!screen) return;
+    // In multi-select mode, copy all selected components
+    if (multiSelectMode && selectedComponentIds.size > 0) {
+      const comps = screen.components.filter((c) => selectedComponentIds.has(c.id));
+      if (comps.length > 0) clipboardRef.current = comps;
+    } else if (contextMenu?.componentId) {
+      const comp = findComponent(screen.components, contextMenu.componentId);
+      if (comp) clipboardRef.current = [comp];
+    }
     setContextMenu(null);
-  }, [contextMenu, screen, setContextMenu]);
+  }, [contextMenu, screen, setContextMenu, multiSelectMode, selectedComponentIds]);
 
   const handlePaste = useCallback(() => {
-    if (!clipboardRef.current || !contextMenu) return;
-    const cloned = deepCloneComponent(clipboardRef.current);
+    if (clipboardRef.current.length === 0 || !contextMenu) return;
     const normX = Math.min(Math.max(contextMenu.x / Math.max(canvasDimensions.width, 1), 0), 0.9);
     const normY = Math.min(Math.max(contextMenu.y / Math.max(canvasDimensions.height, 1), 0), 0.9);
-    cloned.layout = { ...cloned.layout, x: normX, y: normY };
-    onAddComponent(cloned);
+    clipboardRef.current.forEach((comp, i) => {
+      const cloned = deepCloneComponent(comp);
+      cloned.layout = { ...cloned.layout, x: normX + i * 0.02, y: normY + i * 0.02 };
+      onAddComponent(cloned);
+    });
     setContextMenu(null);
   }, [onAddComponent, contextMenu, canvasDimensions, setContextMenu]);
 
   const handleDuplicate = useCallback(() => {
-    if (!contextMenu?.componentId || !screen) return;
-    const comp = findComponent(screen.components, contextMenu.componentId);
-    if (!comp) return;
-    const cloned = deepCloneComponent(comp);
-    cloned.layout = { ...cloned.layout, x: cloned.layout.x + 0.02, y: cloned.layout.y + 0.02 };
-    onAddComponent(cloned);
+    if (!screen) return;
+    // In multi-select mode, duplicate all selected components
+    if (multiSelectMode && selectedComponentIds.size > 0) {
+      const comps = screen.components.filter((c) => selectedComponentIds.has(c.id));
+      comps.forEach((comp) => {
+        const cloned = deepCloneComponent(comp);
+        cloned.layout = { ...cloned.layout, x: cloned.layout.x + 0.02, y: cloned.layout.y + 0.02 };
+        onAddComponent(cloned);
+      });
+    } else if (contextMenu?.componentId) {
+      const comp = findComponent(screen.components, contextMenu.componentId);
+      if (!comp) return;
+      const cloned = deepCloneComponent(comp);
+      cloned.layout = { ...cloned.layout, x: cloned.layout.x + 0.02, y: cloned.layout.y + 0.02 };
+      onAddComponent(cloned);
+    }
     setContextMenu(null);
-  }, [contextMenu, screen, onAddComponent, setContextMenu]);
+  }, [contextMenu, screen, onAddComponent, setContextMenu, multiSelectMode, selectedComponentIds]);
 
   // --- AI handlers ---
   const handleTidy = useCallback(async () => {
@@ -878,6 +924,7 @@ function CanvasInner({
     if (comp) setAiChatTarget(comp);
     setContextMenu(null);
   }, [contextMenu, screen, setAiChatTarget, setContextMenu]);
+
 
   const handleOpenAIChatFromToolbar = useCallback(() => {
     if (!screen) return;
@@ -1260,9 +1307,68 @@ function CanvasInner({
   }, [multiSelectMode, selectedComponentIds, screen, handleDragStart]);
 
   const handleMultiDragEnd = useCallback(() => {
+    multiDragOffsetX.value = 0;
+    multiDragOffsetY.value = 0;
     multiDragRef.current.clear();
     handleDragEnd();
-  }, [handleDragEnd]);
+  }, [handleDragEnd, multiDragOffsetX, multiDragOffsetY]);
+
+  // --- Lasso selection ---
+  const [lassoRect, setLassoRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const lassoOrigin = useRef<{ x: number; y: number } | null>(null);
+
+  const lassoPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4,
+      onPanResponderGrant: (e) => {
+        const { locationX, locationY } = e.nativeEvent;
+        lassoOrigin.current = { x: locationX, y: locationY };
+        setLassoRect({ x: locationX, y: locationY, w: 0, h: 0 });
+      },
+      onPanResponderMove: (_, g) => {
+        if (!lassoOrigin.current) return;
+        const ox = lassoOrigin.current.x;
+        const oy = lassoOrigin.current.y;
+        const cx = ox + g.dx;
+        const cy = oy + g.dy;
+        setLassoRect({
+          x: Math.min(ox, cx),
+          y: Math.min(oy, cy),
+          w: Math.abs(g.dx),
+          h: Math.abs(g.dy),
+        });
+      },
+      onPanResponderRelease: () => {
+        lassoOrigin.current = null;
+        setLassoRect(null);
+      },
+      onPanResponderTerminate: () => {
+        lassoOrigin.current = null;
+        setLassoRect(null);
+      },
+    })
+  ).current;
+
+  // Select components that intersect the lasso rect
+  useEffect(() => {
+    if (!lassoRect || !screen || !canvasDimensions.width) return;
+    const { x: lx, y: ly, w: lw, h: lh } = lassoRect;
+    if (lw < 4 && lh < 4) return;
+    const cw = canvasDimensions.width;
+    const ch = canvasDimensions.height;
+    const next = new Set<string>();
+    for (const comp of screen.components) {
+      const cx = comp.layout.x * cw;
+      const cy = comp.layout.y * ch;
+      const cRight = cx + comp.layout.width * cw;
+      const cBottom = cy + comp.layout.height * ch;
+      if (cx < lx + lw && cRight > lx && cy < ly + lh && cBottom > ly) {
+        next.add(comp.id);
+      }
+    }
+    store.setState({ selectedComponentIds: next, multiSelectMode: true });
+  }, [lassoRect, screen, canvasDimensions, store]);
 
   if (!screen) return null;
 
@@ -1271,29 +1377,32 @@ function CanvasInner({
       style={{
         flex: 1,
         position: "relative",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#000000",
       }}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setCanvasDimensions({ width, height });
       }}
     >
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={() => {
-          if (!isEditMode) return;
-          if (multiSelectMode) { clearMultiSelect(); return; }
-          if (menuOpen) closeMenu();
-          else if (isDrilledIn && !editingInfo) drillOut();
-          else if (editingInfo) handleEditCancel();
-        }}
-        onLongPress={(e) => {
-          if (!isEditMode || menuOpen) return;
-          const { pageX, pageY } = e.nativeEvent;
-          setContextMenu({ componentId: null, x: pageX, y: pageY });
-        }}
-        delayLongPress={400}
-      />
+      {multiSelectMode ? (
+        <View style={StyleSheet.absoluteFill} {...lassoPanResponder.panHandlers} />
+      ) : (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            if (!isEditMode) return;
+            if (menuOpen) closeMenu();
+            else if (isDrilledIn && !editingInfo) drillOut();
+            else if (editingInfo) handleEditCancel();
+          }}
+          onLongPress={(e) => {
+            if (!isEditMode || menuOpen) return;
+            const { pageX, pageY } = e.nativeEvent;
+            setContextMenu({ componentId: null, x: pageX, y: pageY });
+          }}
+          delayLongPress={400}
+        />
+      )}
       {canvasDimensions.width > 0 &&
         screen.components.map((component, index) => {
           const isTheDrilledContainer = isDrilledIn && component.id === currentContainerId;
@@ -1312,6 +1421,7 @@ function CanvasInner({
               onStyleChange={onStyleChange}
               onNavigate={onNavigate}
               onResetAndBuild={onResetAndBuild}
+              onOpenAgent={handleOpenAgentFromAction}
               onInteract={closeMenu}
               componentIndex={index}
               siblingRects={snappingEnabled ? siblingRects : undefined}
@@ -1335,7 +1445,10 @@ function CanvasInner({
               onPickImage={handlePickImage}
               isDimmed={isDimmed}
               locked={lockedIds.has(component.id)}
+              multiSelectMode={multiSelectMode}
               isMultiSelected={selectedComponentIds.has(component.id)}
+              multiDragOffsetX={multiDragOffsetX}
+              multiDragOffsetY={multiDragOffsetY}
               isSelected={selectedComponentId === component.id}
               onHugContent={handleHugContent}
               onResizeStart={handleResizeStart}
@@ -1361,6 +1474,22 @@ function CanvasInner({
         />
       )}
 
+      {/* Lasso selection rectangle */}
+      {lassoRect && lassoRect.w > 4 && lassoRect.h > 4 && (
+        <Svg style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
+          <Rect
+            x={lassoRect.x}
+            y={lassoRect.y}
+            width={lassoRect.w}
+            height={lassoRect.h}
+            fill="rgba(59,130,246,0.1)"
+            stroke="rgba(59,130,246,0.5)"
+            strokeWidth={1}
+            strokeDasharray="4,4"
+          />
+        </Svg>
+      )}
+
       {/* Breadcrumb bar when drilled in */}
       {isDrilledIn && isEditMode && (
         <GroupBreadcrumb
@@ -1372,26 +1501,31 @@ function CanvasInner({
 
 
       {/* Multi-select alignment toolbar */}
-      {isEditMode && multiSelectMode && selectedComponentIds.size >= 2 && !editingInfo && (
+      {isEditMode && multiSelectMode && !editingInfo && (
         <View style={styles.alignToolbar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.alignToolbarContent}>
-            {[
-              { key: "left", icon: "align-left" as const, label: "Left" },
-              { key: "centerX", icon: "align-center" as const, label: "Center" },
-              { key: "right", icon: "align-right" as const, label: "Right" },
-              { key: "top", icon: "arrow-up" as const, label: "Top" },
-              { key: "middleY", icon: "minus" as const, label: "Middle" },
-              { key: "bottom", icon: "arrow-down" as const, label: "Bottom" },
-              { key: "distributeH", icon: "more-horizontal" as const, label: "Dist H" },
-              { key: "distributeV", icon: "more-vertical" as const, label: "Dist V" },
-            ].map((btn) => (
+            <Pressable
+              style={({ pressed }) => [styles.alignBall, styles.alignBallExit, pressed && styles.alignBallPressed]}
+              onPress={() => clearMultiSelect()}
+            >
+              <Feather name="x" size={20} color="#ef4444" />
+            </Pressable>
+            {selectedComponentIds.size >= 2 && ([
+              { key: "left", icon: "align-left" as const },
+              { key: "centerX", icon: "align-center" as const },
+              { key: "right", icon: "align-right" as const },
+              { key: "top", icon: "arrow-up" as const },
+              { key: "middleY", icon: "minus" as const },
+              { key: "bottom", icon: "arrow-down" as const },
+              { key: "distributeH", icon: "more-horizontal" as const },
+              { key: "distributeV", icon: "more-vertical" as const },
+            ] as const).map((btn) => (
               <Pressable
                 key={btn.key}
-                style={styles.alignButton}
+                style={({ pressed }) => [styles.alignBall, pressed && styles.alignBallPressed]}
                 onPress={() => handleAlign(btn.key)}
               >
-                <Feather name={btn.icon} size={16} color="#fff" />
-                <Text style={styles.alignLabel}>{btn.label}</Text>
+                <Feather name={btn.icon} size={20} color="#fff" />
               </Pressable>
             ))}
           </ScrollView>
@@ -1495,12 +1629,13 @@ function CanvasInner({
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          hasClipboard={clipboardRef.current != null}
+          hasClipboard={clipboardRef.current.length > 0}
           hasComponent={contextMenu.componentId != null}
           onCopy={handleCopy}
           onPaste={handlePaste}
           onDuplicate={handleDuplicate}
           onAIChat={handleOpenAIChat}
+
           onUndo={onUndo}
           onRedo={onRedo}
           canUndo={canUndo}
@@ -1678,7 +1813,13 @@ function CanvasInner({
         agentRunner={agentRunner}
         onAIChatComponent={handleAIChatFromLayer}
         onOpenAgentPager={(sessionId, initialMessage) => {
-          setAgentPagerSessionId(sessionId ?? null);
+          let resolvedId = sessionId ?? null;
+          if (sessionId === "__new__" && agentRunner) {
+            const num = agentRunner.sessions.length + 1;
+            const newSession = agentRunner.createSession(`Agent ${num}`);
+            resolvedId = newSession.id;
+          }
+          setAgentPagerSessionId(resolvedId);
           setAgentPagerInitialMessage(initialMessage ?? null);
           closeMenu();
           setTimeout(() => setAgentPagerOpen(true), 200);
@@ -1696,30 +1837,43 @@ const styles = StyleSheet.create({
   },
   alignToolbar: {
     position: "absolute",
-    bottom: 20,
+    bottom: 32,
     left: 0,
     right: 0,
     zIndex: 300,
   },
   alignToolbarContent: {
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 16,
-  },
-  alignButton: {
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
     alignItems: "center",
-    gap: 2,
   },
-  alignLabel: {
-    color: "#555",
-    fontSize: 9,
-    fontWeight: "700",
+  alignBall: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#333",
+    borderWidth: 1.5,
+    borderColor: "#555",
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
+  },
+  alignBallExit: {
+    backgroundColor: "#1a0000",
+    borderColor: "#ef4444",
+  },
+  alignBallPressed: {
+    opacity: 0.6,
   },
   trashPillContainer: {
     position: "absolute",

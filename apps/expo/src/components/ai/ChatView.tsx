@@ -23,7 +23,6 @@ interface ChatViewProps {
   error: string | null;
   onSend: (text: string, images?: string[]) => void;
   onApply?: (message: ChatMessageType) => void;
-  onClear?: () => void;
   placeholder?: string;
   /** Header actions rendered above the chat */
   headerActions?: React.ReactNode;
@@ -31,6 +30,8 @@ interface ChatViewProps {
   renderMessageActions?: (message: ChatMessageType) => React.ReactNode;
   /** Pre-fill the input field */
   initialText?: string;
+  /** Automatically send initialText on mount (when no messages exist) */
+  autoSend?: boolean;
   /** Live streaming thinking text from the agent */
   streamingThinking?: string | null;
 }
@@ -43,20 +44,30 @@ export function ChatView({
   error,
   onSend,
   onApply,
-  onClear,
   placeholder = "Describe what you want...",
   headerActions,
   renderMessageActions,
   initialText,
+  autoSend,
   streamingThinking,
 }: ChatViewProps) {
   const [input, setInput] = useState(initialText ?? "");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const listRef = useRef<FlatList>(null);
+  const didAutoSend = useRef(false);
 
   useEffect(() => {
     if (initialText) setInput(initialText);
   }, [initialText]);
+
+  // Auto-send initialText when autoSend is true and no messages exist yet
+  useEffect(() => {
+    if (autoSend && initialText?.trim() && messages.length === 0 && !didAutoSend.current) {
+      didAutoSend.current = true;
+      onSend(initialText.trim());
+      setInput("");
+    }
+  }, [autoSend, initialText, messages.length, onSend]);
 
   useEffect(() => {
     // Auto-scroll to bottom on new messages or streaming thinking updates
@@ -154,8 +165,8 @@ export function ChatView({
                   </Text>
                 </View>
                 {streamingThinking ? (
-                  <Text style={styles.streamingThinkingText} numberOfLines={6}>
-                    {streamingThinking.slice(-500)}
+                  <Text style={styles.streamingThinkingText}>
+                    {streamingThinking}
                   </Text>
                 ) : null}
               </View>

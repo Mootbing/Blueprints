@@ -10,6 +10,7 @@ interface SmartComponentWrapperProps {
   isEditMode: boolean;
   onNavigate?: (screenId: string) => void;
   onResetAndBuild?: () => void;
+  onOpenAgent?: (prompt: string) => void;
   children: (resolvedComponent: Component) => React.ReactNode;
 }
 
@@ -18,6 +19,7 @@ export function SmartComponentWrapper({
   isEditMode,
   onNavigate,
   onResetAndBuild,
+  onOpenAgent,
   children,
 }: SmartComponentWrapperProps) {
   const variables = useRuntimeStore((state) => state.variables);
@@ -51,19 +53,21 @@ export function SmartComponentWrapper({
 
   if (hasOnTap || hasOnLongPress) {
     const handleTap = hasOnTap
-      ? () => {
-          executeActions(actions!.onTap!, store, {
+      ? async () => {
+          await executeActions(actions!.onTap!, store, {
             navigate: (id) => onNavigate?.(id),
             resetAndBuild: onResetAndBuild,
+            openAgent: onOpenAgent,
           });
         }
       : undefined;
 
     const handleLongPress = hasOnLongPress
-      ? () => {
-          executeActions(actions!.onLongPress!, store, {
+      ? async () => {
+          await executeActions(actions!.onLongPress!, store, {
             navigate: (id) => onNavigate?.(id),
             resetAndBuild: onResetAndBuild,
+            openAgent: onOpenAgent,
           });
         }
       : undefined;

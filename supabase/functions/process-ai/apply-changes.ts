@@ -21,11 +21,19 @@ interface Screen {
 
 // ─── Screen management parsing ──────────────────────────────────
 
+interface WorkflowDef {
+  id: string;
+  title: string;
+  description: string;
+  blocks: Array<{ id: string; title: string; description: string; icon?: string }>;
+}
+
 interface ScreenOp {
   op: "create" | "delete" | "rename" | "setComponents" | "setInitial";
   id: string;
   name?: string;
   components?: Component[];
+  workflows?: WorkflowDef[];
 }
 
 interface ScreenVariable {
@@ -41,6 +49,7 @@ interface ScreenVariable {
 interface ScreenMgmtResult {
   screenOps: ScreenOp[];
   variables?: ScreenVariable[];
+  workflows?: WorkflowDef[];
   description: string;
 }
 
@@ -77,7 +86,10 @@ function parseScreenOps(text: string): ScreenMgmtResult {
         persist: v.persist,
       }))
     : undefined;
-  return { screenOps: ops, variables, description: parsed.description ?? "Screen management" };
+  const workflows: WorkflowDef[] | undefined = Array.isArray(parsed.workflows)
+    ? parsed.workflows
+    : undefined;
+  return { screenOps: ops, variables, workflows, description: parsed.description ?? "Screen management" };
 }
 
 function applyScreenOps(slate: AppSlate, screenId: string, result: ScreenMgmtResult): AppSlate {
@@ -89,6 +101,7 @@ function applyScreenOps(slate: AppSlate, screenId: string, result: ScreenMgmtRes
           id: op.id,
           name: op.name ?? "New Screen",
           components: op.components ?? [],
+          ...(op.workflows ? { workflows: op.workflows } : {}),
         };
         updated.screens[op.id] = newScreen;
         break;
@@ -113,7 +126,11 @@ function applyScreenOps(slate: AppSlate, screenId: string, result: ScreenMgmtRes
       case "setComponents": {
         const screen = updated.screens[op.id];
         if (screen && op.components) {
-          updated.screens[op.id] = { ...screen, components: op.components };
+          updated.screens[op.id] = {
+            ...screen,
+            components: op.components,
+            ...(op.workflows ? { workflows: op.workflows } : {}),
+          };
         }
         break;
       }
@@ -123,6 +140,18 @@ function applyScreenOps(slate: AppSlate, screenId: string, result: ScreenMgmtRes
         }
         break;
       }
+    }
+  }
+
+  // Apply top-level workflows to the current screen
+  if (result.workflows && result.workflows.length > 0) {
+    const screen = updated.screens[screenId];
+    if (screen) {
+      const existing = screen.workflows ?? [];
+      updated.screens[screenId] = {
+        ...screen,
+        workflows: [...existing, ...result.workflows],
+      };
     }
   }
 

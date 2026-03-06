@@ -32,6 +32,7 @@ interface SDUIComponentProps {
   onStyleChange?: (id: string, updates: ComponentStyleUpdates) => void;
   onNavigate?: (screenId: string) => void;
   onResetAndBuild?: () => void;
+  onOpenAgent?: (prompt: string) => void;
   onInteract?: () => void;
   componentIndex?: number;
   siblingRects?: SharedValue<number[]>;
@@ -52,7 +53,10 @@ interface SDUIComponentProps {
   isDimmed?: boolean;
   locked?: boolean;
   isDropTarget?: boolean;
+  multiSelectMode?: boolean;
   isMultiSelected?: boolean;
+  multiDragOffsetX?: SharedValue<number>;
+  multiDragOffsetY?: SharedValue<number>;
   isSelected?: boolean;
   onHugContent?: (id: string, axis: "width" | "height" | "both") => void;
   onResizeStart?: () => void;
@@ -86,6 +90,7 @@ export function SDUIComponent({
   onStyleChange,
   onNavigate,
   onResetAndBuild,
+  onOpenAgent,
   onInteract,
   componentIndex,
   siblingRects,
@@ -106,7 +111,10 @@ export function SDUIComponent({
   isDimmed,
   locked,
   isDropTarget,
+  multiSelectMode,
   isMultiSelected,
+  multiDragOffsetX,
+  multiDragOffsetY,
   isSelected,
   onHugContent,
   onResizeStart,
@@ -126,10 +134,10 @@ export function SDUIComponent({
   const isComponentEditing = editingComponentId === component.id;
 
   const fireEditTap = useCallback(() => {
-    setEditTapFired(true);
+    if (!multiSelectMode) setEditTapFired(true);
     onInteract?.();
     onSelect?.(component.id);
-  }, [onInteract, onSelect, component.id]);
+  }, [onInteract, onSelect, component.id, multiSelectMode]);
 
   const fireLongPress = useCallback((absX: number, absY: number) => {
     onLongPress?.(component.id, absX, absY);
@@ -176,12 +184,22 @@ export function SDUIComponent({
   const editOffsetX = useSharedValue(0);
   const editOffsetY = useSharedValue(0);
 
-  // Derive base values as shared values so animated style reacts to prop changes
-  const baseX = useDerivedValue(() => component.layout.x * canvasWidth);
-  const baseY = useDerivedValue(() => component.layout.y * canvasHeight);
-  const baseW = useDerivedValue(() => component.layout.width * canvasWidth);
-  const baseH = useDerivedValue(() => component.layout.height * canvasHeight);
-  const baseRotation = useDerivedValue(() => component.layout.rotation ?? 0);
+  // Base values as shared values — updated atomically from the UI-thread worklet on
+  // gesture commit (same frame as delta reset) to prevent visual snap-back, and synced
+  // from React props for external updates (AI, collab, undo).
+  const baseX = useSharedValue(component.layout.x * canvasWidth);
+  const baseY = useSharedValue(component.layout.y * canvasHeight);
+  const baseW = useSharedValue(component.layout.width * canvasWidth);
+  const baseH = useSharedValue(component.layout.height * canvasHeight);
+  const baseRotation = useSharedValue(component.layout.rotation ?? 0);
+  useEffect(() => {
+    baseX.value = component.layout.x * canvasWidth;
+    baseY.value = component.layout.y * canvasHeight;
+    baseW.value = component.layout.width * canvasWidth;
+    baseH.value = component.layout.height * canvasHeight;
+    baseRotation.value = component.layout.rotation ?? 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- shared values are stable refs
+  }, [component.layout.x, component.layout.y, component.layout.width, component.layout.height, component.layout.rotation, canvasWidth, canvasHeight]);
 
   // Animate to center when editing or drilled into, back when done
   // Account for keyboard height so the component centers in the visible area
@@ -216,10 +234,13 @@ export function SDUIComponent({
     const tScale = interpolate(trashProgress.value, [0, 1], [1, 0.1]);
     const tOpacity = interpolate(trashProgress.value, [0, 1], [1, 0.5]);
     if (isEditMode) {
+      // Multi-selected but NOT the one being dragged → follow the group offset
+      const groupOffX = (!panStarted.value && isMultiSelected && multiDragOffsetX) ? multiDragOffsetX.value : 0;
+      const groupOffY = (!panStarted.value && isMultiSelected && multiDragOffsetY) ? multiDragOffsetY.value : 0;
       return {
         position: "absolute" as const,
-        left: baseX.value + translateX.value + editOffsetX.value,
-        top: baseY.value + translateY.value + editOffsetY.value,
+        left: baseX.value + translateX.value + editOffsetX.value + groupOffX,
+        top: baseY.value + translateY.value + editOffsetY.value + groupOffY,
         width: Math.max(20, baseW.value + resizeDeltaW.value),
         // When text editing, don't fix height so the TextInput can grow with content
         height: isTextEditing.value ? undefined : Math.max(20, baseH.value + resizeDeltaH.value),
@@ -241,29 +262,16 @@ export function SDUIComponent({
     };
   });
 
-  const commitLayout = useCallback(() => {
-    const scaleFactor = scale.value;
-    // Transform scale is applied from center, so adjust position accordingly
-    const scaleOffsetX = baseW.value * (1 - scaleFactor) / 2;
-    const scaleOffsetY = baseH.value * (1 - scaleFactor) / 2;
-    const finalX = baseX.value + translateX.value + scaleOffsetX;
-    const finalY = baseY.value + translateY.value + scaleOffsetY;
-    const finalW = baseW.value * scaleFactor;
-    const finalH = baseH.value * scaleFactor;
-    const finalRotation = baseRotation.value + rotation.value;
-
+  // Receives pre-computed pixel values from the UI-thread worklet (base values already
+  // updated there to prevent visual snap-back). Just normalizes and persists.
+  const commitLayout = useCallback((finalX: number, finalY: number, finalW: number, finalH: number, finalR: number, scaleFactor: number) => {
     const newLayout: Layout = {
       x: clamp(finalX / canvasWidth, 0, 1),
       y: clamp(finalY / canvasHeight, 0, 1),
       width: clamp(finalW / canvasWidth, 0, 1),
       height: clamp(finalH / canvasHeight, 0, 1),
-      rotation: finalRotation,
+      rotation: finalR,
     };
-
-    translateX.value = 0;
-    translateY.value = 0;
-    scale.value = 1;
-    rotation.value = 0;
 
     onUpdate(component.id, newLayout);
 
@@ -274,7 +282,7 @@ export function SDUIComponent({
         onStyleChange(component.id, { fontSize: Math.max(8, Math.round(fontSize * scaleFactor)) });
       }
     }
-  }, [component, canvasWidth, canvasHeight, onUpdate, onStyleChange, baseX, baseY, baseW, baseH, baseRotation, translateX, translateY, scale, rotation]);
+  }, [component, canvasWidth, canvasHeight, onUpdate, onStyleChange]);
 
   // Drag notification callbacks (stable refs for worklet runOnJS)
   const notifyDragStart = useCallback(() => {
@@ -296,6 +304,20 @@ export function SDUIComponent({
   const deleteThisComponent = useCallback(() => {
     onDeleteComponent?.(component.id);
   }, [onDeleteComponent, component.id]);
+
+  // Stable callback refs — prevent gesture useMemo from recreating on callback identity changes
+  const cbRefs = useRef({ commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragMove, notifyDragOverTrash, deleteThisComponent, onGuidesChange, onGuidesEnd });
+  cbRefs.current = { commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragMove, notifyDragOverTrash, deleteThisComponent, onGuidesChange, onGuidesEnd };
+  const _commitLayout = useCallback((fx: number, fy: number, fw: number, fh: number, fr: number, sf: number) => cbRefs.current.commitLayout(fx, fy, fw, fh, fr, sf), []);
+  const _fireEditTap = useCallback(() => cbRefs.current.fireEditTap(), []);
+  const _fireLongPress = useCallback((x: number, y: number) => cbRefs.current.fireLongPress(x, y), []);
+  const _notifyDragStart = useCallback(() => cbRefs.current.notifyDragStart(), []);
+  const _notifyDragEnd = useCallback(() => cbRefs.current.notifyDragEnd(), []);
+  const _notifyDragMove = useCallback((cx: number, cy: number) => cbRefs.current.notifyDragMove(cx, cy), []);
+  const _notifyDragOverTrash = useCallback((isOver: boolean) => cbRefs.current.notifyDragOverTrash(isOver), []);
+  const _deleteThisComponent = useCallback(() => cbRefs.current.deleteThisComponent(), []);
+  const _onGuidesChange = useCallback((guides: number[]) => cbRefs.current.onGuidesChange?.(guides), []);
+  const _onGuidesEnd = useCallback(() => cbRefs.current.onGuidesEnd?.(), []);
 
   const layoutRef = useRef(component.layout);
   layoutRef.current = component.layout;
@@ -330,55 +352,67 @@ export function SDUIComponent({
     onResizeEnd?.();
   }, [onResizeEnd]);
 
+  // Stable refs for resize callbacks
+  const resizeCbRefs = useRef({ commitResize, hugWidth, hugHeight, hugBoth, notifyResizeStart, notifyResizeEnd });
+  resizeCbRefs.current = { commitResize, hugWidth, hugHeight, hugBoth, notifyResizeStart, notifyResizeEnd };
+  const _commitResize = useCallback((dw: number, dh: number) => resizeCbRefs.current.commitResize(dw, dh), []);
+  const _hugWidth = useCallback(() => resizeCbRefs.current.hugWidth(), []);
+  const _hugHeight = useCallback(() => resizeCbRefs.current.hugHeight(), []);
+  const _hugBoth = useCallback(() => resizeCbRefs.current.hugBoth(), []);
+  const _notifyResizeStart = useCallback(() => resizeCbRefs.current.notifyResizeStart(), []);
+  const _notifyResizeEnd = useCallback(() => resizeCbRefs.current.notifyResizeEnd(), []);
+
   const rightResizeGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .minDistance(5)
       .onStart(() => {
-        runOnJS(notifyResizeStart)();
+        runOnJS(_notifyResizeStart)();
       })
       .onUpdate((e) => {
         resizeDeltaW.value = e.translationX;
       })
       .onFinalize(() => {
         const dw = resizeDeltaW.value;
+        baseW.value = baseW.value + dw;
         resizeDeltaW.value = 0;
-        runOnJS(commitResize)(dw, 0);
-        runOnJS(notifyResizeEnd)();
+        runOnJS(_commitResize)(dw, 0);
+        runOnJS(_notifyResizeEnd)();
       });
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDuration(250)
-      .onEnd(() => { runOnJS(hugWidth)(); });
+      .onEnd(() => { runOnJS(_hugWidth)(); });
     return Gesture.Exclusive(doubleTap, pan);
-  }, [resizeDeltaW, commitResize, hugWidth, notifyResizeStart, notifyResizeEnd]);
+  }, []);
 
   const bottomResizeGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .minDistance(5)
       .onStart(() => {
-        runOnJS(notifyResizeStart)();
+        runOnJS(_notifyResizeStart)();
       })
       .onUpdate((e) => {
         resizeDeltaH.value = e.translationY;
       })
       .onFinalize(() => {
         const dh = resizeDeltaH.value;
+        baseH.value = baseH.value + dh;
         resizeDeltaH.value = 0;
-        runOnJS(commitResize)(0, dh);
-        runOnJS(notifyResizeEnd)();
+        runOnJS(_commitResize)(0, dh);
+        runOnJS(_notifyResizeEnd)();
       });
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDuration(250)
-      .onEnd(() => { runOnJS(hugHeight)(); });
+      .onEnd(() => { runOnJS(_hugHeight)(); });
     return Gesture.Exclusive(doubleTap, pan);
-  }, [resizeDeltaH, commitResize, hugHeight, notifyResizeStart, notifyResizeEnd]);
+  }, []);
 
   const diagonalResizeGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .minDistance(5)
       .onStart(() => {
-        runOnJS(notifyResizeStart)();
+        runOnJS(_notifyResizeStart)();
       })
       .onUpdate((e) => {
         resizeDeltaW.value = e.translationX;
@@ -387,17 +421,19 @@ export function SDUIComponent({
       .onFinalize(() => {
         const dw = resizeDeltaW.value;
         const dh = resizeDeltaH.value;
+        baseW.value = baseW.value + dw;
+        baseH.value = baseH.value + dh;
         resizeDeltaW.value = 0;
         resizeDeltaH.value = 0;
-        runOnJS(commitResize)(dw, dh);
-        runOnJS(notifyResizeEnd)();
+        runOnJS(_commitResize)(dw, dh);
+        runOnJS(_notifyResizeEnd)();
       });
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDuration(250)
-      .onEnd(() => { runOnJS(hugBoth)(); });
+      .onEnd(() => { runOnJS(_hugBoth)(); });
     return Gesture.Exclusive(doubleTap, pan);
-  }, [resizeDeltaW, resizeDeltaH, commitResize, hugBoth, notifyResizeStart, notifyResizeEnd]);
+  }, []);
 
   const showResizeHandles = isEditMode && !!isSelected && !isDimmed && !locked;
 
@@ -436,13 +472,13 @@ export function SDUIComponent({
         activeGestures.value++;
         savedTranslateX.value = translateX.value;
         savedTranslateY.value = translateY.value;
-        runOnJS(notifyDragStart)();
+        runOnJS(_notifyDragStart)();
       })
       .onUpdate((e) => {
         const rawX = savedTranslateX.value + e.translationX;
         const rawY = savedTranslateY.value + e.translationY;
 
-        if (siblingRects && componentIndex != null && onGuidesChange) {
+        if (siblingRects && componentIndex != null) {
           // Scale is applied as transform from center, so compute visual bounds
           const currentW = baseW.value * scale.value;
           const currentH = baseH.value * scale.value;
@@ -462,46 +498,66 @@ export function SDUIComponent({
 
           translateX.value = rawX + result.snapDX;
           translateY.value = rawY + result.snapDY;
-          runOnJS(onGuidesChange)(result.guides);
+          runOnJS(_onGuidesChange)(result.guides);
         } else {
           translateX.value = rawX;
           translateY.value = rawY;
         }
 
+        // Update multi-drag offset so other selected components follow
+        if (isMultiSelected && multiDragOffsetX && multiDragOffsetY) {
+          multiDragOffsetX.value = translateX.value;
+          multiDragOffsetY.value = translateY.value;
+        }
+
         // Trash zone detection (center is unaffected by scale-from-center transform)
         const centerX = baseX.value + translateX.value + baseW.value / 2;
         const centerY = baseY.value + translateY.value + baseH.value / 2;
-        runOnJS(notifyDragMove)(centerX, centerY);
+        runOnJS(_notifyDragMove)(centerX, centerY);
         const overTrash = centerY > canvasHeight - TRASH_ZONE_HEIGHT;
         if (overTrash !== isOverTrashSV.value) {
           isOverTrashSV.value = overTrash;
           trashProgress.value = withTiming(overTrash ? 1 : 0, { duration: 200 });
-          runOnJS(notifyDragOverTrash)(overTrash);
+          runOnJS(_notifyDragOverTrash)(overTrash);
         }
       })
       .onFinalize(() => {
         if (!panStarted.value) return;
         panStarted.value = false;
         activeGestures.value--;
-        if (onGuidesEnd) {
-          runOnJS(onGuidesEnd)();
-        }
+        runOnJS(_onGuidesEnd)();
         if (isOverTrashSV.value) {
           isOverTrashSV.value = false;
-          trashProgress.value = 0;
-          translateX.value = 0;
-          translateY.value = 0;
-          scale.value = 1;
-          rotation.value = 0;
-          runOnJS(deleteThisComponent)();
+          // Don't reset translateX/Y/scale/rotation — keep visual position
+          // until the component is removed from the tree to avoid teleport flash
+          runOnJS(_deleteThisComponent)();
         } else {
           trashProgress.value = withTiming(0, { duration: 150 });
           if (activeGestures.value <= 0) {
             activeGestures.value = 0;
-            runOnJS(commitLayout)();
+            // Compute final layout values on UI thread
+            const s = scale.value;
+            const soX = baseW.value * (1 - s) / 2;
+            const soY = baseH.value * (1 - s) / 2;
+            const fx = baseX.value + translateX.value + soX;
+            const fy = baseY.value + translateY.value + soY;
+            const fw = baseW.value * s;
+            const fh = baseH.value * s;
+            const fr = baseRotation.value + rotation.value;
+            // Update bases AND reset deltas atomically — no visual snap-back
+            baseX.value = fx;
+            baseY.value = fy;
+            baseW.value = fw;
+            baseH.value = fh;
+            baseRotation.value = fr;
+            translateX.value = 0;
+            translateY.value = 0;
+            scale.value = 1;
+            rotation.value = 0;
+            runOnJS(_commitLayout)(fx, fy, fw, fh, fr, s);
           }
         }
-        runOnJS(notifyDragEnd)();
+        runOnJS(_notifyDragEnd)();
       });
 
     const pinchGesture = Gesture.Pinch()
@@ -520,7 +576,24 @@ export function SDUIComponent({
         activeGestures.value--;
         if (activeGestures.value <= 0) {
           activeGestures.value = 0;
-          runOnJS(commitLayout)();
+          const s = scale.value;
+          const soX = baseW.value * (1 - s) / 2;
+          const soY = baseH.value * (1 - s) / 2;
+          const fx = baseX.value + translateX.value + soX;
+          const fy = baseY.value + translateY.value + soY;
+          const fw = baseW.value * s;
+          const fh = baseH.value * s;
+          const fr = baseRotation.value + rotation.value;
+          baseX.value = fx;
+          baseY.value = fy;
+          baseW.value = fw;
+          baseH.value = fh;
+          baseRotation.value = fr;
+          translateX.value = 0;
+          translateY.value = 0;
+          scale.value = 1;
+          rotation.value = 0;
+          runOnJS(_commitLayout)(fx, fy, fw, fh, fr, s);
         }
       });
 
@@ -540,7 +613,24 @@ export function SDUIComponent({
         activeGestures.value--;
         if (activeGestures.value <= 0) {
           activeGestures.value = 0;
-          runOnJS(commitLayout)();
+          const s = scale.value;
+          const soX = baseW.value * (1 - s) / 2;
+          const soY = baseH.value * (1 - s) / 2;
+          const fx = baseX.value + translateX.value + soX;
+          const fy = baseY.value + translateY.value + soY;
+          const fw = baseW.value * s;
+          const fh = baseH.value * s;
+          const fr = baseRotation.value + rotation.value;
+          baseX.value = fx;
+          baseY.value = fy;
+          baseW.value = fw;
+          baseH.value = fh;
+          baseRotation.value = fr;
+          translateX.value = 0;
+          translateY.value = 0;
+          scale.value = 1;
+          rotation.value = 0;
+          runOnJS(_commitLayout)(fx, fy, fw, fh, fr, s);
         }
       });
 
@@ -548,16 +638,14 @@ export function SDUIComponent({
       .enabled(!gesturesDisabled)
       .maxDistance(10)
       .onEnd(() => {
-        runOnJS(fireEditTap)();
+        runOnJS(_fireEditTap)();
       });
 
     const longPressGesture = Gesture.LongPress()
       .enabled(!gesturesDisabled)
       .minDuration(500)
-      .onEnd((e, success) => {
-        if (success) {
-          runOnJS(fireLongPress)(e.absoluteX, e.absoluteY);
-        }
+      .onStart((e) => {
+        runOnJS(_fireLongPress)(e.absoluteX, e.absoluteY);
       });
 
     const tapOrLongPress = Gesture.Exclusive(longPressGesture, tapGesture);
@@ -568,7 +656,9 @@ export function SDUIComponent({
       pinchGesture,
       rotationGesture
     );
-  }, [gesturesDisabled, commitLayout, fireEditTap, fireLongPress, notifyDragStart, notifyDragEnd, notifyDragMove, notifyDragOverTrash, deleteThisComponent, translateX, translateY, scale, rotation, savedTranslateX, savedTranslateY, savedScale, savedRotation, activeGestures, panStarted, pinchStarted, rotationStarted, trashProgress, isOverTrashSV, siblingRects, componentIndex, onGuidesChange, onGuidesEnd, canvasWidth, canvasHeight, baseX, baseY, baseW, baseH]);
+    // Stable callbacks (_commitLayout etc.) use refs internally so they never change identity.
+    // Only re-create gestures when these captured-by-value props change:
+  }, [gesturesDisabled, canvasWidth, canvasHeight, componentIndex, isMultiSelected]);
 
   const handleEditStart = useCallback((initialState: TextEditingState) => {
     onEditStart?.(component.id, initialState);
@@ -611,7 +701,7 @@ export function SDUIComponent({
   } else if (component.type === "toggle" || component.type === "textInput") {
     rendererProps = { component, isEditMode };
   } else if (component.type === "list") {
-    rendererProps = { component, isEditMode };
+    rendererProps = { component, isEditMode, onNavigate, onResetAndBuild };
   } else if (component.type === "container") {
     rendererProps = {
       component,
@@ -650,6 +740,7 @@ export function SDUIComponent({
           isEditMode={false}
           onNavigate={onNavigate}
           onResetAndBuild={onResetAndBuild}
+          onOpenAgent={onOpenAgent}
         >
           {(resolvedComponent) => {
             const resolvedProps = { ...rendererProps, component: resolvedComponent };

@@ -38,13 +38,13 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 **textInput**: { type: "textInput", id: uuid, layout, placeholder?: string, defaultValue?: string, fontSize?: number, color?: string, placeholderColor?: string, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, keyboardType?: "default"|"email"|"numeric"|"phone"|"url", secure?: boolean, boundVariable?: string }
 
-**list**: { type: "list", id: uuid, layout, items: Array<{id: uuid, title: string, subtitle?: string, imageUrl?: string}>, itemHeight?: number, showDividers?: boolean, dividerColor?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, titleFontSize?: number, subtitleFontSize?: number, showImages?: boolean, imageShape?: "circle"|"square"|"rounded", borderRadius?: number, opacity?: number(0-1) }
+**list**: { type: "list", id: uuid, layout, items?: Array<{id: uuid, title: string, subtitle?: string, imageUrl?: string}>, itemsSource?: string (variable name containing array), itemTitleKey?: string (default "title"), itemSubtitleKey?: string (default "subtitle"), itemImageKey?: string (default "imageUrl"), itemHeight?: number, showDividers?: boolean, dividerColor?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, titleFontSize?: number, subtitleFontSize?: number, showImages?: boolean, imageShape?: "circle"|"square"|"rounded", borderRadius?: number, opacity?: number(0-1) }
 
 **container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number (pixels), paddingHorizontal?: number, paddingVertical?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, scrollable?: boolean, scrollDirection?: "vertical"|"horizontal", gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", flexWrap?: "nowrap"|"wrap"|"wrap-reverse", opacity?: number(0-1), children?: Component[] }
 
 ### Runtime Fields (available on ALL components)
 - bindings?: Record<string, string> - Bind component props to variable names (e.g., { content: "myVar" })
-- actions?: Record<"onTap"|"onLongPress"|"onChange"|"onSubmit", Action[]> - Event handlers
+- actions?: Record<"onTap"|"onLongPress"|"onChange"|"onSubmit"|"onItemTap", Action[]> - Event handlers (onItemTap is for list items — context vars _item, _itemIndex, _itemId, _itemTitle are set automatically)
 - visibleWhen?: string - Expression that controls visibility (e.g., "isLoggedIn")
 
 ### Action Types
@@ -54,6 +54,8 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 - OPEN_URL: { type: "OPEN_URL", url: string }
 - RESET_CANVAS: { type: "RESET_CANVAS" }
 - CONDITIONAL: { type: "CONDITIONAL", condition: string, then: Action[], else?: Action[] }
+- FETCH: { type: "FETCH", url: string, method?: "GET"|"POST"|"PUT"|"DELETE"|"PATCH", headers?: Record<string,string>, body?: string (expression), resultVariable: string, errorVariable?: string, onSuccess?: Action[], onError?: Action[] } - Fetches data from a URL and stores the parsed JSON response in resultVariable. URL and header values support {{expression}} template interpolation (e.g., "https://api.example.com/users/{{userId}}"). The agent should discover real, working API endpoints to use (public APIs, JSONPlaceholder, etc.).
+- RUN_CODE: { type: "RUN_CODE", code: string } - Executes custom JavaScript code. The code runs in an async sandbox with access to: variables (read-only snapshot of all current variables), setVariable(key, value), toggleVariable(key), navigate(screenId), and fetch (standard fetch API). Use for complex data transformations, multi-step logic, or anything expressions can't handle.
 
 ### Variable Definition
 { id: uuid, name: string, type: "string"|"number"|"boolean"|"array"|"object", defaultValue: any, persist?: boolean }
@@ -108,6 +110,45 @@ Example nav bar:
 When using **layoutMode: "flex"** on containers, children layout values are ignored — the flex engine handles positioning. Use gap, justifyContent, and alignItems instead. Children still need width/height hints for sizing in flex mode.
 
 When using **layoutMode: "absolute"** (default), children use layout x/y/width/height relative to the container (0-1 within the container bounds).
+
+### Dynamic Lists
+Lists can display data from variables using \`itemsSource\` instead of static \`items\`:
+
+**Static list:** items are defined inline in the component JSON.
+**Dynamic list:** set \`itemsSource\` to a variable name containing an array. Use \`itemTitleKey\`, \`itemSubtitleKey\`, \`itemImageKey\` to map object properties (defaults: "title", "subtitle", "imageUrl").
+
+Example — fetch users and display in a dynamic list:
+  1. Variable: { name: "users", type: "array", defaultValue: [] }
+  2. Button with onTap FETCH action: { type: "FETCH", url: "https://jsonplaceholder.typicode.com/users", resultVariable: "users" }
+  3. List: { itemsSource: "users", itemTitleKey: "name", itemSubtitleKey: "email" }
+
+For item interactions, use the \`onItemTap\` event in actions. When an item is tapped, these context variables are set automatically:
+  - \`_item\`: the full item object
+  - \`_itemIndex\`: the index in the array
+  - \`_itemId\`: the item's id
+  - \`_itemTitle\`: the item's resolved title
+
+### Data Fetching
+Use the FETCH action to load data from APIs. The agent should discover and use real, publicly available API endpoints. URL supports {{variable}} template interpolation.
+
+Example — load posts on button tap:
+  actions: { "onTap": [{ "type": "FETCH", "url": "https://jsonplaceholder.typicode.com/posts", "resultVariable": "posts", "errorVariable": "fetchError" }] }
+
+Chain actions after fetch with onSuccess/onError:
+  { "type": "FETCH", "url": "...", "resultVariable": "data", "onSuccess": [{ "type": "SET_VARIABLE", "key": "isLoaded", "value": "true" }] }
+
+### Custom Code Execution
+Use RUN_CODE for complex logic that expressions can't handle. The code runs in an async JavaScript sandbox.
+
+Available in the sandbox:
+  - \`variables\` — read-only snapshot of all current variable values
+  - \`setVariable(key, value)\` — update a variable
+  - \`toggleVariable(key)\` — toggle a boolean variable
+  - \`navigate(screenId)\` — navigate to a screen
+  - \`fetch(url, options)\` — standard fetch API
+
+Example — transform fetched data:
+  { "type": "RUN_CODE", "code": "const res = await fetch('https://api.example.com/data');\\nconst json = await res.json();\\nsetVariable('items', json.results.map(r => ({ title: r.name, subtitle: r.description })));" }
 
 ### Design Patterns
 
@@ -333,10 +374,15 @@ export function agentSystemPrompt(
         }
       }
       const wfStr = wfLines.length > 0
-        ? "\n  Workflows:\n" + wfLines.join("\n")
+        ? "\n  Component Logic:\n" + wfLines.join("\n")
+        : "";
+      // Named workflows on this screen
+      const namedWfs = (s as any).workflows ?? [];
+      const namedWfStr = namedWfs.length > 0
+        ? "\n  Workflows:\n" + namedWfs.map((w: any) => `    - "${w.title}" (id: ${w.id}): ${w.description}\n      Blocks: ${w.blocks.map((b: any) => b.title).join(" → ")}`).join("\n")
         : "";
       return `### ${isCurrent ? ">> " : ""}Screen: "${s.name}" (id: ${s.id})${isCurrent ? " [CURRENT]" : ""}
-  Components:\n${comps || "    (empty)"}${varStr}${wfStr}`;
+  Components:\n${comps || "    (empty)"}${varStr}${wfStr}${namedWfStr}`;
     })
     .join("\n\n");
 
@@ -389,27 +435,39 @@ When the user asks to add/change interactivity on EXISTING components (e.g., "wh
 {
   "variables": [{ "id": "uuid", "name": "varName", "type": "string|number|boolean|array|object", "defaultValue": value, "scope": "app|screen" }],
   "componentUpdates": [{ "componentId": "existing-uuid", "actions": {...}, "bindings": {...}, "visibleWhen": "expr" }],
+  "workflow": {
+    "id": "uuid", "title": "Workflow Name", "description": "What this workflow does",
+    "blocks": [
+      { "id": "uuid", "title": "Block Name", "description": "What this block does", "icon": "feather-icon-name" }
+    ]
+  },
   "description": "What this does",
   "pseudocode": ["line1", "line2"]
 }
+The "workflow" field generates a visual summary shown in the Workflows panel. Each block represents a key concept (trigger, data fetch, condition, navigation, etc.). Use descriptive titles and short descriptions. Pick relevant Feather icon names for blocks (e.g., "play" for triggers, "download-cloud" for API calls, "git-branch" for conditions, "arrow-right" for navigation, "eye" for visibility, "database" for data, "code" for custom code).
+**IMPORTANT: Always include the "workflow" field when creating or modifying logic.** This is how users see and manage workflows.
 To remove actions/bindings from a component, set them to empty: "actions": {}, "bindings": {}, or "visibleWhen": ""
 
 ### 3. Manage Screens — THE PREFERRED FORMAT for generating complete pages
 You can create, delete, rename screens, and include variables. Return a screen management object inside <json>...</json> tags:
 {
   "screenOps": [
-    { "op": "create", "id": "new-uuid", "name": "Screen Name", "components": [...] },
+    { "op": "create", "id": "new-uuid", "name": "Screen Name", "components": [...], "workflows": [...] },
     { "op": "delete", "id": "existing-screen-uuid" },
     { "op": "rename", "id": "existing-screen-uuid", "name": "New Name" },
-    { "op": "setComponents", "id": "existing-screen-uuid", "components": [...] },
+    { "op": "setComponents", "id": "existing-screen-uuid", "components": [...], "workflows": [...] },
     { "op": "setInitial", "id": "existing-screen-uuid" }
   ],
   "variables": [
     { "id": "uuid", "name": "varName", "type": "string|number|boolean|array|object", "defaultValue": value, "scope": "app|screen", "screenId": "target-screen-uuid" }
   ],
+  "workflows": [
+    { "id": "uuid", "title": "Workflow Name", "description": "...", "blocks": [{ "id": "uuid", "title": "Block", "description": "...", "icon": "feather-icon" }] }
+  ],
   "description": "What this does"
 }
 - **Use this format whenever generating or redesigning a screen** — it lets you create both the UI components AND the variables/logic in one response
+- **Always include a "workflows" array** when creating screens with logic — workflows appear in the user's Workflows panel as visual block summaries. Include workflows at the screenOps op level (per-screen) or at the top level (applied to current screen)
 - When creating or setting components, include actions, bindings, and visibleWhen directly on the components so the page is fully functional
 - When creating a screen, always include a full component array with a background shape
 - You can modify ANY screen's components using "setComponents", not just the current one
@@ -436,6 +494,41 @@ You can create, delete, rename screens, and include variables. Return a screen m
   ],
   "description": "Counter with increment and decrement"
 }
+
+**Example: Dynamic list with data fetching in one response:**
+{
+  "screenOps": [
+    { "op": "setComponents", "id": "current-screen-id", "components": [
+      { "type": "shape", "id": "uuid-bg", "layout": {"x":0,"y":0,"width":1,"height":1}, "backgroundColor": "#000000" },
+      { "type": "text", "id": "uuid-title", "layout": {...}, "content": "Users", "fontSize": 28, "color": "#ffffff", "fontWeight": "bold" },
+      { "type": "button", "id": "uuid-load", "layout": {...}, "label": "Load Users", "backgroundColor": "#ffffff", "textColor": "#000000",
+        "actions": { "onTap": [{ "type": "FETCH", "url": "https://jsonplaceholder.typicode.com/users", "resultVariable": "users", "errorVariable": "fetchError",
+          "onSuccess": [{ "type": "SET_VARIABLE", "key": "isLoaded", "value": "true" }] }] } },
+      { "type": "list", "id": "uuid-list", "layout": {...}, "itemsSource": "users", "itemTitleKey": "name", "itemSubtitleKey": "email",
+        "titleColor": "#ffffff", "subtitleColor": "#aaaaaa", "backgroundColor": "#1a1a1a",
+        "actions": { "onItemTap": [{ "type": "SET_VARIABLE", "key": "selectedUser", "value": "_item" }] } }
+    ]}
+  ],
+  "variables": [
+    { "id": "uuid-v1", "name": "users", "type": "array", "defaultValue": [], "scope": "screen" },
+    { "id": "uuid-v2", "name": "fetchError", "type": "string", "defaultValue": "", "scope": "screen" },
+    { "id": "uuid-v3", "name": "isLoaded", "type": "boolean", "defaultValue": false, "scope": "screen" },
+    { "id": "uuid-v4", "name": "selectedUser", "type": "object", "defaultValue": null, "scope": "screen" }
+  ],
+  "description": "Dynamic user list with API fetch"
+}
+
+**When to use FETCH vs RUN_CODE:**
+- Use FETCH for simple GET/POST requests where you just need to store the response in a variable
+- Use RUN_CODE when you need to transform data, chain multiple requests, or do complex logic
+- FETCH is preferred for straightforward API calls — it's simpler and more declarative
+- RUN_CODE example: filtering, sorting, mapping arrays, combining data from multiple sources
+
+**Data Fetching Guidelines:**
+- Discover and use real, publicly available API endpoints (JSONPlaceholder, REST Countries, Open Meteo, PokéAPI, etc.)
+- Always include an errorVariable to handle failures gracefully
+- Use onSuccess/onError to update loading states or show error messages
+- For POST/PUT requests, use the body field (evaluated as an expression)
 
 ### 4. Answer Questions About Workflows
 If the user asks about their existing workflows, variables, or component logic, describe them in plain text.

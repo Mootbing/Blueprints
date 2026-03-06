@@ -107,12 +107,17 @@ export class SupabaseStorageProvider implements SyncableStorageProvider {
       // Update local sync statuses from flush results
       const slates = await this.local.listSlates();
       let updatedList = [...slates];
-      for (const [slateId, status] of flushResults) {
+      for (const [slateId, result] of flushResults) {
         updatedList = updatedList.map((s) => {
           if (s.id !== slateId) return s;
-          if (status === 'synced') {
-            return { ...s, syncStatus: 'synced' as const, lastSyncedAt: Date.now() };
-          } else if (status === 'conflict') {
+          if (result.status === 'synced') {
+            return {
+              ...s,
+              syncStatus: 'synced' as const,
+              lastSyncedAt: Date.now(),
+              ...(result.version != null ? { remoteVersion: result.version } : {}),
+            };
+          } else if (result.status === 'conflict') {
             return { ...s, syncStatus: 'conflict' as const };
           }
           return s;
@@ -182,11 +187,16 @@ export class SupabaseStorageProvider implements SyncableStorageProvider {
       if (results.size === 0) return;
       const slates = await this.local.listSlates();
       const updatedList = slates.map((s) => {
-        const status = results.get(s.id);
-        if (!status) return s;
-        if (status === 'synced') {
-          return { ...s, syncStatus: 'synced' as const, lastSyncedAt: Date.now() };
-        } else if (status === 'conflict') {
+        const result = results.get(s.id);
+        if (!result) return s;
+        if (result.status === 'synced') {
+          return {
+            ...s,
+            syncStatus: 'synced' as const,
+            lastSyncedAt: Date.now(),
+            ...(result.version != null ? { remoteVersion: result.version } : {}),
+          };
+        } else if (result.status === 'conflict') {
           return { ...s, syncStatus: 'conflict' as const };
         }
         return s;

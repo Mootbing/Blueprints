@@ -52,6 +52,11 @@ const ResetCanvasActionSchema = z.object({
   type: z.literal("RESET_CANVAS"),
 });
 
+const RunCodeActionSchema = z.object({
+  type: z.literal("RUN_CODE"),
+  code: z.string(),
+});
+
 export const ActionSchema: z.ZodType<Action> = z.lazy(() =>
   z.union([
     SetVariableActionSchema,
@@ -59,6 +64,18 @@ export const ActionSchema: z.ZodType<Action> = z.lazy(() =>
     NavigateActionSchema,
     OpenUrlActionSchema,
     ResetCanvasActionSchema,
+    RunCodeActionSchema,
+    z.object({
+      type: z.literal("FETCH"),
+      url: z.string(),
+      method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      body: z.string().optional(),
+      resultVariable: z.string(),
+      errorVariable: z.string().optional(),
+      onSuccess: z.array(z.lazy(() => ActionSchema)).optional(),
+      onError: z.array(z.lazy(() => ActionSchema)).optional(),
+    }),
     ConditionalActionSchema,
   ])
 );
@@ -75,6 +92,18 @@ export type ToggleVariableAction = z.infer<typeof ToggleVariableActionSchema>;
 export type NavigateAction = z.infer<typeof NavigateActionSchema>;
 export type OpenUrlAction = z.infer<typeof OpenUrlActionSchema>;
 export type ResetCanvasAction = z.infer<typeof ResetCanvasActionSchema>;
+export type RunCodeAction = z.infer<typeof RunCodeActionSchema>;
+export type FetchAction = {
+  type: "FETCH";
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  headers?: Record<string, string>;
+  body?: string;
+  resultVariable: string;
+  errorVariable?: string;
+  onSuccess?: Action[];
+  onError?: Action[];
+};
 export type ConditionalAction = {
   type: "CONDITIONAL";
   condition: string;
@@ -87,6 +116,8 @@ export type Action =
   | NavigateAction
   | OpenUrlAction
   | ResetCanvasAction
+  | FetchAction
+  | RunCodeAction
   | ConditionalAction;
 
 // --- Bindings & Event Handlers ---
@@ -94,7 +125,7 @@ export type Action =
 export const BindingsSchema = z.record(z.string(), z.string()).optional();
 export type Bindings = z.infer<typeof BindingsSchema>;
 
-const EventNameEnum = z.enum(["onTap", "onLongPress", "onChange", "onSubmit"]);
+const EventNameEnum = z.enum(["onTap", "onLongPress", "onChange", "onSubmit", "onItemTap"]);
 export const EventHandlersSchema = z.record(EventNameEnum, z.array(ActionSchema)).optional();
 export type EventHandlers = z.infer<typeof EventHandlersSchema>;
 
@@ -268,7 +299,11 @@ export const ListComponentSchema = z.object({
   type: z.literal("list"),
   id: z.string().uuid(),
   layout: LayoutSchema,
-  items: z.array(ListItemSchema),
+  items: z.array(ListItemSchema).optional(),
+  itemsSource: z.string().optional(),
+  itemTitleKey: z.string().optional(),
+  itemSubtitleKey: z.string().optional(),
+  itemImageKey: z.string().optional(),
   itemHeight: z.number().positive().optional(),
   showDividers: z.boolean().optional(),
   dividerColor: z.string().min(1).optional(),
@@ -368,6 +403,24 @@ export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object(
 
 export const ComponentSchema: z.ZodType<Component> = z.union([BaseComponentSchema, ContainerComponentSchema]);
 
+// --- Workflows ---
+
+export const WorkflowBlockSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  icon: z.string().optional(),
+});
+export type WorkflowBlock = z.infer<typeof WorkflowBlockSchema>;
+
+export const WorkflowSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  blocks: z.array(WorkflowBlockSchema),
+});
+export type Workflow = z.infer<typeof WorkflowSchema>;
+
 // --- Screen & App ---
 
 export const ScreenSchema = z.object({
@@ -375,6 +428,7 @@ export const ScreenSchema = z.object({
   name: z.string(),
   components: z.array(ComponentSchema),
   variables: z.array(VariableSchema).optional(),
+  workflows: z.array(WorkflowSchema).optional(),
 });
 export type Screen = z.infer<typeof ScreenSchema>;
 

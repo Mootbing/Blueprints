@@ -808,6 +808,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
             themeColors={highlightColorValues}
             activeColor={props.styleState!.backgroundColor}
             onSelect={(col) => props.onStyleStateChange!({ backgroundColor: col })}
+            showNone
             onAddCustom={() => { setPickerTarget("backgroundColor"); setPickerVisible(true); }}
           />
         )}

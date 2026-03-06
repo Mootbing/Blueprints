@@ -149,6 +149,7 @@ interface ComponentsPageProps {
   storage?: import("../../storage/StorageProvider").StorageProvider;
   slateId?: string;
   onOpenSettings?: () => void;
+  onCloseAndSave?: () => void;
 }
 
 export function ComponentsPage({
@@ -158,6 +159,7 @@ export function ComponentsPage({
   storage,
   slateId,
   onOpenSettings,
+  onCloseAndSave,
 }: ComponentsPageProps) {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const isSyncable = storage && 'joinCollabChannel' in storage;
@@ -191,6 +193,13 @@ export function ComponentsPage({
         >
           <Feather name="settings" size={18} color="#fff" />
           <Text style={styles.undoLabel}>Slate Settings</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+          onPress={onCloseAndSave}
+        >
+          <Feather name="save" size={18} color="#fff" />
+          <Text style={styles.undoLabel}>Close & Save</Text>
         </Pressable>
       </ScrollView>
 

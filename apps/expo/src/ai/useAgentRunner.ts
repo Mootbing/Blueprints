@@ -100,6 +100,8 @@ interface UseAgentRunnerOptions {
   currentHistoryId?: string;
   onAddBranchEntry?: (branchSlate: AppSlate, description: string, source?: "user" | "ai") => string;
   chatLog?: ChatLogEntry[];
+  /** Called after AI changes are auto-applied (server or conflict fallback) */
+  onChangesApplied?: () => void;
 }
 
 export function useAgentRunner({
@@ -110,6 +112,7 @@ export function useAgentRunner({
   currentHistoryId,
   onAddBranchEntry,
   chatLog,
+  onChangesApplied,
 }: UseAgentRunnerOptions) {
   const { sessions, sessionsRef, createSession, updateSession, deleteSession } =
     useAgentSessions(slateId);
@@ -161,6 +164,8 @@ export function useAgentRunner({
   screenIdRef.current = screenId;
   const onAddBranchEntryRef = useRef(onAddBranchEntry);
   onAddBranchEntryRef.current = onAddBranchEntry;
+  const onChangesAppliedRef = useRef(onChangesApplied);
+  onChangesAppliedRef.current = onChangesApplied;
   const chatLogRef = useRef(chatLog);
   chatLogRef.current = chatLog;
   const historyEntriesRef = useRef(historyEntries);
@@ -181,8 +186,20 @@ export function useAgentRunner({
         timestamp: Date.now(),
       };
 
-      // If the server applied changes, fetch the updated slate and create a local undo branch entry
-      if (response?.applied && onAddBranchEntryRef.current) {
+      // Apply AI-generated slate changes locally
+      // Prefer builtSlate from response (always available) over re-fetching from DB
+      const builtSlate = response?.builtSlate ?? response?.pendingSlate;
+      if (builtSlate && onAddBranchEntryRef.current) {
+        try {
+          const description = response.description ?? "AI changes";
+          const entryId = onAddBranchEntryRef.current(builtSlate, description, "ai");
+          msg.branchEntryId = entryId;
+          onChangesAppliedRef.current?.();
+        } catch (err) {
+          console.warn("[useAgentRunner] Failed to create branch entry from builtSlate:", err);
+        }
+      } else if (response?.applied && onAddBranchEntryRef.current) {
+        // Fallback: re-fetch from DB if builtSlate not in response (old edge function)
         try {
           const supabase = getSupabaseClient();
           const { data: slateRow } = await supabase
@@ -195,6 +212,7 @@ export function useAgentRunner({
             const description = response.description ?? "AI changes";
             const entryId = onAddBranchEntryRef.current(slateRow.slate, description, "ai");
             msg.branchEntryId = entryId;
+            onChangesAppliedRef.current?.();
           }
         } catch (err) {
           console.warn("[useAgentRunner] Failed to create branch entry for applied changes:", err);

@@ -107,7 +107,7 @@ export function subscribeToJob(
       },
       (payload) => {
         const row = payload.new as any;
-        if (row.status === "completed" || row.status === "conflict") {
+        if ((row.status === "completed" || row.status === "conflict") && row.response) {
           callbacks.onComplete?.({
             id: row.id,
             status: row.status,

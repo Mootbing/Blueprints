@@ -1,9 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, Pressable, Text, TextInput, StyleSheet, Platform, Share, Modal, Switch } from "react-native";
+import React, { useState, useCallback, useRef } from "react";
+import { View, Pressable, Text, TextInput, StyleSheet, Platform, Modal, Switch } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { crossAlert } from "../../utils/crossAlert";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppSlateSchema } from "../../types";
 import type { AppSlate, Theme } from "../../types";
 import type { StorageProvider, SyncableStorageProvider } from "../../storage/StorageProvider";
 import { sharedMenuStyles } from "./sharedStyles";
@@ -314,35 +312,6 @@ const veStyles = StyleSheet.create({
   },
 });
 
-interface SlateExportProject {
-  _exportType: "project";
-  slate: AppSlate;
-  history?: unknown;
-  chatLog?: unknown;
-  agentSessions?: unknown;
-  exportedAt: number;
-}
-
-interface SlateExportApp {
-  _exportType: "app";
-  slate: AppSlate;
-  exportedAt: number;
-}
-
-type SlateExport = SlateExportProject | SlateExportApp;
-
-function triggerWebDownload(json: string, filename: string) {
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 interface SettingsPageProps {
   width: number;
   isEditMode: boolean;
@@ -450,157 +419,6 @@ export function SettingsPage({
     },
     [fontSizes, updateTheme],
   );
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const doExport = useCallback(
-    async (mode: "project" | "app") => {
-      const name = slateName || slate.screens[slate.initial_screen_id]?.name || "slate";
-      const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-      const timestamp = Date.now();
-
-      if (mode === "project" && slateId) {
-        const [historyRaw, chatLogRaw, agentRaw] = await Promise.all([
-          AsyncStorage.getItem(`undo_history_${slateId}`).catch(() => null),
-          AsyncStorage.getItem(`chat_log_${slateId}`).catch(() => null),
-          AsyncStorage.getItem(`agent_sessions_${slateId}`).catch(() => null),
-        ]);
-        const payload: SlateExportProject = {
-          _exportType: "project",
-          slate,
-          history: historyRaw ? JSON.parse(historyRaw) : undefined,
-          chatLog: chatLogRaw ? JSON.parse(chatLogRaw) : undefined,
-          agentSessions: agentRaw ? JSON.parse(agentRaw) : undefined,
-          exportedAt: timestamp,
-        };
-        const json = JSON.stringify(payload, null, 2);
-        const filename = `${safeName}_${timestamp}.json`;
-
-        if (Platform.OS === "web") {
-          triggerWebDownload(json, filename);
-        } else {
-          Share.share({ message: json, title: filename });
-        }
-      } else {
-        const payload: SlateExportApp = {
-          _exportType: "app",
-          slate,
-          exportedAt: timestamp,
-        };
-        const json = JSON.stringify(payload, null, 2);
-        const filename = `${safeName}_${timestamp}.json`;
-
-        if (Platform.OS === "web") {
-          triggerWebDownload(json, filename);
-        } else {
-          Share.share({ message: json, title: filename });
-        }
-      }
-    },
-    [slate, slateId, slateName],
-  );
-
-  const handleExport = useCallback(() => {
-    if (!slateId) {
-      doExport("app");
-      return;
-    }
-    crossAlert(
-      "Export Slate",
-      "Export Project includes history & AI logs.\nExport App is a clean slate without logs.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Export App", onPress: () => doExport("app") },
-        { text: "Export Project", onPress: () => doExport("project") },
-      ],
-    );
-  }, [slateId, doExport]);
-
-  const processImport = useCallback(
-    async (text: string) => {
-      try {
-        const data = JSON.parse(text);
-        if (!data || typeof data !== "object") {
-          crossAlert("Import Failed", "Invalid file: not a valid JSON object.");
-          return;
-        }
-
-        // Support both wrapped ({ slate: ... }) and raw AppSlate formats
-        let slateCandidate: unknown;
-        let wrapper: SlateExport | null = null;
-
-        if (data.slate && typeof data.slate === "object") {
-          // Wrapped export format
-          slateCandidate = data.slate;
-          wrapper = data as SlateExport;
-        } else if (data.version !== undefined && data.screens !== undefined) {
-          // Raw AppSlate format (no wrapper)
-          slateCandidate = data;
-        } else {
-          crossAlert("Import Failed", "Invalid file: missing slate data.");
-          return;
-        }
-
-        const parsed = AppSlateSchema.safeParse(slateCandidate);
-        if (!parsed.success) {
-          crossAlert("Import Failed", "Invalid slate format:\n" + parsed.error.issues.map((i) => i.message).join(", "));
-          return;
-        }
-        onSlateChange?.(parsed.data, "Imported project from JSON");
-
-        // Restore project data if available
-        if (slateId && wrapper && wrapper._exportType === "project") {
-          const proj = wrapper as SlateExportProject;
-          const ops: Promise<void>[] = [];
-          if (proj.history) {
-            ops.push(AsyncStorage.setItem(`undo_history_${slateId}`, JSON.stringify(proj.history)));
-          }
-          if (proj.chatLog) {
-            ops.push(AsyncStorage.setItem(`chat_log_${slateId}`, JSON.stringify(proj.chatLog)));
-          }
-          if (proj.agentSessions) {
-            ops.push(AsyncStorage.setItem(`agent_sessions_${slateId}`, JSON.stringify(proj.agentSessions)));
-          }
-          await Promise.all(ops);
-          crossAlert("Import Complete", "Project imported with history and AI logs. Reopen the slate to see restored history.");
-        } else {
-          crossAlert("Import Complete", "App slate imported successfully.");
-        }
-      } catch (e) {
-        crossAlert("Import Failed", "Could not parse JSON file.");
-      }
-    },
-    [onSlateChange, slateId],
-  );
-
-  const handleImport = useCallback(() => {
-    if (Platform.OS === "web") {
-      // Create or reuse hidden file input
-      if (!fileInputRef.current) {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json,application/json";
-        input.style.display = "none";
-        input.addEventListener("change", () => {
-          const file = input.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === "string") {
-              processImport(reader.result);
-            }
-          };
-          reader.readAsText(file);
-          input.value = "";
-        });
-        document.body.appendChild(input);
-        fileInputRef.current = input;
-      }
-      fileInputRef.current.click();
-    } else {
-      crossAlert("Import", "Paste your exported JSON below is not yet supported on this platform. Please use the web version to import.");
-    }
-  }, [processImport]);
 
   const handleClose = () => {
     onClose();
@@ -799,20 +617,6 @@ export function SettingsPage({
           </Pressable>
         )}
       </View>
-      <View style={styles.exportImportRow}>
-        <Pressable
-          style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
-          onPress={handleExport}
-        >
-          <Text style={styles.exportBtnText}>Export Project (.json)</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.exportBtn, pressed && styles.exportBtnPressed]}
-          onPress={handleImport}
-        >
-          <Text style={styles.exportBtnText}>Import Project (.json)</Text>
-        </Pressable>
-      </View>
       {isSyncable && slateId && (
         <View style={styles.exportImportRow}>
           <Pressable
@@ -823,13 +627,6 @@ export function SettingsPage({
           </Pressable>
         </View>
       )}
-      <Pressable
-        style={({ pressed }) => [styles.row, styles.projectRow, pressed && styles.projectRowPressed]}
-        onPress={handleClose}
-      >
-        <Text style={styles.projectLabel}>Close & Save Slate</Text>
-      </Pressable>
-
       <View style={styles.divider} />
 
       {/* Danger Zone */}

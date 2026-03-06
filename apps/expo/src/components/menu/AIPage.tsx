@@ -109,7 +109,6 @@ export function AIPage({
           error={error}
           onSend={sendMessage}
           onApply={handleApply}
-          onClear={clearMessages}
           placeholder="Describe a screen (e.g., login page)..."
           headerActions={
             <>

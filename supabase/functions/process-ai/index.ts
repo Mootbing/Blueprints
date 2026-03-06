@@ -233,7 +233,9 @@ async function processAgentMessage(
   // Apply changes to slate if actionable
   let applied = false;
   let description: string | undefined;
+  let builtSlate: any = undefined;
   const actionable = hasActionableJson(fullResponse);
+  console.log(`[process-ai] hasActionableJson=${actionable}, slateId=${slateId}, screenId=${screenId}`);
 
   if (actionable && slateId && screenId) {
     // Read current slate
@@ -243,19 +245,28 @@ async function processAgentMessage(
       .eq("id", slateId)
       .single();
 
+    console.log(`[process-ai] slateRow found=${!!slateRow}, version=${slateRow?.version}`);
+
     if (slateRow) {
       const branchResult = buildBranchSlate(slateRow.slate, screenId, fullResponse);
+      console.log(`[process-ai] buildBranchSlate result=${!!branchResult}, description=${branchResult?.description}`);
       if (branchResult) {
         description = branchResult.description;
+        builtSlate = branchResult.slate;
         // CAS write: only update if version matches
         const baseVersion = job.base_slate_version;
-        const { error: updateError } = await sb
+        console.log(`[process-ai] CAS write: baseVersion=${baseVersion}, slateRow.version=${slateRow.version}`);
+        const { data: updateData, error: updateError } = await sb
           .from("user_slates")
           .update({ slate: branchResult.slate })
           .eq("id", slateId)
-          .eq("version", baseVersion ?? slateRow.version);
+          .eq("version", baseVersion ?? slateRow.version)
+          .select("version")
+          .maybeSingle();
 
-        if (updateError) {
+        console.log(`[process-ai] CAS result: updateData=${!!updateData}, updateError=${updateError?.message}`);
+
+        if (updateError || !updateData) {
           // Version conflict - still complete the job but mark not applied
           return {
             text: fullResponse,
@@ -264,7 +275,9 @@ async function processAgentMessage(
             stopReason: "end_turn",
             applied: false,
             conflict: true,
+            builtSlate,
             description,
+            hasActionableJson: actionable,
           };
         }
         applied = true;
@@ -279,6 +292,7 @@ async function processAgentMessage(
     stopReason: "end_turn",
     applied,
     hasActionableJson: actionable,
+    builtSlate,
     description,
   };
 }
@@ -288,22 +302,30 @@ async function processAgentMessage(
 async function processGenerateTitle(request: any): Promise<any> {
   const { messages } = request;
 
-  const summary = messages
-    .slice(0, 4)
-    .map((m: any) => {
-      const cleaned = (m.content as string).replace(/<json>[\s\S]*?<\/json>/g, "").trim();
-      return `${m.role}: ${cleaned.slice(0, 300)}`;
-    })
-    .join("\n");
+  // Only use the first user message for titling — assistant responses are full of JSON noise
+  const firstUserMsg = messages.find((m: any) => m.role === "user");
+  const raw = typeof firstUserMsg?.content === "string" ? firstUserMsg.content : "";
+  // Strip any JSON/XML blocks and keep just the natural language
+  const cleaned = raw
+    .replace(/<json>[\s\S]*?<\/json>/g, "")
+    .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\{[\s\S]*?\}/g, "")
+    .trim()
+    .slice(0, 200);
+
+  if (!cleaned) {
+    return { title: "New Chat" };
+  }
 
   const result = await callClaude(
-    "Generate a short title (3-5 words) for this conversation. Output ONLY the title, no quotes, no punctuation at the end.",
-    [{ role: "user", content: summary }],
+    "Generate a short title (3-5 words) summarizing what the user is asking for. Output ONLY the title text, nothing else. No quotes, no punctuation at the end.",
+    [{ role: "user", content: cleaned }],
     24,
     "claude-haiku-4-5-20251001",
   );
 
-  const title = result.text.replace(/^["']+|["']+$/g, "").slice(0, 40);
+  const title = result.text.replace(/^["']+|["']+$/g, "").trim().slice(0, 40);
   return { title };
 }
 

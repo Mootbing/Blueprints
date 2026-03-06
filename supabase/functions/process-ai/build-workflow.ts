@@ -29,9 +29,24 @@ const ComponentUpdateSchema = z.object({
   visibleWhen: z.string().optional(),
 });
 
+const WorkflowBlockSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  icon: z.string().optional(),
+});
+
+const WorkflowMetaSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  blocks: z.array(WorkflowBlockSchema),
+});
+
 export const WorkflowResultSchema = z.object({
   variables: z.array(WorkflowVariableSchema).optional(),
   componentUpdates: z.array(ComponentUpdateSchema).optional(),
+  workflow: WorkflowMetaSchema.optional(),
   description: z.string(),
   pseudocode: z.array(z.string()),
 });
@@ -89,6 +104,25 @@ export function applyWorkflow(
           }
         }
       }
+    }
+  }
+
+  // Save workflow metadata
+  if (result.workflow) {
+    const screen = updated.screens[screenId];
+    if (screen) {
+      const existing = (screen as any).workflows ?? [];
+      const idx = existing.findIndex((w: any) => w.id === result.workflow!.id);
+      const newWorkflows = idx >= 0
+        ? existing.map((w: any, i: number) => i === idx ? result.workflow! : w)
+        : [...existing, result.workflow];
+      updated = {
+        ...updated,
+        screens: {
+          ...updated.screens,
+          [screenId]: { ...updated.screens[screenId], workflows: newWorkflows },
+        },
+      };
     }
   }
 
