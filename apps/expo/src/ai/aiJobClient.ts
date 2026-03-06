@@ -168,3 +168,21 @@ export async function checkCompletedJobs(
   const { data } = await query;
   return (data ?? []) as JobResult[];
 }
+
+/**
+ * Get active (pending/running) jobs for a slate — used on mount to resume tracking.
+ */
+export async function getActiveJobs(
+  slateId: string,
+): Promise<Array<JobResult & { session_id?: string; job_type?: string; created_at?: string }>> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from("ai_jobs")
+    .select("id, status, response, applied, error_message, session_id, job_type, created_at")
+    .eq("slate_id", slateId)
+    .in("status", ["pending", "running"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  return (data ?? []) as any[];
+}

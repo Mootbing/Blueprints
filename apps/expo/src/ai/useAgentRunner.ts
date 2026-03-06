@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildContent } from "./anthropicClient";
 import { agentSystemPrompt } from "./prompts";
 import { uuid } from "../utils/uuid";
-import { submitJob, subscribeToJob, checkCompletedJobs, getJobResult } from "./aiJobClient";
+import { submitJob, subscribeToJob, checkCompletedJobs, getJobResult, getActiveJobs } from "./aiJobClient";
 import type { AppSlate } from "../types";
 import type { ChatMessage, AgentSession } from "./types";
 import type { HistoryEntry } from "../hooks/useUndoHistory";
@@ -385,40 +385,272 @@ export function useAgentRunner({
     [sessionsRef, updateSession, slateId, getSlateVersion],
   );
 
+  // ─── Mount-time reconciliation: resume tracking in-progress jobs, apply completed ones ───
+  const reconciledRef = useRef(false);
+  useEffect(() => {
+    if (reconciledRef.current) return;
+    reconciledRef.current = true;
+
+    const reconcile = async () => {
+      console.log("[useAgentRunner] Mount reconciliation starting...");
+
+      // 1. Check for active (pending/running) jobs and re-subscribe
+      const activeJobs = await getActiveJobs(slateId).catch(() => []);
+      console.log(`[useAgentRunner] Found ${activeJobs.length} active jobs`);
+
+      for (const job of activeJobs) {
+        const sessionId = job.session_id;
+        if (!sessionId) continue;
+        if (job.job_type !== "agent_message") continue;
+
+        // Mark session as running
+        const session = sessionsRef.current.find((s) => s.id === sessionId);
+        if (!session) continue;
+
+        console.log(`[useAgentRunner] Re-subscribing to active job ${job.id} for session ${sessionId}`);
+        loadingSessionsRef.current.add(sessionId);
+        if (mountedRef.current) {
+          setLoadingCount((c) => c + 1);
+          setStreamingThinking("");
+          updateSession(sessionId, { status: "running" });
+        }
+
+        const thinkingTextRef = { current: "" };
+        const cleanup = subscribeToJob(job.id, {
+          onThinking: (chunk) => {
+            thinkingTextRef.current += chunk;
+            if (mountedRef.current) setStreamingThinking(thinkingTextRef.current);
+          },
+          onComplete: (completedJob) => {
+            if (!mountedRef.current) return;
+            setStreamingThinking(null);
+
+            const response = completedJob.response;
+            const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
+            const alreadyHasReply = currentSession?.messages.some(
+              (m) => m.role === "assistant" && m.timestamp > (job.created_at ? new Date(job.created_at).getTime() : 0)
+            );
+            if (alreadyHasReply) {
+              console.log(`[useAgentRunner] Session ${sessionId} already has reply, skipping`);
+            } else {
+              const assistantMsg: ChatMessage = {
+                id: uuid(),
+                role: "assistant",
+                content: response?.text ?? "",
+                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
+                thinking: response?.thinking || undefined,
+                thinkingSignature: response?.thinkingSignature,
+                timestamp: Date.now(),
+              };
+              updateSession(sessionId, {
+                messages: [...(currentSession?.messages ?? []), assistantMsg],
+                status: "idle",
+              });
+            }
+
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.delete(sessionId);
+            cleanup();
+            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+          },
+          onError: (errorMsg) => {
+            if (!mountedRef.current) return;
+            setStreamingThinking(null);
+            setError(errorMsg);
+            updateSession(sessionId, { status: "idle" });
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.delete(sessionId);
+            cleanup();
+            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+          },
+        });
+        cleanupFnsRef.current.set(sessionId, cleanup);
+
+        // Also poll as fallback
+        const pollInterval = setInterval(async () => {
+          const result = await getJobResult(job.id);
+          if (!result) return;
+          if (result.status === "completed" || result.status === "conflict") {
+            clearInterval(pollInterval);
+            if (!loadingSessionsRef.current.has(sessionId)) return;
+            if (mountedRef.current) {
+              setStreamingThinking(null);
+              const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
+              const alreadyHasReply = currentSession?.messages.some(
+                (m) => m.role === "assistant" && m.timestamp > (job.created_at ? new Date(job.created_at).getTime() : 0)
+              );
+              if (!alreadyHasReply) {
+                const response = result.response;
+                const assistantMsg: ChatMessage = {
+                  id: uuid(),
+                  role: "assistant",
+                  content: response?.text ?? "",
+                  hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
+                  thinking: response?.thinking || undefined,
+                  thinkingSignature: response?.thinkingSignature,
+                  timestamp: Date.now(),
+                };
+                updateSession(sessionId, {
+                  messages: [...(currentSession?.messages ?? []), assistantMsg],
+                  status: "idle",
+                });
+              }
+            }
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+          } else if (result.status === "failed") {
+            clearInterval(pollInterval);
+            if (!loadingSessionsRef.current.has(sessionId)) return;
+            if (mountedRef.current) {
+              setStreamingThinking(null);
+              setError(result.error_message ?? "Job failed");
+              updateSession(sessionId, { status: "idle" });
+            }
+            loadingSessionsRef.current.delete(sessionId);
+            cleanupFnsRef.current.get(sessionId)?.();
+            cleanupFnsRef.current.delete(sessionId);
+            if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+          }
+        }, 3000);
+        setTimeout(() => clearInterval(pollInterval), 300000);
+      }
+
+      // 2. Check for recently completed jobs whose results may not be in sessions yet
+      const completedJobs = await checkCompletedJobs(slateId).catch(() => []);
+      for (const job of completedJobs) {
+        if (job.status !== "completed" || !job.response) continue;
+        const sessionId = (job as any).session_id;
+        if (!sessionId || (job as any).job_type !== "agent_message") continue;
+
+        const session = sessionsRef.current.find((s) => s.id === sessionId);
+        if (!session) continue;
+
+        // Check if the session already has a reply after this job was created
+        const jobTime = (job as any).completed_at ? new Date((job as any).completed_at).getTime() : 0;
+        const hasReply = session.messages.some(
+          (m) => m.role === "assistant" && m.timestamp >= jobTime - 5000
+        );
+        if (hasReply) continue;
+
+        // Check if last message is from user (waiting for reply)
+        const lastMsg = session.messages[session.messages.length - 1];
+        if (!lastMsg || lastMsg.role !== "user") continue;
+
+        console.log(`[useAgentRunner] Applying completed job ${job.id} to session ${sessionId}`);
+        const assistantMsg: ChatMessage = {
+          id: uuid(),
+          role: "assistant",
+          content: job.response.text ?? "",
+          hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
+          thinking: job.response.thinking || undefined,
+          thinkingSignature: job.response.thinkingSignature,
+          timestamp: Date.now(),
+        };
+        updateSession(sessionId, {
+          messages: [...session.messages, assistantMsg],
+          status: "idle",
+        });
+      }
+    };
+
+    reconcile();
+  }, [slateId]);
+
   // Foreground reconciliation: check for completed jobs when app returns
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
-      checkCompletedJobs(slateId).then((jobs) => {
-        for (const job of jobs) {
-          if (job.status === "completed" && job.response) {
-            // If this job's session has a pending loading state, handle it
-            const sessionId = (job as any).session_id;
-            if (sessionId && loadingSessionsRef.current.has(sessionId)) {
-              const session = sessionsRef.current.find((s) => s.id === sessionId);
-              if (session && session.status === "running") {
-                const assistantMsg: ChatMessage = {
-                  id: uuid(),
-                  role: "assistant",
-                  content: job.response.text ?? "",
-                  hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
-                  thinking: job.response.thinking || undefined,
-                  thinkingSignature: job.response.thinkingSignature,
-                  timestamp: Date.now(),
-                };
-                updateSession(sessionId, {
-                  messages: [...session.messages, assistantMsg],
-                  status: "idle",
-                });
-                loadingSessionsRef.current.delete(sessionId);
-                cleanupFnsRef.current.get(sessionId)?.();
-                cleanupFnsRef.current.delete(sessionId);
-                if (mountedRef.current) {
-                  setStreamingThinking(null);
-                  setLoadingCount((c) => Math.max(0, c - 1));
-                }
-              }
-            }
+
+      // Re-run the same checks on foreground
+      Promise.all([
+        getActiveJobs(slateId).catch(() => []),
+        checkCompletedJobs(slateId).catch(() => []),
+      ]).then(([activeJobs, completedJobs]) => {
+        // For active jobs that we're not already tracking, start polling
+        for (const job of activeJobs) {
+          const sessionId = job.session_id;
+          if (!sessionId || job.job_type !== "agent_message") continue;
+          if (loadingSessionsRef.current.has(sessionId)) continue; // already tracking
+
+          const session = sessionsRef.current.find((s) => s.id === sessionId);
+          if (!session) continue;
+
+          console.log(`[useAgentRunner] Foreground: re-subscribing to job ${job.id}`);
+          loadingSessionsRef.current.add(sessionId);
+          if (mountedRef.current) {
+            setLoadingCount((c) => c + 1);
+            setStreamingThinking("");
+            updateSession(sessionId, { status: "running" });
+          }
+
+          const cleanup = subscribeToJob(job.id, {
+            onComplete: (completedJob) => {
+              if (!mountedRef.current) return;
+              setStreamingThinking(null);
+              const response = completedJob.response;
+              const currentSession = sessionsRef.current.find((s) => s.id === sessionId);
+              const assistantMsg: ChatMessage = {
+                id: uuid(),
+                role: "assistant",
+                content: response?.text ?? "",
+                hasComponentJson: response?.hasActionableJson ?? response?.applied ?? false,
+                thinking: response?.thinking || undefined,
+                thinkingSignature: response?.thinkingSignature,
+                timestamp: Date.now(),
+              };
+              updateSession(sessionId, {
+                messages: [...(currentSession?.messages ?? []), assistantMsg],
+                status: "idle",
+              });
+              loadingSessionsRef.current.delete(sessionId);
+              cleanupFnsRef.current.delete(sessionId);
+              cleanup();
+              if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            },
+            onError: (errorMsg) => {
+              if (!mountedRef.current) return;
+              setStreamingThinking(null);
+              setError(errorMsg);
+              updateSession(sessionId, { status: "idle" });
+              loadingSessionsRef.current.delete(sessionId);
+              cleanupFnsRef.current.delete(sessionId);
+              cleanup();
+              if (mountedRef.current) setLoadingCount((c) => Math.max(0, c - 1));
+            },
+          });
+          cleanupFnsRef.current.set(sessionId, cleanup);
+        }
+
+        // Apply completed jobs that aren't in sessions yet
+        for (const job of completedJobs) {
+          if (job.status !== "completed" || !job.response) continue;
+          const sessionId = (job as any).session_id;
+          if (!sessionId || (job as any).job_type !== "agent_message") continue;
+
+          const session = sessionsRef.current.find((s) => s.id === sessionId);
+          if (!session || session.status !== "running") continue;
+
+          const assistantMsg: ChatMessage = {
+            id: uuid(),
+            role: "assistant",
+            content: job.response.text ?? "",
+            hasComponentJson: job.response.hasActionableJson ?? job.response.applied ?? false,
+            thinking: job.response.thinking || undefined,
+            thinkingSignature: job.response.thinkingSignature,
+            timestamp: Date.now(),
+          };
+          updateSession(sessionId, {
+            messages: [...session.messages, assistantMsg],
+            status: "idle",
+          });
+          loadingSessionsRef.current.delete(sessionId);
+          cleanupFnsRef.current.get(sessionId)?.();
+          cleanupFnsRef.current.delete(sessionId);
+          if (mountedRef.current) {
+            setStreamingThinking(null);
+            setLoadingCount((c) => Math.max(0, c - 1));
           }
         }
       }).catch(() => {});
