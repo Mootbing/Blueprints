@@ -111,7 +111,7 @@ export function GroupChildComponent({
 
   const fireEditTap = useCallback(() => {
     // If already selected and is a container, drill deeper
-    if (isSelected && component.type === "container") {
+    if (isSelected && (component.type === "container" || component.type === "accordion" || component.type === "bottomSheet")) {
       onDrillInto(component.id);
       return;
     }

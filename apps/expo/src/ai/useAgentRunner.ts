@@ -173,7 +173,7 @@ export function useAgentRunner({
   const currentHistoryIdRef = useRef(currentHistoryId);
   currentHistoryIdRef.current = currentHistoryId;
 
-  // Helper: build assistant message and create branch entry if changes were applied server-side
+  // Helper: build assistant message — stores pending slate for manual apply
   const buildAssistantMessage = useCallback(
     async (response: any): Promise<ChatMessage> => {
       const msg: ChatMessage = {
@@ -186,19 +186,13 @@ export function useAgentRunner({
         timestamp: Date.now(),
       };
 
-      // Apply AI-generated slate changes locally
-      // Prefer builtSlate from response (always available) over re-fetching from DB
+      // Store the built slate for manual apply (don't auto-apply)
       const builtSlate = response?.builtSlate ?? response?.pendingSlate;
-      if (builtSlate && onAddBranchEntryRef.current) {
-        try {
-          const description = response.description ?? "AI changes";
-          const entryId = onAddBranchEntryRef.current(builtSlate, description, "ai");
-          msg.branchEntryId = entryId;
-          onChangesAppliedRef.current?.();
-        } catch (err) {
-          console.warn("[useAgentRunner] Failed to create branch entry from builtSlate:", err);
-        }
-      } else if (response?.applied && onAddBranchEntryRef.current) {
+      if (builtSlate) {
+        msg.pendingSlate = builtSlate;
+        msg.pendingDescription = response.description ?? "AI changes";
+        msg.applied = false;
+      } else if (response?.applied) {
         // Fallback: re-fetch from DB if builtSlate not in response (old edge function)
         try {
           const supabase = getSupabaseClient();
@@ -209,19 +203,66 @@ export function useAgentRunner({
             .single();
 
           if (slateRow?.slate) {
-            const description = response.description ?? "AI changes";
-            const entryId = onAddBranchEntryRef.current(slateRow.slate, description, "ai");
-            msg.branchEntryId = entryId;
-            onChangesAppliedRef.current?.();
+            msg.pendingSlate = slateRow.slate;
+            msg.pendingDescription = response.description ?? "AI changes";
+            msg.applied = false;
           }
         } catch (err) {
-          console.warn("[useAgentRunner] Failed to create branch entry for applied changes:", err);
+          console.warn("[useAgentRunner] Failed to fetch slate for pending apply:", err);
         }
       }
 
       return msg;
     },
     [slateId],
+  );
+
+  // Apply a pending message's slate changes to local history
+  const applyMessage = useCallback(
+    (sessionId: string, messageId: string) => {
+      const session = sessionsRef.current.find((s) => s.id === sessionId);
+      if (!session) return;
+      const msg = session.messages.find((m) => m.id === messageId);
+      if (!msg?.pendingSlate || msg.applied) return;
+
+      try {
+        const entryId = onAddBranchEntryRef.current?.(
+          msg.pendingSlate,
+          msg.pendingDescription ?? "AI changes",
+          "ai",
+        );
+        if (entryId) {
+          const updatedMessages = session.messages.map((m) =>
+            m.id === messageId ? { ...m, applied: true, branchEntryId: entryId } : m,
+          );
+          updateSession(sessionId, { messages: updatedMessages });
+        }
+      } catch (err) {
+        console.warn("[useAgentRunner] Failed to apply message:", err);
+      }
+    },
+    [updateSession],
+  );
+
+  // Undo a previously applied message — restore to parent history entry
+  const undoMessage = useCallback(
+    (sessionId: string, messageId: string, historyEntries: HistoryEntry[] | undefined, onRestoreToId: ((id: string) => void) | undefined) => {
+      const session = sessionsRef.current.find((s) => s.id === sessionId);
+      if (!session) return;
+      const msg = session.messages.find((m) => m.id === messageId);
+      if (!msg?.branchEntryId || !msg.applied) return;
+
+      const branchEntry = historyEntries?.find((e) => e.id === msg.branchEntryId);
+      if (branchEntry?.parentId) {
+        onRestoreToId?.(branchEntry.parentId);
+      }
+
+      const updatedMessages = session.messages.map((m) =>
+        m.id === messageId ? { ...m, applied: false } : m,
+      );
+      updateSession(sessionId, { messages: updatedMessages });
+    },
+    [updateSession],
   );
 
   const historyMeta = useMemo(
@@ -388,8 +429,11 @@ export function useAgentRunner({
         cleanupFnsRef.current.set(sessionId, cleanup);
 
         // Fallback: poll in case Realtime fails
+        // Aggressive initial poll at 1s, then every 2s
         const pollStartTime = Date.now();
+        let pollCount = 0;
         const pollInterval = setInterval(async () => {
+          pollCount++;
           // If Realtime already handled it, stop polling
           if (!loadingSessionsRef.current.has(sessionId)) {
             clearInterval(pollInterval);
@@ -434,7 +478,7 @@ export function useAgentRunner({
             cleanupFnsRef.current.delete(sessionId);
             if (mountedRef.current) removeLoadingSession(sessionId);
           }
-        }, 5000);
+        }, 2000);
 
       } catch (err) {
         if (mountedRef.current) {
@@ -568,7 +612,7 @@ export function useAgentRunner({
             cleanupFnsRef.current.delete(sessionId);
             if (mountedRef.current) removeLoadingSession(sessionId);
           }
-        }, 3000);
+        }, 2000);
       }
 
       // 2. Check for recently completed jobs whose results may not be in sessions yet
@@ -710,5 +754,7 @@ export function useAgentRunner({
     updateSession,
     deleteSession: deleteSessionWithAbort,
     setError: setSessionError,
+    applyMessage,
+    undoMessage,
   };
 }

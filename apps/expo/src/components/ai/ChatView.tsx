@@ -23,6 +23,7 @@ interface ChatViewProps {
   error: string | null;
   onSend: (text: string, images?: string[]) => void;
   onApply?: (message: ChatMessageType) => void;
+  onUndo?: (message: ChatMessageType) => void;
   placeholder?: string;
   /** Header actions rendered above the chat */
   headerActions?: React.ReactNode;
@@ -44,6 +45,7 @@ export function ChatView({
   error,
   onSend,
   onApply,
+  onUndo,
   placeholder = "Describe what you want...",
   headerActions,
   renderMessageActions,
@@ -123,17 +125,33 @@ export function ChatView({
             <ChatMessage message={msg} />
             {msg.role === "assistant" && (
               renderMessageActions ? renderMessageActions(msg) : (
-                msg.hasComponentJson && onApply && (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.applyBtn,
-                      pressed && styles.applyBtnPressed,
-                    ]}
-                    onPress={() => onApply(msg)}
-                  >
-                    <Feather name="check-circle" size={14} color="#000" />
-                    <Text style={styles.applyBtnText}>Apply</Text>
-                  </Pressable>
+                msg.hasComponentJson && (
+                  <View style={styles.actionRow}>
+                    {!msg.applied && onApply && (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.applyBtn,
+                          pressed && styles.applyBtnPressed,
+                        ]}
+                        onPress={() => onApply(msg)}
+                      >
+                        <Feather name="check-circle" size={14} color="#000" />
+                        <Text style={styles.applyBtnText}>Apply</Text>
+                      </Pressable>
+                    )}
+                    {msg.applied && onUndo && (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.undoBtn,
+                          pressed && styles.undoBtnPressed,
+                        ]}
+                        onPress={() => onUndo(msg)}
+                      >
+                        <Feather name="rotate-ccw" size={14} color="#f59e0b" />
+                        <Text style={styles.undoBtnText}>Undo</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 )
               )
             )}
@@ -304,14 +322,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     flex: 1,
   },
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginLeft: 16,
+    marginTop: 4,
+    marginBottom: 4,
+  },
   applyBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     alignSelf: "flex-start",
-    marginLeft: 16,
-    marginTop: 4,
-    marginBottom: 4,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
@@ -322,6 +344,26 @@ const styles = StyleSheet.create({
   },
   applyBtnText: {
     color: "#000",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  undoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.3)",
+  },
+  undoBtnPressed: {
+    backgroundColor: "rgba(245,158,11,0.25)",
+  },
+  undoBtnText: {
+    color: "#f59e0b",
     fontSize: 13,
     fontWeight: "600",
   },

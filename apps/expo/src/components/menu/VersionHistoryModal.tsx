@@ -13,6 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import type { HistoryEntry } from "../../hooks/useUndoHistory";
 import { ROOT_ID } from "../../hooks/useUndoHistory";
 import type { Component, AppSlate, Screen } from "../../types";
+import { getChildren } from "../../utils/componentTree";
 import { rendererRegistry } from "../renderers";
 
 // ─── Component Diff helpers ─────────────────────────────────────
@@ -28,8 +29,9 @@ function flattenComponents(components: Component[]): Component[] {
   const result: Component[] = [];
   for (const c of components) {
     result.push(c);
-    if (c.type === "container" && c.children)
-      result.push(...flattenComponents(c.children));
+    const kids = getChildren(c);
+    if (kids)
+      result.push(...flattenComponents(kids));
   }
   return result;
 }

@@ -63,6 +63,15 @@ export async function submitJob(params: SubmitJobParams): Promise<string> {
     body: { jobId },
   }).then((res) => {
     console.log(`[aiJobClient] Edge function response:`, JSON.stringify({ status: res.data?.status, error: res.error?.message }));
+    // If the edge function returned an error, mark the job as failed
+    if (res.error) {
+      console.error("[aiJobClient] Edge function returned error:", res.error.message);
+      supabase.from("ai_jobs").update({
+        status: "failed",
+        error_message: res.error.message ?? "Server error processing request.",
+        completed_at: new Date().toISOString(),
+      }).eq("id", jobId).in("status", ["pending", "running"]).then(() => {});
+    }
   }).catch((err) => {
     // Network-level failure — function was never reached
     console.error("[aiJobClient] Edge function invoke failed (network):", err);

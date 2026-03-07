@@ -2,7 +2,8 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 // --- Primitives ---
 
-export const NormalizedFloat = z.number().min(0).max(1);
+// Lenient: accept any finite number from the AI; the client clamps to 0-1 on render
+export const NormalizedFloat = z.number().finite();
 export type NormalizedFloat = z.infer<typeof NormalizedFloat>;
 
 export const LayoutSchema = z.object({
@@ -125,7 +126,7 @@ export type Action =
 export const BindingsSchema = z.record(z.string(), z.string()).optional();
 export type Bindings = z.infer<typeof BindingsSchema>;
 
-const EventNameEnum = z.enum(["onTap", "onLongPress", "onChange", "onSubmit", "onItemTap"]);
+const EventNameEnum = z.enum(["onTap", "onLongPress", "onChange", "onSubmit", "onItemTap", "onLeftTap", "onRightTap"]);
 export const EventHandlersSchema = z.record(EventNameEnum, z.array(ActionSchema)).optional();
 export type EventHandlers = z.infer<typeof EventHandlersSchema>;
 
@@ -320,7 +321,286 @@ export const ListComponentSchema = z.object({
 });
 export type ListComponent = z.infer<typeof ListComponentSchema>;
 
-// Base discriminated union (without container, which needs z.lazy)
+// --- Phase 1: Structural Components ---
+
+export const CardComponentSchema = z.object({
+  type: z.literal("card"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  body: z.string().optional(),
+  imageUrl: z.string().optional(),
+  imagePosition: z.enum(["top", "left", "background"]).optional(),
+  footerLabel: z.string().optional(),
+  backgroundColor: z.string().min(1).optional(),
+  titleColor: z.string().min(1).optional(),
+  subtitleColor: z.string().min(1).optional(),
+  bodyColor: z.string().min(1).optional(),
+  footerColor: z.string().min(1).optional(),
+  borderRadius: z.number().min(0).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  shadowEnabled: z.boolean().optional(),
+  shadowColor: z.string().min(1).optional(),
+  shadowOpacity: z.number().min(0).max(1).optional(),
+  shadowRadius: z.number().min(0).optional(),
+  imageHeight: z.number().optional(),
+  titleFontSize: z.number().positive().optional(),
+  subtitleFontSize: z.number().positive().optional(),
+  bodyFontSize: z.number().positive().optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  ...runtimeFields,
+});
+export type CardComponent = z.infer<typeof CardComponentSchema>;
+
+const IconLibraryEnum = z.enum(["material", "feather", "ionicons"]);
+
+export const AppBarComponentSchema = z.object({
+  type: z.literal("appBar"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  title: z.string(),
+  leftIcon: z.string().optional(),
+  rightIcon: z.string().optional(),
+  iconLibrary: IconLibraryEnum.optional(),
+  backgroundColor: z.string().min(1).optional(),
+  titleColor: z.string().min(1).optional(),
+  iconColor: z.string().min(1).optional(),
+  titleFontSize: z.number().positive().optional(),
+  titleFontWeight: FontWeightEnum.optional(),
+  borderBottom: z.boolean().optional(),
+  borderColor: z.string().min(1).optional(),
+  ...runtimeFields,
+});
+export type AppBarComponent = z.infer<typeof AppBarComponentSchema>;
+
+export const TabBarTabSchema = z.object({
+  label: z.string(),
+  icon: z.string(),
+  iconLibrary: IconLibraryEnum.optional(),
+  screenId: z.string().uuid().optional(),
+});
+export type TabBarTab = z.infer<typeof TabBarTabSchema>;
+
+export const TabBarComponentSchema = z.object({
+  type: z.literal("tabBar"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  tabs: z.array(TabBarTabSchema),
+  activeIndex: z.number().int().min(0).optional(),
+  activeColor: z.string().min(1).optional(),
+  inactiveColor: z.string().min(1).optional(),
+  backgroundColor: z.string().min(1).optional(),
+  borderTop: z.boolean().optional(),
+  borderColor: z.string().min(1).optional(),
+  showLabels: z.boolean().optional(),
+  ...runtimeFields,
+});
+export type TabBarComponent = z.infer<typeof TabBarComponentSchema>;
+
+// --- Phase 2: Form Input Components ---
+
+export const CheckboxComponentSchema = z.object({
+  type: z.literal("checkbox"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  label: z.string().optional(),
+  checked: z.boolean().optional(),
+  activeColor: z.string().min(1).optional(),
+  inactiveColor: z.string().min(1).optional(),
+  checkColor: z.string().min(1).optional(),
+  labelColor: z.string().min(1).optional(),
+  labelFontSize: z.number().positive().optional(),
+  size: z.number().positive().optional(),
+  labelPosition: z.enum(["left", "right"]).optional(),
+  borderRadius: z.number().min(0).optional(),
+  ...runtimeFields,
+});
+export type CheckboxComponent = z.infer<typeof CheckboxComponentSchema>;
+
+export const SearchBarComponentSchema = z.object({
+  type: z.literal("searchBar"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  placeholder: z.string().optional(),
+  value: z.string().optional(),
+  backgroundColor: z.string().min(1).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  borderRadius: z.number().min(0).optional(),
+  textColor: z.string().min(1).optional(),
+  placeholderColor: z.string().min(1).optional(),
+  iconColor: z.string().min(1).optional(),
+  fontSize: z.number().positive().optional(),
+  showClearButton: z.boolean().optional(),
+  ...runtimeFields,
+});
+export type SearchBarComponent = z.infer<typeof SearchBarComponentSchema>;
+
+export const SliderComponentSchema = z.object({
+  type: z.literal("slider"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().positive().optional(),
+  value: z.number().optional(),
+  trackColor: z.string().min(1).optional(),
+  activeTrackColor: z.string().min(1).optional(),
+  thumbColor: z.string().min(1).optional(),
+  showValue: z.boolean().optional(),
+  valueColor: z.string().min(1).optional(),
+  ...runtimeFields,
+});
+export type SliderComponent = z.infer<typeof SliderComponentSchema>;
+
+export const SelectOptionSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
+export const SelectComponentSchema = z.object({
+  type: z.literal("select"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  options: z.array(SelectOptionSchema).optional(),
+  optionsSource: z.string().optional(),
+  optionLabelKey: z.string().optional(),
+  optionValueKey: z.string().optional(),
+  placeholder: z.string().optional(),
+  selectedValue: z.string().optional(),
+  backgroundColor: z.string().min(1).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  borderRadius: z.number().min(0).optional(),
+  textColor: z.string().min(1).optional(),
+  placeholderColor: z.string().min(1).optional(),
+  iconColor: z.string().min(1).optional(),
+  fontSize: z.number().positive().optional(),
+  ...runtimeFields,
+});
+export type SelectComponent = z.infer<typeof SelectComponentSchema>;
+
+// --- Phase 3: Visual Polish Components ---
+
+export const BadgeComponentSchema = z.object({
+  type: z.literal("badge"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  text: z.string(),
+  backgroundColor: z.string().min(1).optional(),
+  textColor: z.string().min(1).optional(),
+  fontSize: z.number().positive().optional(),
+  borderRadius: z.number().min(0).optional(),
+  paddingHorizontal: z.number().min(0).optional(),
+  paddingVertical: z.number().min(0).optional(),
+  ...runtimeFields,
+});
+export type BadgeComponent = z.infer<typeof BadgeComponentSchema>;
+
+export const AvatarComponentSchema = z.object({
+  type: z.literal("avatar"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  src: z.string().optional(),
+  initials: z.string().optional(),
+  size: z.number().positive().optional(),
+  backgroundColor: z.string().min(1).optional(),
+  textColor: z.string().min(1).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  fontSize: z.number().positive().optional(),
+  ...runtimeFields,
+});
+export type AvatarComponent = z.infer<typeof AvatarComponentSchema>;
+
+export const ProgressBarComponentSchema = z.object({
+  type: z.literal("progressBar"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  value: z.number().optional(),
+  trackColor: z.string().min(1).optional(),
+  fillColor: z.string().min(1).optional(),
+  height: z.number().positive().optional(),
+  borderRadius: z.number().min(0).optional(),
+  animated: z.boolean().optional(),
+  ...runtimeFields,
+});
+export type ProgressBarComponent = z.infer<typeof ProgressBarComponentSchema>;
+
+export const ChipComponentSchema = z.object({
+  type: z.literal("chip"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  label: z.string(),
+  selected: z.boolean().optional(),
+  selectedColor: z.string().min(1).optional(),
+  unselectedColor: z.string().min(1).optional(),
+  selectedTextColor: z.string().min(1).optional(),
+  unselectedTextColor: z.string().min(1).optional(),
+  icon: z.string().optional(),
+  iconLibrary: IconLibraryEnum.optional(),
+  borderRadius: z.number().min(0).optional(),
+  fontSize: z.number().positive().optional(),
+  ...runtimeFields,
+});
+export type ChipComponent = z.infer<typeof ChipComponentSchema>;
+
+export const SegmentedControlOptionSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
+export const SegmentedControlComponentSchema = z.object({
+  type: z.literal("segmentedControl"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  options: z.array(SegmentedControlOptionSchema),
+  selectedValue: z.string().optional(),
+  activeColor: z.string().min(1).optional(),
+  inactiveColor: z.string().min(1).optional(),
+  activeTextColor: z.string().min(1).optional(),
+  inactiveTextColor: z.string().min(1).optional(),
+  backgroundColor: z.string().min(1).optional(),
+  borderRadius: z.number().min(0).optional(),
+  fontSize: z.number().positive().optional(),
+  ...runtimeFields,
+});
+export type SegmentedControlComponent = z.infer<typeof SegmentedControlComponentSchema>;
+
+// --- Phase 4: Advanced Components ---
+
+export const CarouselItemSchema = z.object({
+  id: z.string().uuid(),
+  imageUrl: z.string().optional(),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+});
+export type CarouselItem = z.infer<typeof CarouselItemSchema>;
+
+export const CarouselComponentSchema = z.object({
+  type: z.literal("carousel"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  items: z.array(CarouselItemSchema).optional(),
+  itemsSource: z.string().optional(),
+  itemImageKey: z.string().optional(),
+  itemTitleKey: z.string().optional(),
+  itemSubtitleKey: z.string().optional(),
+  autoPlay: z.boolean().optional(),
+  interval: z.number().positive().optional(),
+  showDots: z.boolean().optional(),
+  dotColor: z.string().min(1).optional(),
+  activeDotColor: z.string().min(1).optional(),
+  borderRadius: z.number().min(0).optional(),
+  titleColor: z.string().min(1).optional(),
+  subtitleColor: z.string().min(1).optional(),
+  ...runtimeFields,
+});
+export type CarouselComponent = z.infer<typeof CarouselComponentSchema>;
+
+// Base discriminated union (without container/accordion/bottomSheet, which need z.lazy)
 const BaseComponentSchema = z.discriminatedUnion("type", [
   TextComponentSchema,
   ButtonComponentSchema,
@@ -331,6 +611,23 @@ const BaseComponentSchema = z.discriminatedUnion("type", [
   IconComponentSchema,
   TextInputComponentSchema,
   ListComponentSchema,
+  // Phase 1: Structural
+  CardComponentSchema,
+  AppBarComponentSchema,
+  TabBarComponentSchema,
+  // Phase 2: Form Inputs
+  CheckboxComponentSchema,
+  SearchBarComponentSchema,
+  SliderComponentSchema,
+  SelectComponentSchema,
+  // Phase 3: Visual Polish
+  BadgeComponentSchema,
+  AvatarComponentSchema,
+  ProgressBarComponentSchema,
+  ChipComponentSchema,
+  SegmentedControlComponentSchema,
+  // Phase 4: Advanced
+  CarouselComponentSchema,
 ]);
 
 export type BaseComponent = z.infer<typeof BaseComponentSchema>;
@@ -368,7 +665,42 @@ export interface ContainerComponent {
   visibleWhen?: string;
 }
 
-export type Component = BaseComponent | ContainerComponent;
+export interface AccordionComponent {
+  type: "accordion";
+  id: string;
+  layout: Layout;
+  title: string;
+  expanded?: boolean;
+  titleColor?: string;
+  titleFontSize?: number;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  iconColor?: string;
+  children?: Component[];
+  bindings?: Record<string, string>;
+  actions?: Record<string, Action[]>;
+  visibleWhen?: string;
+}
+
+export interface BottomSheetComponent {
+  type: "bottomSheet";
+  id: string;
+  layout: Layout;
+  height?: number;
+  backgroundColor?: string;
+  handleColor?: string;
+  borderRadius?: number;
+  backdropColor?: string;
+  backdropOpacity?: number;
+  children?: Component[];
+  bindings?: Record<string, string>;
+  actions?: Record<string, Action[]>;
+  visibleWhen?: string;
+}
+
+export type Component = BaseComponent | ContainerComponent | AccordionComponent | BottomSheetComponent;
 
 export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object({
   type: z.literal("container"),
@@ -401,7 +733,38 @@ export const ContainerComponentSchema: z.ZodType<ContainerComponent> = z.object(
   ...runtimeFields,
 });
 
-export const ComponentSchema: z.ZodType<Component> = z.union([BaseComponentSchema, ContainerComponentSchema]);
+export const AccordionComponentSchema: z.ZodType<AccordionComponent> = z.object({
+  type: z.literal("accordion"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  title: z.string(),
+  expanded: z.boolean().optional(),
+  titleColor: z.string().min(1).optional(),
+  titleFontSize: z.number().positive().optional(),
+  backgroundColor: z.string().min(1).optional(),
+  borderColor: z.string().min(1).optional(),
+  borderWidth: z.number().min(0).optional(),
+  borderRadius: z.number().min(0).optional(),
+  iconColor: z.string().min(1).optional(),
+  children: z.lazy(() => z.array(ComponentSchema)).optional(),
+  ...runtimeFields,
+});
+
+export const BottomSheetComponentSchema: z.ZodType<BottomSheetComponent> = z.object({
+  type: z.literal("bottomSheet"),
+  id: z.string().uuid(),
+  layout: LayoutSchema,
+  height: z.number().min(0).max(1).optional(),
+  backgroundColor: z.string().min(1).optional(),
+  handleColor: z.string().min(1).optional(),
+  borderRadius: z.number().min(0).optional(),
+  backdropColor: z.string().min(1).optional(),
+  backdropOpacity: z.number().min(0).max(1).optional(),
+  children: z.lazy(() => z.array(ComponentSchema)).optional(),
+  ...runtimeFields,
+});
+
+export const ComponentSchema: z.ZodType<Component> = z.union([BaseComponentSchema, ContainerComponentSchema, AccordionComponentSchema, BottomSheetComponentSchema]);
 
 // --- Workflows ---
 

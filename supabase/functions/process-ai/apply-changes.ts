@@ -222,6 +222,11 @@ export function buildBranchSlate(
         description: "AI generated components",
       };
     }
-  } catch {}
+  } catch (err) {
+    console.error("[buildBranchSlate] Failed to parse/apply changes:", err instanceof Error ? err.message : err);
+    if (err instanceof Error && err.message) {
+      console.error("[buildBranchSlate] Stack:", err.stack);
+    }
+  }
   return null;
 }

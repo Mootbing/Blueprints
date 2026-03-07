@@ -23,7 +23,7 @@ import { parseSingleComponent } from "../../ai/modifyComponent";
 import { getComponentLabel } from "../../utils/componentTree";
 import type { Component, Theme } from "../../types";
 import { summarizeResponse } from "../../ai/useChatLog";
-import type { ChatMessage, AnthropicMessage } from "../../ai/types";
+import type { ChatMessage as ChatMessageType, AnthropicMessage } from "../../ai/types";
 
 interface ComponentRect {
   x: number;
@@ -60,7 +60,6 @@ export function AIChatSheet({
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(200)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const appliedRef = useRef(false);
 
   const sendFn = useCallback(
     async (messages: AnthropicMessage[]) => {
@@ -69,7 +68,7 @@ export function AIChatSheet({
     [slateId, component, theme],
   );
 
-  const { messages, isLoading, error, sendMessage } = useAIChat({
+  const { messages, isLoading, error, sendMessage, setMessages } = useAIChat({
     sendFn,
     hasActionableContent: containsComponentJson,
   });
@@ -79,33 +78,48 @@ export function AIChatSheet({
     [component],
   );
 
-  // Auto-apply when AI responds with component JSON
+  const originalComponentRef = useRef(component);
   useEffect(() => {
-    if (appliedRef.current || isLoading) return;
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.hasComponentJson) return;
-    try {
-      const parsed = parseSingleComponent(lastMsg.content);
-      const updated = { ...parsed, id: component.id };
-      appliedRef.current = true;
-      onApply(updated);
-      // Log to chat history for agent context
-      const userMsg = [...messages].reverse().find((m) => m.role === "user");
-      if (userMsg && logInteraction) {
-        logInteraction({
-          source: "component",
-          context: label,
-          screenId: screenId ?? "",
-          userMessage: userMsg.content,
-          assistantSummary: summarizeResponse(lastMsg.content),
-        });
-      }
-    } catch {}
-  }, [messages, isLoading, component.id, onApply, logInteraction, screenId, label]);
+    if (visible) originalComponentRef.current = component;
+  }, [visible]);
+
+  const handleApplyMsg = useCallback(
+    (msg: ChatMessageType) => {
+      try {
+        const parsed = parseSingleComponent(msg.content);
+        const updated = { ...parsed, id: component.id };
+        onApply(updated);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, applied: true } : m)),
+        );
+        // Log to chat history for agent context
+        const userMsg = [...messages].reverse().find((m) => m.role === "user");
+        if (userMsg && logInteraction) {
+          logInteraction({
+            source: "component",
+            context: label,
+            screenId: screenId ?? "",
+            userMessage: userMsg.content,
+            assistantSummary: summarizeResponse(msg.content),
+          });
+        }
+      } catch {}
+    },
+    [component.id, onApply, setMessages, messages, logInteraction, label, screenId],
+  );
+
+  const handleUndoMsg = useCallback(
+    (msg: ChatMessageType) => {
+      onApply(originalComponentRef.current);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, applied: false } : m)),
+      );
+    },
+    [onApply, setMessages],
+  );
 
   useEffect(() => {
     if (visible) {
-      appliedRef.current = false;
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
@@ -133,7 +147,6 @@ export function AIChatSheet({
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    appliedRef.current = false;
     sendMessage(input.trim(), pendingImages.length > 0 ? pendingImages : undefined);
     setInput("");
     setPendingImages([]);
@@ -174,7 +187,7 @@ export function AIChatSheet({
   };
 
   const handleBlurPress = () => {
-    if (!appliedRef.current) handleClose();
+    handleClose();
   };
 
   if (!visible) return null;
@@ -205,30 +218,55 @@ export function AIChatSheet({
           {messages.map((msg) => {
             const text = stripJson(msg.content);
             const isUser = msg.role === "user";
+            const canApply = !isUser && msg.hasComponentJson && !msg.applied;
+            const canUndo = !isUser && msg.applied === true;
             return (
-              <View
-                key={msg.id}
-                style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAI]}
-              >
+              <View key={msg.id}>
                 <View
-                  style={[
-                    styles.glassBubble,
-                    isUser ? styles.glassUser : styles.glassAI,
-                  ]}
+                  style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAI]}
                 >
-                  {msg.images && msg.images.length > 0 && (
-                    <View style={styles.msgImageRow}>
-                      {msg.images.map((uri, i) => (
-                        <Image key={i} source={{ uri }} style={styles.msgImage} resizeMode="cover" />
-                      ))}
-                    </View>
-                  )}
-                  {text.length > 0 && (
-                    <Text style={[styles.msgText, isUser && styles.msgTextUser]}>
-                      {text}
-                    </Text>
-                  )}
+                  <View
+                    style={[
+                      styles.glassBubble,
+                      isUser ? styles.glassUser : styles.glassAI,
+                    ]}
+                  >
+                    {msg.images && msg.images.length > 0 && (
+                      <View style={styles.msgImageRow}>
+                        {msg.images.map((uri, i) => (
+                          <Image key={i} source={{ uri }} style={styles.msgImage} resizeMode="cover" />
+                        ))}
+                      </View>
+                    )}
+                    {text.length > 0 && (
+                      <Text style={[styles.msgText, isUser && styles.msgTextUser]}>
+                        {text}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+                {(canApply || canUndo) && (
+                  <View style={styles.actionRow}>
+                    {canApply && (
+                      <Pressable
+                        style={({ pressed }) => [styles.applyBtn, pressed && styles.applyBtnPressed]}
+                        onPress={() => handleApplyMsg(msg)}
+                      >
+                        <Feather name="check-circle" size={13} color="#000" />
+                        <Text style={styles.applyBtnText}>Apply</Text>
+                      </Pressable>
+                    )}
+                    {canUndo && (
+                      <Pressable
+                        style={({ pressed }) => [styles.undoBtn, pressed && styles.undoBtnPressed]}
+                        onPress={() => handleUndoMsg(msg)}
+                      >
+                        <Feather name="rotate-ccw" size={13} color="#f59e0b" />
+                        <Text style={styles.undoBtnText}>Undo</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
               </View>
             );
           })}
@@ -499,5 +537,47 @@ const styles = StyleSheet.create({
     backgroundColor: "#333",
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginLeft: 16,
+    marginTop: 4,
+  },
+  applyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+  },
+  applyBtnPressed: {
+    backgroundColor: "#ccc",
+  },
+  applyBtnText: {
+    color: "#000",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  undoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.3)",
+  },
+  undoBtnPressed: {
+    backgroundColor: "rgba(245,158,11,0.25)",
+  },
+  undoBtnText: {
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

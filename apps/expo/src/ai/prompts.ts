@@ -42,9 +42,41 @@ All layout values are NORMALIZED 0-1 floats relative to screen dimensions.
 
 **container**: { type: "container", id: uuid, layout, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, padding?: number (pixels), paddingHorizontal?: number, paddingVertical?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, scrollable?: boolean, scrollDirection?: "vertical"|"horizontal", gradientEnabled?: boolean, gradientColors?: string[], gradientDirection?: "to-bottom"|"to-right"|"to-bottom-right"|"to-top", layoutMode?: "absolute"|"flex", flexDirection?: "row"|"column", gap?: number, justifyContent?: "flex-start"|"center"|"flex-end"|"space-between"|"space-around"|"space-evenly", alignItems?: "flex-start"|"center"|"flex-end"|"stretch", flexWrap?: "nowrap"|"wrap"|"wrap-reverse", opacity?: number(0-1), children?: Component[] }
 
+### Compound Components
+
+**card**: { type: "card", id: uuid, layout, title?: string, subtitle?: string, body?: string, imageUrl?: string, imagePosition?: "top"|"left"|"background", footerLabel?: string, backgroundColor?: string, titleColor?: string, subtitleColor?: string, bodyColor?: string, footerColor?: string, borderRadius?: number, borderColor?: string, borderWidth?: number, shadowEnabled?: boolean, shadowColor?: string, shadowOpacity?: number, shadowRadius?: number, imageHeight?: number (fraction 0-1), titleFontSize?: number, subtitleFontSize?: number, bodyFontSize?: number, opacity?: number(0-1) }
+
+**appBar**: { type: "appBar", id: uuid, layout, title: string, leftIcon?: string, rightIcon?: string, iconLibrary?: "material"|"feather"|"ionicons", backgroundColor?: string, titleColor?: string, iconColor?: string, titleFontSize?: number, titleFontWeight?: FontWeight, borderBottom?: boolean, borderColor?: string }
+
+**tabBar**: { type: "tabBar", id: uuid, layout, tabs: Array<{label: string, icon: string, iconLibrary?: "material"|"feather"|"ionicons", screenId?: uuid}>, activeIndex?: number, activeColor?: string, inactiveColor?: string, backgroundColor?: string, borderTop?: boolean, borderColor?: string, showLabels?: boolean }
+
+**checkbox**: { type: "checkbox", id: uuid, layout, label?: string, checked?: boolean, activeColor?: string, inactiveColor?: string, checkColor?: string, labelColor?: string, labelFontSize?: number, size?: number, labelPosition?: "left"|"right", borderRadius?: number }
+
+**searchBar**: { type: "searchBar", id: uuid, layout, placeholder?: string, value?: string, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, textColor?: string, placeholderColor?: string, iconColor?: string, fontSize?: number, showClearButton?: boolean }
+
+**slider**: { type: "slider", id: uuid, layout, min?: number, max?: number, step?: number, value?: number, trackColor?: string, activeTrackColor?: string, thumbColor?: string, showValue?: boolean, valueColor?: string }
+
+**select**: { type: "select", id: uuid, layout, options?: Array<{label: string, value: string}>, optionsSource?: string (variable name), optionLabelKey?: string, optionValueKey?: string, placeholder?: string, selectedValue?: string, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, textColor?: string, placeholderColor?: string, iconColor?: string, fontSize?: number }
+
+**badge**: { type: "badge", id: uuid, layout, text: string, backgroundColor?: string, textColor?: string, fontSize?: number, borderRadius?: number, paddingHorizontal?: number, paddingVertical?: number }
+
+**avatar**: { type: "avatar", id: uuid, layout, src?: string (image URL), initials?: string, size?: number, backgroundColor?: string, textColor?: string, borderColor?: string, borderWidth?: number, fontSize?: number }
+
+**progressBar**: { type: "progressBar", id: uuid, layout, value?: number (0-1), trackColor?: string, fillColor?: string, height?: number, borderRadius?: number, animated?: boolean }
+
+**chip**: { type: "chip", id: uuid, layout, label: string, selected?: boolean, selectedColor?: string, unselectedColor?: string, selectedTextColor?: string, unselectedTextColor?: string, icon?: string, iconLibrary?: "material"|"feather"|"ionicons", borderRadius?: number, fontSize?: number }
+
+**segmentedControl**: { type: "segmentedControl", id: uuid, layout, options: Array<{label: string, value: string}>, selectedValue?: string, activeColor?: string, inactiveColor?: string, activeTextColor?: string, inactiveTextColor?: string, backgroundColor?: string, borderRadius?: number, fontSize?: number }
+
+**carousel**: { type: "carousel", id: uuid, layout, items?: Array<{id: uuid, imageUrl?: string, title?: string, subtitle?: string}>, itemsSource?: string, itemImageKey?: string, itemTitleKey?: string, itemSubtitleKey?: string, autoPlay?: boolean, interval?: number (ms), showDots?: boolean, dotColor?: string, activeDotColor?: string, borderRadius?: number, titleColor?: string, subtitleColor?: string }
+
+**accordion**: { type: "accordion", id: uuid, layout, title: string, expanded?: boolean, titleColor?: string, titleFontSize?: number, backgroundColor?: string, borderColor?: string, borderWidth?: number, borderRadius?: number, iconColor?: string, children?: Component[] }
+
+**bottomSheet**: { type: "bottomSheet", id: uuid, layout, height?: number (0-1), backgroundColor?: string, handleColor?: string, borderRadius?: number, backdropColor?: string, backdropOpacity?: number, children?: Component[] }
+
 ### Runtime Fields (available on ALL components)
 - bindings?: Record<string, string> - Bind component props to variable names (e.g., { content: "myVar" })
-- actions?: Record<"onTap"|"onLongPress"|"onChange"|"onSubmit"|"onItemTap", Action[]> - Event handlers (onItemTap is for list items — context vars _item, _itemIndex, _itemId, _itemTitle are set automatically)
+- actions?: Record<"onTap"|"onLongPress"|"onChange"|"onSubmit"|"onItemTap"|"onLeftTap"|"onRightTap", Action[]> - Event handlers (onItemTap is for list/tabBar items — context vars _item, _itemIndex, _itemId, _itemTitle are set automatically; onLeftTap/onRightTap are for appBar icon taps)
 - visibleWhen?: string - Expression that controls visibility (e.g., "isLoggedIn")
 
 ### Action Types
@@ -82,30 +114,45 @@ Available in SET_VARIABLE value and CONDITIONAL condition:
 7. **shape** — Decorative rectangle, circle, or rounded-rectangle (great for backgrounds)
 8. **icon** — Material, Feather, or Ionicons icon by name (e.g. "star", "home", "settings")
 9. **container** — Groups child components together. THE most important layout primitive.
+10. **card** — Pre-styled content card with image, title, subtitle, body, footer
+11. **appBar** — Top navigation bar with title and optional left/right icons
+12. **tabBar** — Bottom tab navigation with icons and labels
+13. **checkbox** — Checkable boolean with label
+14. **searchBar** — Search input with icon and clear button
+15. **slider** — Range input with customizable track and thumb
+16. **select** — Dropdown picker with modal option list
+17. **badge** — Small pill label (e.g., "New", "3")
+18. **avatar** — Circle image with initials fallback
+19. **progressBar** — Horizontal fill bar (0-1 value)
+20. **chip** — Selectable tag/pill
+21. **segmentedControl** — Multi-option toggle bar
+22. **carousel** — Horizontal image/content swiper with dots
+23. **accordion** — Collapsible section with children
+24. **bottomSheet** — Slide-up overlay panel with children
+
+### Compound Component Best Practices (CRITICAL)
+ALWAYS prefer compound components over building the same pattern from primitives:
+- Use **appBar** instead of container + icon + text + icon
+- Use **card** instead of container + image + text + text
+- Use **tabBar** instead of container + columns of icons + text
+- Use **searchBar** instead of textInput with icon workarounds
+- Use **checkbox** instead of toggle when you need a checkmark UI
+- Use **select** instead of building a custom dropdown
+- Use **avatar** instead of image with borderRadius hacks
+- Use **badge/chip** instead of shape + text combos
+- Use **progressBar** instead of shape width tricks
+- Use **segmentedControl** instead of container + button row
+- Use **accordion** for collapsible FAQ, settings sections, or expandable content
+- Use **bottomSheet** for slide-up modals, action sheets, or detail panels
+- Use **carousel** for image galleries, onboarding slides, or featured content
 
 ### Container Best Practices (IMPORTANT)
-Containers are the primary way to build structured, realistic layouts. **Always group related components inside containers** rather than placing everything as flat siblings:
+Containers are still valuable for custom layouts not covered by compound components:
 
-- **Cards**: Use a container with borderRadius, backgroundColor, and children (image + text + button)
-- **Headers/Nav bars**: Container with flexDirection "row", children: icon + text + icon
-- **List items/rows**: Container per row with flexDirection "row", repeating the pattern
 - **Form sections**: Container wrapping label text + textInput pairs
 - **Button groups**: Container with flexDirection "row" or "column" holding multiple buttons
 - **Sections**: Container wrapping a heading text + content below it
-
-Example card structure:
-  container (borderRadius: 16, backgroundColor: "#1a1a1a", children: [
-    image (layout fills top ~55%),
-    text (title below image),
-    text (subtitle below title)
-  ])
-
-Example nav bar:
-  container (flexDirection: "row", alignItems: "center", children: [
-    icon (name: "arrow-left", library: "feather"),
-    text (content: "Page Title", textAlign: "center"),
-    icon (name: "more-vertical", library: "feather")
-  ])
+- **Custom rows**: Container with flexDirection "row" for bespoke layouts
 
 When using **layoutMode: "flex"** on containers, children layout values are ignored — the flex engine handles positioning. Use gap, justifyContent, and alignItems instead. Children still need width/height hints for sizing in flex mode.
 
@@ -339,6 +386,14 @@ export function agentSystemPrompt(
     if (c.type === "text") label += `: "${(c as any).content?.slice(0, 30)}"`;
     if (c.type === "button") label += `: "${(c as any).label}"`;
     if (c.type === "textInput") label += `: "${(c as any).placeholder ?? ""}"`;
+    if (c.type === "appBar") label += `: "${(c as any).title}"`;
+    if (c.type === "card") label += `: "${(c as any).title ?? ""}"`;
+    if (c.type === "accordion") label += `: "${(c as any).title}"`;
+    if (c.type === "searchBar") label += `: "${(c as any).placeholder ?? ""}"`;
+    if (c.type === "select") label += `: "${(c as any).placeholder ?? ""}"`;
+    if (c.type === "badge") label += `: "${(c as any).text}"`;
+    if (c.type === "chip") label += `: "${(c as any).label}"`;
+    if (c.type === "checkbox") label += `: "${(c as any).label ?? ""}"`;
     return label;
   }
 

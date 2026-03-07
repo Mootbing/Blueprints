@@ -52,8 +52,10 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMess
           )
         )}
         {message.hasComponentJson && (
-          <View style={styles.jsonBadge}>
-            <Text style={styles.jsonBadgeText}>Contains changes</Text>
+          <View style={[styles.jsonBadge, message.applied && styles.jsonBadgeApplied]}>
+            <Text style={[styles.jsonBadgeText, message.applied && styles.jsonBadgeTextApplied]}>
+              {message.applied ? "Applied" : "Contains changes"}
+            </Text>
           </View>
         )}
       </View>
@@ -61,7 +63,8 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMess
   );
 }, (prev, next) =>
   prev.message.id === next.message.id &&
-  prev.message.content === next.message.content
+  prev.message.content === next.message.content &&
+  prev.message.applied === next.message.applied
 );
 
 const styles = StyleSheet.create({
@@ -136,6 +139,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.5,
+  },
+  jsonBadgeApplied: {
+    backgroundColor: "rgba(34,197,94,0.12)",
+  },
+  jsonBadgeTextApplied: {
+    color: "#22c55e",
   },
   imageRow: {
     flexDirection: "row",

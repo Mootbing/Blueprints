@@ -1,10 +1,24 @@
 import type { Component } from "../types";
 import { uuid } from "./uuid";
 
+/** Returns the children array for any component that supports children, or undefined. */
+export function getChildren(c: Component): Component[] | undefined {
+  if (c.type === "container" || c.type === "accordion" || c.type === "bottomSheet") {
+    return (c as any).children;
+  }
+  return undefined;
+}
+
+/** Returns a shallow copy of the component with updated children. */
+export function withChildren(c: Component, children: Component[]): Component {
+  return { ...c, children } as Component;
+}
+
 export function deepCloneComponent(comp: Component): Component {
   const cloned = { ...comp, id: uuid() };
-  if (cloned.type === "container" && cloned.children) {
-    cloned.children = cloned.children.map(deepCloneComponent);
+  const kids = getChildren(cloned);
+  if (kids) {
+    return withChildren(cloned, kids.map(deepCloneComponent));
   }
   return cloned;
 }
@@ -16,9 +30,10 @@ export function deepUpdateComponent(
 ): Component[] {
   return components.map((c) => {
     if (c.id === targetId) return updater(c);
-    if (c.type === "container" && c.children) {
-      const updated = deepUpdateComponent(c.children, targetId, updater);
-      if (updated !== c.children) return { ...c, children: updated };
+    const kids = getChildren(c);
+    if (kids) {
+      const updated = deepUpdateComponent(kids, targetId, updater);
+      if (updated !== kids) return withChildren(c, updated);
     }
     return c;
   });
@@ -31,9 +46,10 @@ export function deepDeleteComponent(
   const filtered = components.filter((c) => c.id !== targetId);
   if (filtered.length < components.length) return filtered;
   return components.map((c) => {
-    if (c.type === "container" && c.children) {
-      const updated = deepDeleteComponent(c.children, targetId);
-      if (updated !== c.children) return { ...c, children: updated };
+    const kids = getChildren(c);
+    if (kids) {
+      const updated = deepDeleteComponent(kids, targetId);
+      if (updated !== kids) return withChildren(c, updated);
     }
     return c;
   });
@@ -42,8 +58,9 @@ export function deepDeleteComponent(
 export function findComponent(components: Component[], id: string): Component | undefined {
   for (const c of components) {
     if (c.id === id) return c;
-    if (c.type === "container" && c.children) {
-      const found = findComponent(c.children, id);
+    const kids = getChildren(c);
+    if (kids) {
+      const found = findComponent(kids, id);
       if (found) return found;
     }
   }
@@ -77,8 +94,9 @@ export function flattenComponentTree(
     const comp = components[i];
     const path = parentPath ? `${parentPath}/${comp.id}` : comp.id;
     result.push({ component: comp, depth, parentId, indexInParent: i, path });
-    if (comp.type === "container" && comp.children) {
-      result.push(...flattenComponentTree(comp.children, depth + 1, comp.id, path, reverse));
+    const kids = getChildren(comp);
+    if (kids) {
+      result.push(...flattenComponentTree(kids, depth + 1, comp.id, path, reverse));
     }
   }
   return result;

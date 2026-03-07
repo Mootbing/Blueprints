@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Pressable, Text, StyleSheet } from "react-native";
 import type { Component } from "../types";
+import { getChildren } from "../utils/componentTree";
 
 interface GroupBreadcrumbProps {
   drillPath: string[];
@@ -15,8 +16,9 @@ function findComponentName(components: Component[], id: string): string {
       if (c.type === "button") return c.label?.slice(0, 12) || "Button";
       return "Group";
     }
-    if (c.type === "container" && c.children) {
-      const found = findComponentName(c.children, id);
+    const kids = getChildren(c);
+    if (kids) {
+      const found = findComponentName(kids, id);
       if (found) return found;
     }
   }

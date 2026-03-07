@@ -82,6 +82,26 @@ Deno.serve(async (req) => {
     console.log(`[process-ai] Dispatching job_type=${job.job_type}, request keys: ${Object.keys(request).join(", ")}`);
     let responsePayload: any;
 
+    // Clean up stale jobs stuck in "running" for over 5 minutes
+    try {
+      const { data: staleJobs } = await sb
+        .from("ai_jobs")
+        .update({
+          status: "failed",
+          error_message: "Job timed out (stuck in running state for over 5 minutes).",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("status", "running")
+        .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        .neq("id", jobId)
+        .select("id");
+      if (staleJobs && staleJobs.length > 0) {
+        console.log(`[process-ai] Cleaned up ${staleJobs.length} stale jobs: ${staleJobs.map((j: any) => j.id).join(", ")}`);
+      }
+    } catch (staleErr) {
+      console.warn("[process-ai] Failed to clean up stale jobs:", staleErr);
+    }
+
     try {
       switch (job.job_type) {
         case "agent_message":
@@ -183,12 +203,17 @@ async function processAgentMessage(
     slateId,
   } = request;
 
+  // Set up Realtime channel for broadcasting thinking chunks to the client
+  const thinkingChannel = sb.channel(`ai-job:${job.id}`);
+  await thinkingChannel.subscribe();
+
   const MAX_CONTINUATIONS = 3;
   let fullResponse = "";
   let thinkingText = "";
   let thinkingSignature: string | undefined;
   let currentMessages = messages;
 
+  try {
   for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
     let result;
     if (i === 0) {
@@ -197,7 +222,14 @@ async function processAgentMessage(
         currentMessages,
         maxTokens,
         thinkingBudget,
-        undefined,
+        (chunk: string) => {
+          // Broadcast thinking chunks to client via Realtime
+          thinkingChannel.send({
+            type: "broadcast",
+            event: "thinking",
+            payload: { chunk },
+          }).catch(() => {});
+        },
         undefined,
         model,
       );
@@ -238,6 +270,9 @@ async function processAgentMessage(
     if (slateRow) {
       const branchResult = buildBranchSlate(slateRow.slate, screenId, fullResponse);
       console.log(`[process-ai] buildBranchSlate result=${!!branchResult}, description=${branchResult?.description}`);
+      if (!branchResult) {
+        console.warn(`[process-ai] buildBranchSlate returned null despite hasActionableJson=true. screenId=${screenId}, screens=${Object.keys(slateRow.slate?.screens ?? {}).join(",")}`);
+      }
       if (branchResult) {
         description = branchResult.description;
         builtSlate = branchResult.slate;
@@ -283,6 +318,10 @@ async function processAgentMessage(
     builtSlate,
     description,
   };
+  } finally {
+    // Clean up the thinking broadcast channel
+    sb.removeChannel(thinkingChannel);
+  }
 }
 
 // ─── Generate title ─────────────────────────────────────────────

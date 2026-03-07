@@ -176,12 +176,13 @@ function applyUpdateToComponent(
     return result as Component;
   }
 
-  if (comp.type === "container" && comp.children) {
-    const updatedChildren = comp.children.map((child) =>
+  const kids = (comp.type === "container" || comp.type === "accordion" || comp.type === "bottomSheet") ? (comp as any).children as Component[] | undefined : undefined;
+  if (kids) {
+    const updatedChildren = kids.map((child) =>
       applyUpdateToComponent(child, update),
     );
-    if (updatedChildren !== comp.children) {
-      return { ...comp, children: updatedChildren };
+    if (updatedChildren !== kids) {
+      return { ...comp, children: updatedChildren } as Component;
     }
   }
 

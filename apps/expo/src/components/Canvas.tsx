@@ -29,7 +29,7 @@ import { CanvasMenu } from "./menu/CanvasMenu";
 import { IconPickerModal } from "./IconPickerModal";
 import { PRESETS } from "./menu/ComponentsPage";
 import { BACKGROUND_ID } from "./SlateEditor";
-import { findComponent, deepCloneComponent } from "../utils/componentTree";
+import { findComponent, deepCloneComponent, getChildren, withChildren } from "../utils/componentTree";
 import { ContextMenu } from "./ContextMenu";
 import { SpotlightOverlay } from "./SpotlightOverlay";
 import { VersionHistoryModal } from "./menu/VersionHistoryModal";
@@ -489,9 +489,10 @@ function CanvasInner({
             return result;
           }
           return comps.map((c) => {
-            if (c.type === "container" && c.children) {
-              const updated = reorder(c.children, c.id);
-              if (updated !== c.children) return { ...c, children: updated };
+            const kids = getChildren(c);
+            if (kids) {
+              const updated = reorder(kids, c.id);
+              if (updated !== kids) return withChildren(c, updated);
             }
             return c;
           });
@@ -526,10 +527,11 @@ function CanvasInner({
               oldParentId = parentId;
               return acc;
             }
-            if (c.type === "container" && c.children) {
-              const newChildren = removeComp(c.children, c.id);
-              if (newChildren.length !== c.children.length) {
-                acc.push({ ...c, children: newChildren });
+            const kids = getChildren(c);
+            if (kids) {
+              const newChildren = removeComp(kids, c.id);
+              if (newChildren.length !== kids.length) {
+                acc.push(withChildren(c, newChildren));
                 return acc;
               }
             }
@@ -592,9 +594,10 @@ function CanvasInner({
               const cont = c as any;
               return { ...cont, children: [...(cont.children ?? []), finalComp] };
             }
-            if (c.type === "container" && c.children) {
-              const updated = addChild(c.children);
-              if (updated !== c.children) return { ...c, children: updated };
+            const kids = getChildren(c);
+            if (kids) {
+              const updated = addChild(kids);
+              if (updated !== kids) return withChildren(c, updated);
             }
             return c;
           });
@@ -708,7 +711,7 @@ function CanvasInner({
     }
 
     const comp = findComponent(screen.components, componentId);
-    if (comp?.type === "container" && selectedComponentId === componentId) {
+    if ((comp?.type === "container" || comp?.type === "accordion" || comp?.type === "bottomSheet") && selectedComponentId === componentId) {
       drillInto(componentId);
       return;
     }
@@ -716,7 +719,7 @@ function CanvasInner({
     setSelectedComponentId(componentId);
     if (!comp) return;
     if (comp.type === "text" || comp.type === "button" || comp.type === "icon") return;
-    if (comp.type === "container") return;
+    if (comp.type === "container" || comp.type === "accordion" || comp.type === "bottomSheet") return;
     openStyleEditor(componentId);
   }, [editingInfo, lockedIds, screen?.components, selectedComponentId, drillInto, openStyleEditor, setSelectedComponentId, multiSelectMode, toggleMultiSelectId]);
 
@@ -751,8 +754,9 @@ function CanvasInner({
     if (!screen) return;
     let hoveredContainer: string | null = null;
     for (const comp of screen.components) {
-      if (comp.type !== "container" || comp.id === componentId) continue;
-      if (comp.children?.some((ch) => ch.id === componentId)) continue;
+      if ((comp.type !== "container" && comp.type !== "accordion" && comp.type !== "bottomSheet") || comp.id === componentId) continue;
+      const compKids = getChildren(comp);
+      if (compKids?.some((ch) => ch.id === componentId)) continue;
       const cx = comp.layout.x * canvasDimensions.width;
       const cy = comp.layout.y * canvasDimensions.height;
       const cw = comp.layout.width * canvasDimensions.width;
@@ -781,10 +785,11 @@ function CanvasInner({
               draggedComp = c;
               continue;
             }
-            if (c.type === "container" && c.children) {
-              const newChildren = removeComp(c.children);
-              if (newChildren.length !== c.children.length) {
-                result.push({ ...c, children: newChildren });
+            const kids = getChildren(c);
+            if (kids) {
+              const newChildren = removeComp(kids);
+              if (newChildren.length !== kids.length) {
+                result.push(withChildren(c, newChildren));
                 continue;
               }
             }
@@ -795,7 +800,7 @@ function CanvasInner({
         const newComponents = removeComp(scr.components);
         if (!draggedComp) return prev;
         const container = findComponent(newComponents, targetId);
-        if (!container || container.type !== "container") return prev;
+        if (!container || (container.type !== "container" && container.type !== "accordion" && container.type !== "bottomSheet")) return prev;
         const contX = container.layout.x;
         const contY = container.layout.y;
         const contW = container.layout.width;
@@ -820,9 +825,10 @@ function CanvasInner({
               const cont = c as any;
               return { ...cont, children: [...(cont.children ?? []), reparented] };
             }
-            if (c.type === "container" && c.children) {
-              const updated = addChild(c.children);
-              if (updated !== c.children) return { ...c, children: updated };
+            const kids = getChildren(c);
+            if (kids) {
+              const updated = addChild(kids);
+              if (updated !== kids) return withChildren(c, updated);
             }
             return c;
           });
@@ -997,8 +1003,9 @@ function CanvasInner({
     const ch = canvasDimensions.height;
 
     startBatch?.("Hug content");
-    if (comp.type === "container" && comp.children?.length) {
-      const children = comp.children;
+    const hugChildren = getChildren(comp);
+    if (hugChildren?.length) {
+      const children = hugChildren;
       let scaleX = 1, scaleY = 1;
       if (axis !== "height") {
         const maxRight = Math.max(...children.map(c => c.layout.x + c.layout.width), 0.1);

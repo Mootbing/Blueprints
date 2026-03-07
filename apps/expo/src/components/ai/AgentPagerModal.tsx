@@ -262,33 +262,64 @@ export function AgentPagerModal({
     [sessions, agentRunner, screenWidth],
   );
 
+  // ─── Apply / Undo handlers ──────────────────────────────────
+
+  const handleApplyMessage = useCallback(
+    (sessionId: string, messageId: string) => {
+      agentRunner?.applyMessage(sessionId, messageId);
+    },
+    [agentRunner],
+  );
+
+  const handleUndoMessage = useCallback(
+    (sessionId: string, messageId: string) => {
+      agentRunner?.undoMessage(sessionId, messageId, historyEntries, onRestoreToId);
+    },
+    [agentRunner, historyEntries, onRestoreToId],
+  );
+
   // ─── Render message actions ───────────────────────────────────
 
   const renderMessageActions = useCallback(
-    (msg: ChatMessage) => {
+    (msg: ChatMessage, sessionId?: string) => {
       const cherryPickId = extractCherryPickId(msg.content);
+      const hasPending = msg.pendingSlate && !msg.applied;
+      const isApplied = msg.applied === true;
       const branchId = msg.branchEntryId;
-      if (!cherryPickId && !branchId) return null;
       const isPreviewing = branchId && currentHistoryId === branchId;
+
+      if (!cherryPickId && !branchId && !hasPending && !isApplied) return null;
 
       return (
         <View style={s.messageActions}>
-          {branchId && !isPreviewing && (
+          {/* Apply button for pending (unapplied) changes */}
+          {hasPending && sessionId && (
+            <Pressable
+              style={({ pressed }) => [s.previewBtn, pressed && s.previewBtnPressed]}
+              onPress={() => handleApplyMessage(sessionId, msg.id)}
+            >
+              <Feather name="check-circle" size={14} color="#000" />
+              <Text style={s.previewBtnText}>Apply</Text>
+            </Pressable>
+          )}
+          {/* Undo button for applied changes */}
+          {isApplied && sessionId && (
+            <Pressable
+              style={({ pressed }) => [s.undoPreviewBtn, pressed && s.undoPreviewBtnPressed]}
+              onPress={() => handleUndoMessage(sessionId, msg.id)}
+            >
+              <Feather name="rotate-ccw" size={14} color="#f59e0b" />
+              <Text style={s.undoPreviewBtnText}>Undo</Text>
+            </Pressable>
+          )}
+          {/* Preview button for applied changes (navigate to that history entry) */}
+          {branchId && isApplied && !isPreviewing && (
             <Pressable
               style={({ pressed }) => [s.previewBtn, pressed && s.previewBtnPressed]}
               onPress={() => handlePreview(branchId)}
             >
               <Feather name="eye" size={14} color="#000" />
               <Text style={s.previewBtnText}>Preview</Text>
-            </Pressable>
-          )}
-          {branchId && isPreviewing && (
-            <Pressable
-              style={({ pressed }) => [s.undoPreviewBtn, pressed && s.undoPreviewBtnPressed]}
-              onPress={() => handleUndoPreview(branchId)}
-            >
-              <Feather name="rotate-ccw" size={14} color="#f59e0b" />
-              <Text style={s.undoPreviewBtnText}>Undo</Text>
             </Pressable>
           )}
           {cherryPickId && (
@@ -303,7 +334,7 @@ export function AgentPagerModal({
         </View>
       );
     },
-    [handlePreview, handleUndoPreview, handleCherryPick, currentHistoryId],
+    [handleApplyMessage, handleUndoMessage, handlePreview, handleCherryPick, currentHistoryId],
   );
 
   // Auto-create first agent when opening with none
@@ -393,7 +424,7 @@ export function AgentPagerModal({
                   isLoading={agentRunner?.loadingSessions?.has(session.id) ?? false}
                   error={agentRunner?.errorMap?.[session.id] ?? null}
                   onSend={(text, images) => sendMessage(session.id, text, images)}
-                  renderMessageActions={renderMessageActions}
+                  renderMessageActions={(msg) => renderMessageActions(msg, session.id)}
                   placeholder="Ask anything -- generate screens, add logic, modify components..."
                   initialText={initialMessage && currentSession?.id === session.id && session.messages.length === 0 ? initialMessage : undefined}
                   autoSend={!!(initialMessage && currentSession?.id === session.id && session.messages.length === 0)}

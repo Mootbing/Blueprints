@@ -5,7 +5,7 @@ import { Feather, MaterialIcons } from "@expo/vector-icons";
 import type { Screen, Component, AppSlate, Action, Workflow, WorkflowBlock } from "../../types";
 import { sharedMenuStyles } from "./sharedStyles";
 import { TreeView } from "./TreeView";
-import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
+import { flattenComponentTree, getComponentLabel, getChildren, withChildren } from "../../utils/componentTree";
 
 // ─── Collapsible Section Header ─────────────────────────────────────────────
 
@@ -139,10 +139,11 @@ export function DetailsPage({
       comps
         .map((c) => {
           const selfMatches = matchesQuery(c);
-          const childMatches = c.type === "container" && c.children ? filterTree(c.children) : [];
+          const kids = getChildren(c);
+          const childMatches = kids ? filterTree(kids) : [];
           if (selfMatches || childMatches.length > 0) {
-            if (c.type === "container" && c.children) {
-              return { ...c, children: selfMatches ? c.children : childMatches };
+            if (kids) {
+              return withChildren(c, selfMatches ? kids : childMatches);
             }
             return c;
           }

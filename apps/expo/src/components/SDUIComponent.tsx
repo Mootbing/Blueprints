@@ -696,10 +696,26 @@ export function SDUIComponent({
       onEditStart: handleEditStart,
       onEditStateChange,
     };
-  } else if (component.type === "toggle" || component.type === "textInput") {
+  } else if (component.type === "toggle" || component.type === "textInput" || component.type === "checkbox" || component.type === "searchBar" || component.type === "slider" || component.type === "select" || component.type === "chip" || component.type === "segmentedControl") {
     rendererProps = { component, isEditMode };
-  } else if (component.type === "list") {
+  } else if (component.type === "list" || component.type === "appBar" || component.type === "tabBar") {
     rendererProps = { component, isEditMode, onNavigate, onResetAndBuild };
+  } else if (component.type === "accordion" || component.type === "bottomSheet") {
+    rendererProps = {
+      component,
+      isEditMode,
+      isDrilledInto,
+      selectedChildId,
+      editingComponentId,
+      editState,
+      onChildSelect,
+      onChildUpdate,
+      onChildEditStart,
+      onChildEditStateChange,
+      onDrillInto,
+      onChildStyleSelect,
+      onChildPickImage,
+    };
   } else if (component.type === "container") {
     rendererProps = {
       component,
@@ -725,7 +741,7 @@ export function SDUIComponent({
     rendererProps = { component };
   }
 
-  const isContainerSelected = isEditMode && component.type === "container" && !isDrilledInto &&
+  const isContainerSelected = isEditMode && (component.type === "container" || component.type === "accordion" || component.type === "bottomSheet") && !isDrilledInto &&
     editingComponentId !== component.id && editTapFired;
 
   const dimStyle = isDimmed ? { opacity: 0.3, pointerEvents: "none" as const } : undefined;

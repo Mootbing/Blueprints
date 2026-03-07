@@ -8,6 +8,12 @@ export interface ChatMessage {
   hasComponentJson?: boolean;
   /** History entry ID for the auto-created branch (created on AI response) */
   branchEntryId?: string;
+  /** Built slate waiting to be applied (not yet in history) */
+  pendingSlate?: any;
+  /** Description for the pending slate (used when creating branch entry) */
+  pendingDescription?: string;
+  /** Whether the pending changes have been applied */
+  applied?: boolean;
   /** Extended thinking / reasoning text from the model */
   thinking?: string;
   /** Cryptographic signature for the thinking block (needed for multi-turn) */

@@ -2,7 +2,7 @@ import React, { useRef, useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet, Platform, PanResponder, Animated, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { Component } from "../../types";
-import { flattenComponentTree, getComponentLabel } from "../../utils/componentTree";
+import { flattenComponentTree, getComponentLabel, getChildren } from "../../utils/componentTree";
 import { usePagerScroll } from "../PagerScrollContext";
 
 const ROW_HEIGHT = 44;
@@ -382,7 +382,7 @@ export function TreeView({
                     }
                   }}
                 >
-                  {node.component.type === "container" && (
+                  {getChildren(node.component) !== undefined && (
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); toggleCollapse(node.component.id); }}
                       hitSlop={6}
@@ -395,15 +395,15 @@ export function TreeView({
                       />
                     </Pressable>
                   )}
-                  {node.depth > 0 && node.component.type !== "container" && (
+                  {node.depth > 0 && !getChildren(node.component) && (
                     <View style={styles.leafIndent} />
                   )}
                   <Text style={[styles.label, isLocked && styles.dimmed]} numberOfLines={1}>
                     {getComponentLabel(node.component)}
                   </Text>
-                  {node.component.type === "container" && node.component.children && node.component.children.length > 0 && (
-                    <Text style={styles.childCount}>{node.component.children.length}</Text>
-                  )}
+                  {(() => { const kids = getChildren(node.component); return kids && kids.length > 0 ? (
+                    <Text style={styles.childCount}>{kids.length}</Text>
+                  ) : null; })()}
                   <Text style={[styles.typeTag, isLocked && styles.dimmed]}>{node.component.type}</Text>
                   {onAIChatComponent && (
                     <Pressable
